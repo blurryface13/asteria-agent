@@ -6,6 +6,8 @@ cd "$(dirname "$0")"
 
 echo "启动后端 (uvicorn --reload, :8000)..."
 source .venv/bin/activate
+# weasyprint(PDF生成)需要 homebrew 的 pango 等原生库
+export DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib
 nohup uvicorn main:app --host 0.0.0.0 --port 8000 --reload > /tmp/asteria-backend.log 2>&1 &
 echo "  backend PID: $!  日志: /tmp/asteria-backend.log"
 
