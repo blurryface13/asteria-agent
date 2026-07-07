@@ -1,0 +1,238 @@
+.markdown-content {
+  /* Base styles */
+  color: #1f2937;
+  font-family: Georgia, 'Times New Roman', Times, serif;
+  font-size: 18px;
+  line-height: 1.6;
+
+  /* Headings */
+  h1, h2, h3, h4, h5, h6 {
+    line-height: 1.2;
+    font-weight: 500;
+  }
+
+  h1 { font-size: 2.5em; }
+  h2 { font-size: 2em; }
+  h3 { font-size: 1.5em; }
+  h4 { font-size: 1.2em; }
+  h5 { font-size: 1.1em; }
+  h6 { font-size: 1em; }
+
+  /* Paragraphs and spacing */
+  p {
+    margin: 0;
+    line-height: 1.6;
+  }
+
+  /* Text formatting */
+  strong, b {
+    font-weight: 600;
+  }
+
+  em, i {
+    font-style: italic;
+  }
+
+  /* Strikethrough - GFM feature */
+  del, s {
+    text-decoration: line-through;
+  }
+
+  /* Lists */
+  ul, ol {
+    margin: 0;
+    padding-left: 2em;
+    line-height: 1.6;
+  }
+
+  li {
+    margin: 0;
+    padding-left: 0.5em;
+  }
+
+  ul li {
+    list-style-type: disc;
+  }
+
+  ol li {
+    list-style-type: decimal;
+  }
+
+  /* Task lists - GFM feature */
+  ul.contains-task-list {
+    list-style-type: none;
+    padding-left: 0;
+  }
+
+  .task-list-item {
+    list-style-type: none;
+    padding-left: 1.5em;
+    position: relative;
+  }
+
+  .task-list-item-checkbox {
+    position: absolute;
+    left: 0;
+    top: 0.25em;
+    margin-right: 0.5em;
+  }
+
+  /* Links */
+  a {
+    color: rgb(20, 184, 166);
+    text-decoration: underline;
+    font-weight: 500;
+    
+    &:hover {
+      opacity: 0.8;
+      color: rgb(13, 148, 136);
+    }
+  }
+
+  /* Code blocks - kept dark intentionally, this is the conventional look
+     regardless of overall theme (matches GitHub/most doc sites) */
+  pre {
+    background-color: #1e1e1e;
+    color: #e5e7eb;
+    padding: 1em;
+    border-radius: 4px;
+    overflow-x: auto;
+    margin: 1em 0;
+  }
+
+  /* Inline code - light chip to match the rest of the light theme */
+  code {
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 0.9em;
+    padding: 0 0.4em;
+    background-color: #f3f4f6;
+    color: #1f2937;
+    border-radius: 3px;
+  }
+
+  /* Code inside a block keeps the dark editor look, transparent so it
+     doesn't double up on pre's own dark background */
+  pre code {
+    background-color: transparent;
+    color: #e5e7eb;
+    padding: 0;
+  }
+
+  /* Blockquotes */
+  blockquote {
+    border-left: 4px solid rgb(20, 184, 166);
+    margin: 0;
+    padding-left: 1em;
+    font-style: italic;
+    background-color: rgba(20, 184, 166, 0.1);
+    border-radius: 0 4px 4px 0;
+  }
+
+  /* Tables - Theme-matching styling */
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 1em 0;
+    background-color: #ffffff;
+    border-radius: 4px;
+    overflow: hidden;
+    border: 2px solid #e5e7eb;
+    box-shadow: 0 0 0 1px rgba(20, 184, 166, 0.1);
+  }
+
+  th, td {
+    border: 1px solid #e5e7eb;
+    padding: 0.75em;
+    text-align: left;
+  }
+
+  /* Add a slightly more visible outer border to the table */
+  tr:first-child th {
+    border-top: 2px solid #e5e7eb;
+  }
+
+  tr:last-child td {
+    border-bottom: 2px solid #e5e7eb;
+  }
+
+  th:first-child, td:first-child {
+    border-left: 2px solid #e5e7eb;
+  }
+
+  th:last-child, td:last-child {
+    border-right: 2px solid #e5e7eb;
+  }
+
+  th {
+    background-color: #f3f4f6;
+    font-weight: 600;
+    color: #1f2937;
+  }
+
+  tr:nth-child(even) {
+    background-color: #f9fafb; /* Slightly darker for alternating rows */
+  }
+
+  tr:hover {
+    background-color: rgba(20, 184, 166, 0.06); /* Subtle teal highlight on hover */
+  }
+
+  /* Horizontal rule */
+  hr {
+    border: 0;
+    border-top: 1px solid #e5e7eb;
+    margin: 1.5em 0;
+  }
+
+  /* Images */
+  img {
+    max-width: 75%;
+    height: auto;
+    border-radius: 8px;
+    margin: 1.5em auto;
+    display: block;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(75, 85, 99, 0.4);
+  }
+
+  /* Generated inline images - special styling */
+  img[alt^="Illustration:"],
+  img[alt^="Diagram:"],
+  img[alt^="Visualization:"] {
+    max-width: 65%;
+    border: 2px solid rgba(20, 184, 166, 0.3);
+    box-shadow: 0 6px 20px rgba(20, 184, 166, 0.15);
+  }
+
+  /* Image captions via figure element */
+  figure {
+    margin: 1.5em 0;
+    text-align: center;
+  }
+
+  figure img {
+    margin-bottom: 0.5em;
+  }
+
+  figcaption {
+    font-size: 0.9em;
+    color: #9CA3AF;
+    font-style: italic;
+    margin-top: 0.5em;
+  }
+
+  /* Definition Lists */
+  dl {
+    margin: 1em 0;
+  }
+
+  dt {
+    font-weight: bold;
+    margin-top: 0.5em;
+  }
+
+  dd {
+    margin-left: 2em;
+    margin-bottom: 0.5em;
+  }
+} 
