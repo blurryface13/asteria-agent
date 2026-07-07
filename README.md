@@ -12,16 +12,13 @@
 
 ## ✨ 功能特性
 
-| | 特性 | 实现方式 |
+| | 特性 | 说明 |
 |---|---|---|
-| 🔍 | **可溯源联网调研** | LLM 生成子查询 → 多引擎检索 → 全文抓取 → embedding 相关性过滤 → 带引用写作;引用列表来自独立维护的 `visited_urls` 真实访问记录,而非 LLM 输出,杜绝编造链接 |
-| 🤖 | **多智能体模式** | LangGraph `StateGraph` 编排 planner / researcher / writer / fact-checker 角色,支持大纲人工审核(human-in-the-loop)与章节级并行深挖 |
-| 🔐 | **免密码登录** | 邮箱验证码 → JWT(HS256)→ FastAPI `Depends()` 路由守卫;WebSocket 经 query 参数鉴权,4401 关闭码正确传递到浏览器 |
-| 🗄️ | **按用户隔离的持久化** | 调研历史存 PostgreSQL,行级归属过滤,用户只能看到自己的数据 |
-| 📡 | **实时进度推送** | WebSocket 将每个调研步骤(检索中、抓取中、写作中)实时流式推送到前端 |
-| 💬 | **与报告对话** | 对任意已生成的报告继续追问 |
-| 🖥️ | **本地优先、低成本** | 生成用 DeepSeek,embedding 用本地 Ollama `bge-m3`(免费、离线、中英双语),检索用 DuckDuckGo(无需 API key) |
-| 📄 | **多格式导出** | 每份报告同时产出 Markdown + Word + PDF |
+| 🔍 | **可溯源调研** | 子查询拆解 → 检索抓取 → embedding 相关性过滤 → 带引用写作,引用来自真实访问记录而非 LLM 输出;报告导出 Markdown / Word / PDF |
+| 🤖 | **多智能体模式** | LangGraph `StateGraph` 编排研究角色,支持大纲人工审核与章节级并行 |
+| 🔐 | **多用户** | 邮箱验证码 + JWT 鉴权,调研历史按用户隔离存储于 PostgreSQL |
+| 📡 | **实时交互** | WebSocket 流式推送调研进度;可对已生成报告继续追问 |
+| 🔌 | **模型无关** | LLM 与 embedding 均走 OpenAI 兼容规范,任意 provider(含本地 Ollama)一行配置切换 |
 
 ## 📸 界面预览
 
