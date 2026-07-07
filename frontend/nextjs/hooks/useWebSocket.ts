@@ -1,7 +1,7 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
 import { Data, ChatBoxSettings, QuestionData } from '../types/data';
 import { getHost } from '../helpers/getHost';
-import { getToken } from '../helpers/auth';
+import { getToken, clearAuth } from '../helpers/auth';
 
 export const useWebSocket = (
   setOrderedData: React.Dispatch<React.SetStateAction<Data[]>>,
@@ -143,6 +143,13 @@ export const useWebSocket = (
           clearInterval(heartbeatInterval.current);
         }
         setSocket(null);
+        // 4401 = backend rejected the handshake token (expired or JWT_SECRET
+        // rotated). The stored session is stale - clear it and go to /login,
+        // otherwise the research page spins forever with no feedback.
+        if (event.code === 4401) {
+          clearAuth();
+          window.location.href = '/login';
+        }
       };
 
       newSocket.onerror = (error) => {

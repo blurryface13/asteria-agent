@@ -372,6 +372,11 @@ async def websocket_endpoint(websocket: WebSocket, token: str | None = Query(def
     # before we accept the connection.
     email = await get_current_user_email_from_query(token)
     if email is None:
+        # Accept before closing: closing an un-accepted socket surfaces as a
+        # plain HTTP 403 handshake failure, which browsers report as close
+        # code 1006 - indistinguishable from a dead server. Accepting first
+        # lets the 4401 code actually reach the frontend (useWebSocket.ts).
+        await websocket.accept()
         await websocket.close(code=4401, reason="Unauthorized")
         return
 
