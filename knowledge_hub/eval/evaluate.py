@@ -19,13 +19,14 @@ load_dotenv(Path(__file__).resolve().parent.parent.parent / ".env")
 K_VALUES = (1, 3, 5, 10)
 
 
-async def evaluate_mode(searcher, golden: list[dict], mode: str) -> dict:
+async def evaluate_mode(searcher, golden: list[dict], mode: str, collection: str | None = None) -> dict:
     hits = {k: 0 for k in K_VALUES}
     mrr_total = 0.0
     latencies = []
     for item in golden:
         t0 = time.perf_counter()
-        chunks = await searcher.search(item["query"], top_k=max(K_VALUES), mode=mode)
+        chunks = await searcher.search(item["query"], top_k=max(K_VALUES), mode=mode,
+                                       collection=collection)
         latencies.append(time.perf_counter() - t0)
         # collapse chunk ranking to doc ranking (first appearance)
         doc_ranking: list[str] = []
@@ -48,17 +49,18 @@ async def evaluate_mode(searcher, golden: list[dict], mode: str) -> dict:
     }
 
 
-async def main(golden_path: str, modes: list[str]):
+async def main(golden_path: str, modes: list[str], collection: str | None = None):
     from ..retrieval.hybrid import HybridSearch
     from ..db import close_pool
 
     golden = [json.loads(line) for line in Path(golden_path).read_text().splitlines() if line.strip()]
-    print(f"golden set: {len(golden)} queries\n")
+    scope = collection or "FULL CORPUS"
+    print(f"golden set: {len(golden)} queries | search scope: {scope}\n")
     searcher = HybridSearch()
 
     rows = []
     for mode in modes:
-        rows.append(await evaluate_mode(searcher, golden, mode))
+        rows.append(await evaluate_mode(searcher, golden, mode, collection))
 
     header = ["mode"] + [f"hit@{k}" for k in K_VALUES] + ["mrr@10", "avg_latency_s"]
     print(" | ".join(f"{h:>13}" for h in header))
@@ -74,5 +76,7 @@ if __name__ == "__main__":
     parser.add_argument("--golden", default="knowledge_hub/eval/golden.jsonl")
     parser.add_argument("--modes", nargs="+",
                         default=["dense", "sparse", "hybrid", "hybrid_rerank"])
+    parser.add_argument("--collection", default=None,
+                        help="restrict search scope; omit for full-corpus (distractor) setting")
     args = parser.parse_args()
-    asyncio.run(main(args.golden, args.modes))
+    asyncio.run(main(args.golden, args.modes, args.collection))
