@@ -110,6 +110,18 @@ export default function MobileLayout({
               </button>
             )}
             
+            <a
+              href="/knowledge"
+              className="p-2 rounded-full bg-gray-50/50 text-gray-600 hover:bg-gray-100"
+              aria-label="Knowledge Hub"
+              title="文献知识库问答"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+                <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+              </svg>
+            </a>
+
             <button
               onClick={() => {
                 setShowHistory(!showHistory);

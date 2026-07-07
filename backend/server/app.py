@@ -36,6 +36,7 @@ from chat.chat import ChatAgentWithMemory
 from backend.auth.report_store_pg import PgReportStore
 
 from backend.auth.routes import router as auth_router
+from backend.knowledge.routes import router as knowledge_router
 from backend.auth.dependencies import get_current_user_email, get_current_user_email_from_query
 
 # MongoDB services removed - no database persistence needed
@@ -125,6 +126,7 @@ app.add_middleware(
 
 # Auth routes (login/verify-code) - deliberately unprotected, everything else is behind a token
 app.include_router(auth_router)
+app.include_router(knowledge_router)
 
 # Mount static files for frontend
 # Get the absolute path to the frontend directory

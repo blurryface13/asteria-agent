@@ -18,6 +18,19 @@ const Header = ({ loading, isStopped, showResult, onStop, onNewResearch, isCopil
       
       {/* Header container */}
       <div className="container relative h-[60px] px-4 lg:h-[80px] lg:px-0 pt-4 pb-4">
+        {/* Knowledge Hub entry - top right */}
+        <a
+          href="/knowledge"
+          className="absolute right-4 top-4 flex items-center gap-1.5 rounded-full border border-gray-200 bg-white/80 px-3 py-1.5 text-sm text-gray-600 shadow-sm hover:bg-gray-50 hover:text-teal-700 transition-colors"
+          title="文献知识库问答"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+          </svg>
+          <span className="hidden sm:inline">知识库</span>
+        </a>
+
         <div className="flex flex-col items-center">
           {/* Logo/Home link */}
           <a href="/">
