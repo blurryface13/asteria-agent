@@ -7,10 +7,10 @@ from typing import List, Dict, Any
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import InMemoryVectorStore
-from gpt_researcher.memory import Memory
-from gpt_researcher.config.config import Config
-from gpt_researcher.utils.llm import create_chat_completion
-from gpt_researcher.utils.tools import create_chat_completion_with_tools, create_search_tool
+from asteria_researcher.memory import Memory
+from asteria_researcher.config.config import Config
+from asteria_researcher.utils.llm import create_chat_completion
+from asteria_researcher.utils.tools import create_chat_completion_with_tools, create_search_tool
 from tavily import TavilyClient
 from datetime import datetime
 
@@ -26,7 +26,7 @@ logging.basicConfig(
     ]
 )
 
-# Note: LLM client is now handled through GPT Researcher's unified LLM system
+# Note: LLM client is now handled through Asteria Researcher's unified LLM system
 # This supports all configured providers (OpenAI, Google Gemini, Anthropic, etc.)
 
 def get_tools():

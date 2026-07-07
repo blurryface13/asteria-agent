@@ -5,7 +5,7 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   const { id } = params;
-  const backendUrl = process.env.NEXT_PUBLIC_GPTR_API_URL || 'http://localhost:8000';
+  const backendUrl = process.env.NEXT_PUBLIC_ASTERIA_API_URL || 'http://localhost:8000';
   
   try {
     console.log(`GET /api/reports/${id} - Proxying request to backend`);
@@ -41,7 +41,7 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   const { id } = params;
-  const backendUrl = process.env.NEXT_PUBLIC_GPTR_API_URL || 'http://localhost:8000';
+  const backendUrl = process.env.NEXT_PUBLIC_ASTERIA_API_URL || 'http://localhost:8000';
   
   try {
     console.log(`DELETE /api/reports/${id} - Proxying request to backend`);
@@ -77,7 +77,7 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   const { id } = params;
-  const backendUrl = process.env.NEXT_PUBLIC_GPTR_API_URL || 'http://localhost:8000';
+  const backendUrl = process.env.NEXT_PUBLIC_ASTERIA_API_URL || 'http://localhost:8000';
   
   try {
     // Parse the request body

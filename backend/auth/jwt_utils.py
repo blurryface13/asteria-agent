@@ -4,7 +4,7 @@ Minimal JWT issue/verify helpers built on python-jose.
 Deliberately not using a full auth framework (fastapi-users etc) - the
 requirement here is small (one login flow, one role), a hand-rolled JWT is
 easier to reason about and matches the project's existing "no framework
-magic" style (see gpt_researcher/llm_provider - plain if/elif dispatch,
+magic" style (see asteria_researcher/llm_provider - plain if/elif dispatch,
 no ABCs).
 """
 import os

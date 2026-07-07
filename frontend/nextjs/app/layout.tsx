@@ -22,8 +22,8 @@ export const metadata: Metadata = {
   description,
   manifest: '/manifest.json',
   icons: {
-    icon: "/img/gptr-black-logo.png?v=bunny1",
-    apple: '/img/gptr-black-logo.png?v=bunny1',
+    icon: "/img/asteria-black-logo.png?v=bunny1",
+    apple: '/img/asteria-black-logo.png?v=bunny1',
   },
   appleWebApp: {
     capable: true,
@@ -61,13 +61,13 @@ export default function RootLayout({
 }>) {
 
   return (
-    <html className="gptr-root" lang="en" suppressHydrationWarning>
+    <html className="asteria-root" lang="en" suppressHydrationWarning>
       <head>
         <PlausibleProvider domain="localhost:3000" />
         <GoogleAnalytics gaId={process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID!} />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-        <link rel="apple-touch-icon" href="/img/gptr-black-logo.png?v=bunny1" />
+        <link rel="apple-touch-icon" href="/img/asteria-black-logo.png?v=bunny1" />
       </head>
       <body
         className={`app-container ${inter.className} flex min-h-screen flex-col justify-between`}

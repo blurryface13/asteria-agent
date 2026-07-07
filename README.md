@@ -2,16 +2,16 @@
 
 Asteria Agent is an AI research assistant built around LangChain and LangGraph. It helps turn an open-ended research question into a structured workflow: query planning, web retrieval, source reading, report drafting, follow-up chat, and optional multi-agent collaboration.
 
-The project is adapted from the GPT Researcher architecture and extended for local development, authenticated usage, and LangGraph-based research orchestration.
+The project is adapted from an open-source deep-research agent architecture and extended for local development, authenticated usage, and LangGraph-based research orchestration.
 
 ## Preview
 
 Screenshots will be added here after the UI capture is ready.
 
 <!--
-![Home](docs/images/home.png)
-![Research Report](docs/images/research-report.png)
-![Multi-Agent Workflow](docs/images/multi-agent-workflow.png)
+![Home](assets/readme/home.png)
+![Research Report](assets/readme/research-report.png)
+![Multi-Agent Workflow](assets/readme/multi-agent-workflow.png)
 -->
 
 ## Highlights
@@ -21,7 +21,7 @@ Screenshots will be added here after the UI capture is ready.
 - Interactive report workspace: provides streaming logs, source cards, generated images, report sections, and follow-up chat over completed reports.
 - Local-first setup: runs the FastAPI backend, Next.js frontend, and LangGraph service locally without Docker.
 - Authentication layer: adds passwordless email-code login, JWT-based session handling, and user-scoped report persistence.
-- Extensible retrieval: supports common GPT Researcher retrievers and can be expanded with MCP tools, local document ingestion, and vector-store context.
+- Extensible retrieval: supports web retrievers and can be expanded with MCP tools, local document ingestion, and vector-store context.
 
 ## Tech Stack
 
@@ -38,7 +38,7 @@ Screenshots will be added here after the UI capture is ready.
 flowchart LR
     User["User"] --> UI["Next.js Frontend"]
     UI --> API["FastAPI Backend"]
-    API --> Researcher["GPT Researcher Runtime"]
+    API --> Researcher["Asteria Research Runtime"]
     API --> Auth["Auth and Report Store"]
     Researcher --> Search["Web / MCP / Local Context Retrieval"]
     Researcher --> LLM["LLM Provider"]
@@ -65,7 +65,7 @@ SMTP_USERNAME=
 SMTP_PASSWORD=
 ```
 
-The local setup can also use OpenAI-compatible providers such as DeepSeek by configuring the corresponding model and base URL variables supported by GPT Researcher.
+The local setup can also use OpenAI-compatible providers such as DeepSeek by configuring the corresponding model and base URL variables.
 
 ### 2. Install dependencies
 
@@ -116,10 +116,8 @@ For more detailed local notes, see [LOCAL_DEV.md](LOCAL_DEV.md).
 .
 ├── backend/                 # FastAPI server, auth, report APIs, chat APIs
 ├── frontend/nextjs/         # Next.js research interface
-├── gpt_researcher/          # Core research runtime, retrievers, scrapers, prompts
+├── asteria_researcher/      # Core research runtime, retrievers, scrapers, prompts
 ├── multi_agents/            # LangGraph multi-agent research workflow
-├── mcp-server/              # MCP integration surface
-├── docs/                    # Upstream and project documentation
 ├── langgraph-multiagent.json
 └── start-local.sh
 ```
@@ -133,7 +131,7 @@ For more detailed local notes, see [LOCAL_DEV.md](LOCAL_DEV.md).
 
 ## Acknowledgements
 
-This project builds on the open-source GPT Researcher project and keeps its research-agent design as an important foundation. Thanks to the GPT Researcher and LangChain communities for the underlying ideas, tools, and ecosystem.
+This project builds on ideas and implementation patterns from the open-source GPT Researcher project while reshaping the repository around Asteria Agent's local workflow. Thanks to the GPT Researcher and LangChain communities for the underlying research-agent ecosystem.
 
 ## License
 

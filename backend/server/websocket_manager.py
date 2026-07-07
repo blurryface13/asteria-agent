@@ -11,8 +11,8 @@ from fastapi import WebSocket
 
 from backend.report_type import BasicReport, DetailedReport
 
-from gpt_researcher.utils.enum import ReportType, Tone
-from gpt_researcher.actions import stream_output  # Import stream_output
+from asteria_researcher.utils.enum import ReportType, Tone
+from asteria_researcher.actions import stream_output  # Import stream_output
 from .multi_agent_runner import run_multi_agent_task
 from .server_utils import CustomLogsHandler
 
@@ -119,7 +119,7 @@ async def run_agent(task, report_type, report_source, source_urls, document_urls
     logs_handler = CustomLogsHandler(websocket, task)
 
     # Log MCP initialization. Retriever and strategy are configured per-request
-    # inside GPTResearcher via mcp_configs/mcp_strategy params — no os.environ
+    # inside AsteriaResearcher via mcp_configs/mcp_strategy params — no os.environ
     # mutation needed here (mutating os.environ would persist across requests and
     # affect unrelated sessions, see issue #1676).
     if mcp_enabled and mcp_configs:
@@ -178,6 +178,6 @@ async def run_agent(task, report_type, report_source, source_urls, document_urls
         report = await researcher.run()
 
     if report_type != "multi_agents" and return_researcher:
-        return report, researcher.gpt_researcher
+        return report, researcher.asteria_researcher
     else:
         return report

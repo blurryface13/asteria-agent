@@ -3,8 +3,8 @@ from langchain_community.adapters.openai import convert_openai_messages
 from langchain_core.utils.json import parse_json_markdown
 from loguru import logger
 
-from gpt_researcher.config.config import Config
-from gpt_researcher.utils.llm import create_chat_completion
+from asteria_researcher.config.config import Config
+from asteria_researcher.utils.llm import create_chat_completion
 
 
 async def call_model(

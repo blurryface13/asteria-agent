@@ -4,7 +4,7 @@ import time
 from typing import List, Dict, Set, Optional, Any
 from fastapi import WebSocket
 
-from gpt_researcher import GPTResearcher
+from asteria_researcher import AsteriaResearcher
 
 
 class DetailedReport:
@@ -44,7 +44,7 @@ class DetailedReport:
         self.research_id = self._generate_research_id(query)
         
         # Initialize researcher with optional MCP parameters
-        gpt_researcher_params = {
+        asteria_researcher_params = {
             "query": self.query,
             "query_domains": self.query_domains,
             "report_type": "research_report",
@@ -60,15 +60,15 @@ class DetailedReport:
 
         # Add MCP parameters if provided
         if mcp_configs is not None:
-            gpt_researcher_params["mcp_configs"] = mcp_configs
+            asteria_researcher_params["mcp_configs"] = mcp_configs
         if mcp_strategy is not None:
-            gpt_researcher_params["mcp_strategy"] = mcp_strategy
+            asteria_researcher_params["mcp_strategy"] = mcp_strategy
 
-        self.gpt_researcher = GPTResearcher(**gpt_researcher_params)
+        self.asteria_researcher = AsteriaResearcher(**asteria_researcher_params)
 
         # Override max_search_results_per_query if provided by user
         if max_search_results is not None:
-            self.gpt_researcher.cfg.max_search_results_per_query = int(max_search_results)
+            self.asteria_researcher.cfg.max_search_results_per_query = int(max_search_results)
         self.existing_headers: List[Dict] = []
         self.global_context: List[str] = []
         self.global_written_sections: List[str] = []
@@ -84,19 +84,19 @@ class DetailedReport:
     async def run(self) -> str:
         await self._initial_research()
         subtopics = await self._get_all_subtopics()
-        report_introduction = await self.gpt_researcher.write_introduction()
+        report_introduction = await self.asteria_researcher.write_introduction()
         _, report_body = await self._generate_subtopic_reports(subtopics)
-        self.gpt_researcher.visited_urls.update(self.global_urls)
+        self.asteria_researcher.visited_urls.update(self.global_urls)
         report = await self._construct_detailed_report(report_introduction, report_body)
         return report
 
     async def _initial_research(self) -> None:
-        await self.gpt_researcher.conduct_research()
-        self.global_context = self.gpt_researcher.context
-        self.global_urls = self.gpt_researcher.visited_urls
+        await self.asteria_researcher.conduct_research()
+        self.global_context = self.asteria_researcher.context
+        self.global_urls = self.asteria_researcher.visited_urls
 
     async def _get_all_subtopics(self) -> List[Dict]:
-        subtopics_data = await self.gpt_researcher.get_subtopics()
+        subtopics_data = await self.asteria_researcher.get_subtopics()
 
         all_subtopics = []
         if subtopics_data and subtopics_data.subtopics:
@@ -137,7 +137,7 @@ class DetailedReport:
 
     async def _get_subtopic_report(self, subtopic: Dict) -> Dict[str, str]:
         current_subtopic_task = subtopic.get("task")
-        subtopic_assistant = GPTResearcher(
+        subtopic_assistant = AsteriaResearcher(
             query=current_subtopic_task,
             query_domains=self.query_domains,
             report_type="subtopic_report",
@@ -147,14 +147,14 @@ class DetailedReport:
             parent_query=self.query,
             subtopics=self.subtopics,
             visited_urls=self.global_urls,
-            agent=self.gpt_researcher.agent,
-            role=self.gpt_researcher.role,
+            agent=self.asteria_researcher.agent,
+            role=self.asteria_researcher.role,
             tone=self.tone,
             complement_source_urls=self.complement_source_urls,
             source_urls=self.source_urls,
             # Propagate MCP configuration so follow-up researchers can use MCP
-            mcp_configs=self.gpt_researcher.mcp_configs,
-            mcp_strategy=self.gpt_researcher.mcp_strategy
+            mcp_configs=self.asteria_researcher.mcp_configs,
+            mcp_strategy=self.asteria_researcher.mcp_strategy
         )
 
         # Propagate max_search_results override to subtopic researcher
@@ -169,7 +169,7 @@ class DetailedReport:
         if not isinstance(draft_section_titles, str):
             draft_section_titles = str(draft_section_titles)
 
-        parse_draft_section_titles = self.gpt_researcher.extract_headers(draft_section_titles)
+        parse_draft_section_titles = self.asteria_researcher.extract_headers(draft_section_titles)
         parse_draft_section_titles_text = [header.get(
             "text", "") for header in parse_draft_section_titles]
 
@@ -183,22 +183,22 @@ class DetailedReport:
             relevant_written_contents=relevant_contents,
         )
 
-        self.global_written_sections.extend(self.gpt_researcher.extract_sections(subtopic_report))
+        self.global_written_sections.extend(self.asteria_researcher.extract_sections(subtopic_report))
         self.global_context = list(set(self._hashable_context(subtopic_assistant.context)))
         self.global_urls.update(subtopic_assistant.visited_urls)
 
         self.existing_headers.append({
             "subtopic task": current_subtopic_task,
-            "headers": self.gpt_researcher.extract_headers(subtopic_report),
+            "headers": self.asteria_researcher.extract_headers(subtopic_report),
         })
 
         return {"topic": subtopic, "report": subtopic_report}
 
     async def _construct_detailed_report(self, introduction: str, report_body: str) -> str:
-        toc = self.gpt_researcher.table_of_contents(report_body)
-        conclusion = await self.gpt_researcher.write_report_conclusion(report_body)
-        conclusion_with_references = self.gpt_researcher.add_references(
-            conclusion, self.gpt_researcher.visited_urls)
+        toc = self.asteria_researcher.table_of_contents(report_body)
+        conclusion = await self.asteria_researcher.write_report_conclusion(report_body)
+        conclusion_with_references = self.asteria_researcher.add_references(
+            conclusion, self.asteria_researcher.visited_urls)
         report = f"{introduction}\n\n{toc}\n\n{report_body}\n\n{conclusion_with_references}"
         
         # Note: Images are now pre-generated during conduct_research() and embedded during write_report()

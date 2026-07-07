@@ -7,7 +7,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 from multi_agents.agents import ChiefEditorAgent
 import asyncio
 import json
-from gpt_researcher.utils.enum import Tone
+from asteria_researcher.utils.enum import Tone
 
 # Run with LangSmith if API key is set
 if os.environ.get("LANGCHAIN_API_KEY"):

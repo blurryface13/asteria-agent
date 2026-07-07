@@ -73,7 +73,7 @@ export default function MobileLayout({
           <div className="flex items-center">
             <a href="/" className="flex items-center">
               <img
-                src="/img/gptr-logo.png?v=bunny1"
+                src="/img/asteria-logo.png?v=bunny1"
                 alt="Bunny Research"
                 width={30}
                 height={30}

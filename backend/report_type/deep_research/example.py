@@ -2,15 +2,15 @@ from typing import List, Dict, Any, Optional, Set
 from fastapi import WebSocket
 import asyncio
 import logging
-from gpt_researcher import GPTResearcher
-from gpt_researcher.llm_provider.generic.base import ReasoningEfforts
-from gpt_researcher.skills.deep_research import (
+from asteria_researcher import AsteriaResearcher
+from asteria_researcher.llm_provider.generic.base import ReasoningEfforts
+from asteria_researcher.skills.deep_research import (
     parse_follow_up_questions_response,
     parse_research_results_response,
     parse_search_queries_response,
 )
-from gpt_researcher.utils.llm import create_chat_completion
-from gpt_researcher.utils.enum import ReportType, ReportSource, Tone
+from asteria_researcher.utils.llm import create_chat_completion
+from asteria_researcher.utils.enum import ReportType, ReportSource, Tone
 
 logger = logging.getLogger(__name__)
 
@@ -192,7 +192,7 @@ class DeepResearch:
                         on_progress(progress)
 
                     # Initialize researcher for this query
-                    researcher = GPTResearcher(
+                    researcher = AsteriaResearcher(
                         query=serp_query['query'],
                         report_type=ReportType.ResearchReport.value,
                         report_source=ReportSource.Web.value,
@@ -299,7 +299,7 @@ class DeepResearch:
         )
 
         # Generate final report
-        researcher = GPTResearcher(
+        researcher = AsteriaResearcher(
             query=self.query,
             report_type=ReportType.DetailedReport.value,
             report_source=ReportSource.Web.value,

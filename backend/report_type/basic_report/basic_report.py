@@ -3,7 +3,7 @@ import time
 from fastapi import WebSocket
 from typing import Any
 
-from gpt_researcher import GPTResearcher
+from asteria_researcher import AsteriaResearcher
 
 
 class BasicReport:
@@ -38,7 +38,7 @@ class BasicReport:
         self.research_id = self._generate_research_id(query)
 
         # Initialize researcher with optional MCP parameters
-        gpt_researcher_params = {
+        asteria_researcher_params = {
             "query": self.query,
             "query_domains": self.query_domains,
             "report_type": self.report_type,
@@ -53,15 +53,15 @@ class BasicReport:
 
         # Add MCP parameters if provided
         if mcp_configs is not None:
-            gpt_researcher_params["mcp_configs"] = mcp_configs
+            asteria_researcher_params["mcp_configs"] = mcp_configs
         if mcp_strategy is not None:
-            gpt_researcher_params["mcp_strategy"] = mcp_strategy
+            asteria_researcher_params["mcp_strategy"] = mcp_strategy
 
-        self.gpt_researcher = GPTResearcher(**gpt_researcher_params)
+        self.asteria_researcher = AsteriaResearcher(**asteria_researcher_params)
 
         # Override max_search_results_per_query if provided by user
         if max_search_results is not None:
-            self.gpt_researcher.cfg.max_search_results_per_query = int(max_search_results)
+            self.asteria_researcher.cfg.max_search_results_per_query = int(max_search_results)
 
     def _generate_research_id(self, query: str) -> str:
         """Generate a unique research ID from query and timestamp."""
@@ -70,6 +70,6 @@ class BasicReport:
         return f"research_{timestamp}_{query_hash}"
 
     async def run(self):
-        await self.gpt_researcher.conduct_research()
-        report = await self.gpt_researcher.write_report()
+        await self.asteria_researcher.conduct_research()
+        report = await self.asteria_researcher.write_report()
         return report

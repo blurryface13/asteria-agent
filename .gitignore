@@ -17,7 +17,7 @@ venv.bak/
 outputs/
 *.lock
 dist/
-gpt_researcher.egg-info/
+asteria_agent.egg-info/
 
 #Ignore my local docs
 my-docs/
@@ -39,6 +39,8 @@ docs/build
 .langgraph_api/
 .next/
 package-lock.json
+frontend/nextjs/public/sw.js
+frontend/nextjs/public/workbox-*.js
 
 #Vim swp files
 *.swp

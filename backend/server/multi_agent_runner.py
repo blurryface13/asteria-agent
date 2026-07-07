@@ -18,14 +18,8 @@ def _resolve_run_research_task() -> RunResearchTask:
     try:
         from multi_agents.main import run_research_task
         return run_research_task
-    except Exception:
-        try:
-            from multi_agents_ag2.main import run_research_task
-            return run_research_task
-        except Exception as ag2_error:
-            raise ImportError(
-                "Could not import run_research_task from multi_agents or multi_agents_ag2"
-            ) from ag2_error
+    except Exception as error:
+        raise ImportError("Could not import run_research_task from multi_agents") from error
 
 
 async def run_multi_agent_task(*args, **kwargs) -> Any:

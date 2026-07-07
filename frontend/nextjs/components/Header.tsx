@@ -22,7 +22,7 @@ const Header = ({ loading, isStopped, showResult, onStop, onNewResearch, isCopil
           {/* Logo/Home link */}
           <a href="/">
             <img
-              src="/img/gptr-logo.png?v=bunny1"
+              src="/img/asteria-logo.png?v=bunny1"
               alt="logo"
               width={60}
               height={60}

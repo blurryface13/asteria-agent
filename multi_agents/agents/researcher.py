@@ -1,4 +1,4 @@
-from gpt_researcher import GPTResearcher
+from asteria_researcher import AsteriaResearcher
 from colorama import Fore, Style
 from .utils.views import print_agent_output
 
@@ -13,7 +13,7 @@ class ResearchAgent:
     async def research(self, query: str, research_report: str = "research_report",
                        parent_query: str = "", verbose=True, source="web", tone=None, headers=None):
         # Initialize the researcher
-        researcher = GPTResearcher(query=query, report_type=research_report, parent_query=parent_query,
+        researcher = AsteriaResearcher(query=query, report_type=research_report, parent_query=parent_query,
                                    verbose=verbose, report_source=source, tone=tone, websocket=self.websocket, headers=self.headers)
         # Conduct research on the given query
         await researcher.conduct_research()

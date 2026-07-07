@@ -1,7 +1,7 @@
 """
 Postgres connection pool for the auth system.
 
-Kept deliberately separate from gpt-researcher's own config/LLM plumbing -
+Kept deliberately separate from asteria-agent's own config/LLM plumbing -
 auth is a bolt-on feature, not part of the research pipeline.
 """
 import os

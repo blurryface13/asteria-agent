@@ -1,4 +1,4 @@
-from gpt_researcher import GPTResearcher
+from asteria_researcher import AsteriaResearcher
 from backend.utils import write_md_to_pdf
 import asyncio
 
@@ -13,7 +13,7 @@ async def main(task: str):
             print(f"Current query: {progress.current_query}")
     
     # Initialize researcher with deep research type
-    researcher = GPTResearcher(
+    researcher = AsteriaResearcher(
         query=task,
         report_type="deep",  # This will trigger deep research
     )

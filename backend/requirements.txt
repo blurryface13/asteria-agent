@@ -30,6 +30,6 @@ python-docx>=1.1.0
 htmldocx>=0.0.6
 jinja2>=3.1.6
 
-# GPT-Researcher (install from root)
+# Asteria Researcher (install from root)
 # Run: pip install -e . from the project root
-# gpt-researcher>=0.14.4
+# asteria-agent>=0.14.4

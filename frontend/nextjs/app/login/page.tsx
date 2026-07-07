@@ -64,8 +64,8 @@ export default function LoginPage() {
     <div className="min-h-screen w-full flex items-center justify-center bg-white px-4">
       <div className="w-full max-w-sm">
         <div className="flex flex-col items-center mb-8">
-          <img src="/img/gptr-logo.png?v=bunny1" alt="Bunny Research" width={64} height={64} className="rounded-xl mb-3" />
-          <h1 className="text-2xl font-bold text-gray-900">Bunny Research</h1>
+          <img src="/img/asteria-logo.png?v=bunny1" alt="Asteria Agent" width={64} height={64} className="rounded-xl mb-3" />
+          <h1 className="text-2xl font-bold text-gray-900">Asteria Agent</h1>
           <p className="text-sm text-gray-500 mt-1">组内专用,请用邮箱登录</p>
         </div>
 

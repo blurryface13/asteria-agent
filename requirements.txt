@@ -1,4 +1,4 @@
-# GPT-Researcher Direct Dependencies
+# Asteria Researcher Direct Dependencies
 # Python 3.10+ required for LangChain v1
 
 # Core Framework

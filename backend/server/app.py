@@ -30,7 +30,7 @@ from server.agent_discovery import build_agent_discovery_document
 
 from server.websocket_manager import run_agent
 from utils import write_md_to_word, write_md_to_pdf
-from gpt_researcher.utils.enum import Tone
+from asteria_researcher.utils.enum import Tone
 from chat.chat import ChatAgentWithMemory
 
 from backend.auth.report_store_pg import PgReportStore
@@ -90,7 +90,7 @@ async def lifespan(app: FastAPI):
     else:
         logger.warning(f"Frontend directory not found: {frontend_path}")
     
-    logger.info("GPT Researcher API ready - local mode (no database persistence)")
+    logger.info("Asteria Researcher API ready - local mode (no database persistence)")
     yield
     # Shutdown
     logger.info("Research API shutting down")
@@ -106,7 +106,7 @@ ALLOWED_ORIGINS = (
     else [
         "http://localhost:3000",
         "http://127.0.0.1:3000",
-        "https://app.gptr.dev",
+        "https://app.asteria.dev",
     ]
 )
 
@@ -166,7 +166,7 @@ async def serve_frontend():
 
 @app.get("/.well-known/agent-discovery.json")
 async def agent_discovery(request: Request):
-    """Advertise GPT Researcher services via the Agent Discovery Protocol."""
+    """Advertise Asteria Researcher services via the Agent Discovery Protocol."""
     origin = str(request.base_url).rstrip("/")
     domain = request.url.hostname or request.headers.get("host", "")
     contact = os.getenv("AGENT_DISCOVERY_CONTACT")
