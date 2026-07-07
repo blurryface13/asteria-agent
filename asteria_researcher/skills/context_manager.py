@@ -5,6 +5,7 @@ retrieval, compression, and similarity matching for research queries.
 """
 
 import asyncio
+import os
 from typing import Dict, List, Optional, Set
 
 from ..actions.utils import stream_output
@@ -13,6 +14,7 @@ from ..context.compression import (
     VectorstoreCompressor,
     WrittenContentCompressor,
 )
+from ..context.hybrid_compression import HybridContextCompressor
 
 
 class ContextManager:
@@ -52,7 +54,15 @@ class ContextManager:
                 self.researcher.websocket,
             )
 
-        context_compressor = ContextCompressor(
+        # CONTEXT_FILTER_MODE=hybrid switches to BM25+dense RRF filtering
+        # (see context/hybrid_compression.py); default keeps the original
+        # dense-threshold pipeline.
+        compressor_cls = (
+            HybridContextCompressor
+            if os.environ.get("CONTEXT_FILTER_MODE", "dense").lower() == "hybrid"
+            else ContextCompressor
+        )
+        context_compressor = compressor_cls(
             documents=pages,
             embeddings=self.researcher.memory.get_embeddings(),
             prompt_family=self.researcher.prompt_family,
