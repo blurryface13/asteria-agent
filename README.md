@@ -20,31 +20,11 @@
 | 📡 | **实时交互** | WebSocket 流式推送调研进度;可对已生成报告继续追问 |
 | 🔌 | **模型无关** | LLM 与 embedding 均走 OpenAI 兼容规范,任意 provider(含本地 Ollama)一行配置切换 |
 
-## 📸 界面预览
-
-<!-- TODO: screenshots
-![Home](assets/readme/home.png)
-![Research in progress](assets/readme/research-live.png)
-![Multi-agent workflow](assets/readme/multi-agent.png)
--->
-
-*截图即将补充。*
-
 ## 🏗️ 架构
 
-```mermaid
-flowchart LR
-    UI["Next.js UI"] -->|"REST + WebSocket"| API["FastAPI Backend"]
-    API --> Auth["邮箱验证码 + JWT"]
-    API --> Store[("PostgreSQL<br/>reports / users")]
-    API --> Runtime["调研引擎<br/>(asteria_researcher)"]
-    Runtime --> Retrieval["Retrievers<br/>DuckDuckGo / MCP / 本地文档"]
-    Runtime --> Embed["Ollama bge-m3<br/>相关性过滤"]
-    Runtime --> LLM["DeepSeek<br/>(任意 LangChain provider)"]
-    UI --> Graph["LangGraph Service"]
-    Graph --> Agents["planner / researcher<br/>writer / fact-checker"]
-    Agents --> Runtime
-```
+![Asteria / Bunny Research 主线流程](assets/readme/main-flow.png)
+
+![Multi-Agent LangGraph Workflow 编排](assets/readme/langgraph-workflow.png)
 
 代码库沿一条清晰的边界拆分:
 
