@@ -2,6 +2,7 @@ import { useRef, useState, useEffect, useCallback } from 'react';
 import { Data, ChatBoxSettings, QuestionData } from '../types/data';
 import { getHost } from '../helpers/getHost';
 import { getToken, clearAuth } from '../helpers/auth';
+import { getRetrieversForStrategy } from '../utils/searchStrategy';
 
 export const useWebSocket = (
   setOrderedData: React.Dispatch<React.SetStateAction<Data[]>>,
@@ -77,7 +78,8 @@ export const useWebSocket = (
         
         const domainFilters = JSON.parse(localStorage.getItem('domainFilters') || '[]');
         const domains = domainFilters ? domainFilters.map((domain: any) => domain.value) : [];
-        const { report_type, report_source, tone, mcp_enabled, mcp_configs, mcp_strategy } = chatBoxSettings;
+        const { report_type, report_source, tone, mcp_enabled, mcp_configs, mcp_strategy, search_strategy, retrievers } = chatBoxSettings;
+        const selectedRetrievers = getRetrieversForStrategy(search_strategy, retrievers);
         
         // Start a new research
         try {
@@ -87,6 +89,10 @@ export const useWebSocket = (
             report_type, 
             report_source, 
             tone,
+            headers: {
+              retrievers: selectedRetrievers,
+            },
+            search_strategy: search_strategy || "general",
             query_domains: domains,
             mcp_enabled: mcp_enabled || false,
             mcp_strategy: mcp_strategy || "fast",
@@ -128,6 +134,11 @@ export const useWebSocket = (
               // Replace entire report with the complete version (includes images)
               console.log('Received complete report with images');
               setAnswer(data.output);
+            } else if (data.type === 'logs' && data.content === 'research_report') {
+              const report = typeof data.output === 'string' ? data.output : data.output?.report;
+              if (typeof report === 'string') {
+                setAnswer(report);
+              }
             } else if (data.type === 'path') {
               setLoading(false);
             }

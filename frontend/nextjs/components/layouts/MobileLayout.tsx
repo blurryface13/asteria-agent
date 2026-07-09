@@ -265,6 +265,19 @@ export default function MobileLayout({
               </div>
               
               <div>
+                <label className="block text-xs text-gray-500 mb-1">Search Strategy</label>
+                <select
+                  className="w-full bg-white border border-gray-200 rounded-md py-1.5 px-2 text-sm text-gray-600 focus:outline-none focus:ring-1 focus:ring-teal-500 focus:border-teal-500"
+                  value={chatBoxSettings.search_strategy || "general"}
+                  onChange={(e) => setChatBoxSettings({...chatBoxSettings, search_strategy: e.target.value as any})}
+                >
+                  <option value="general">General Web</option>
+                  <option value="academic">Academic</option>
+                  <option value="hybrid">Hybrid</option>
+                </select>
+              </div>
+
+              <div>
                 <label className="block text-xs text-gray-500 mb-1">Research Tone</label>
                 <select 
                   className="w-full bg-white border border-gray-200 rounded-md py-1.5 px-2 text-sm text-gray-600 focus:outline-none focus:ring-1 focus:ring-teal-500 focus:border-teal-500"

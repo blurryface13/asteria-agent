@@ -7,7 +7,7 @@
     "pdf": true,
     "docx": true
   },
-  "include_human_feedback": false,
+  "include_human_feedback": true,
   "follow_guidelines": false,
   "model": "deepseek-chat",
   "guidelines": [

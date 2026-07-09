@@ -1,0 +1,74 @@
+# Asteria bridge config for jerry-ai-dev/MODULAR-RAG-MCP-SERVER.
+# Uses the external project's own RAG pipeline while avoiding GPT-4o vision.
+
+llm:
+  provider: "qwen"
+  model: "qwen-plus"
+  deployment_name: "qwen-plus"
+  azure_endpoint: ""
+  api_version: "2024-02-15-preview"
+  api_key: ""
+  temperature: 0.0
+  max_tokens: 2048
+  base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+
+embedding:
+  provider: "ollama"
+  model: "bge-m3"
+  dimensions: 1024
+  azure_endpoint: ""
+  deployment_name: "bge-m3"
+  api_version: "2024-02-15-preview"
+  api_key: ""
+  base_url: "http://localhost:11434"
+
+vision_llm:
+  enabled: true
+  provider: "qwen"
+  model: "qwen-vl-plus"
+  azure_endpoint: ""
+  deployment_name: "qwen-vl-plus"
+  api_version: "2024-02-15-preview"
+  api_key: ""
+  base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+  max_image_size: 2048
+
+vector_store:
+  provider: "chroma"
+  persist_directory: "./data/db/chroma"
+  collection_name: "knowledge_hub"
+
+retrieval:
+  dense_top_k: 20
+  sparse_top_k: 20
+  fusion_top_k: 10
+  rrf_k: 60
+
+rerank:
+  enabled: true
+  provider: "qwen_rerank"
+  model: "qwen3-rerank"
+  top_k: 5
+
+evaluation:
+  enabled: true
+  provider: "custom"
+  metrics:
+    - "hit_rate"
+    - "mrr"
+
+observability:
+  log_level: "INFO"
+  trace_enabled: true
+  trace_file: "./logs/traces.jsonl"
+  structured_logging: true
+
+ingestion:
+  chunk_size: 1000
+  chunk_overlap: 200
+  splitter: "recursive"
+  batch_size: 32
+  chunk_refiner:
+    use_llm: false
+  metadata_enricher:
+    use_llm: false

@@ -39,6 +39,7 @@ export default function ResearchPage({ params }: { params: { id: string } }) {
     const defaultSettings = {
       report_source: "web",
       report_type: "research_report",
+      search_strategy: "general",
       tone: "Objective",
       domains: [],
       defaultReportType: "research_report",

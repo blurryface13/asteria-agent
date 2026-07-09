@@ -25,6 +25,7 @@ import { getAppropriateLayout } from "@/utils/getLayout";
 import MobileHomeScreen from "@/components/mobile/MobileHomeScreen";
 import MobileResearchContent from "@/components/mobile/MobileResearchContent";
 import { authFetch } from "@/helpers/auth";
+import { getRetrieversForStrategy } from "@/utils/searchStrategy";
 
 export default function Home() {
   const router = useRouter();
@@ -39,6 +40,7 @@ export default function Home() {
     const defaultSettings = {
       report_type: "research_report",
       report_source: "web",
+      search_strategy: "general",
       tone: "Objective",
       domains: [],
       defaultReportType: "research_report",
@@ -423,7 +425,14 @@ export default function Home() {
     const tempResearchId = `temp-${newResearchStarted}`;
 
     if (chatBoxSettings.report_type === 'multi_agents' && langgraphHostUrl) {
-      let { streamResponse, host, thread_id } = await startLanggraphResearch(newQuestion, chatBoxSettings.report_source, langgraphHostUrl);
+      const retrievers = getRetrieversForStrategy(chatBoxSettings.search_strategy, chatBoxSettings.retrievers);
+      let { streamResponse, host, thread_id } = await startLanggraphResearch(
+        newQuestion,
+        chatBoxSettings.report_source,
+        langgraphHostUrl,
+        chatBoxSettings.search_strategy,
+        retrievers
+      );
       const langsmithGuiLink = `https://smith.langchain.com/studio/thread/${thread_id}?baseUrl=${host}`;
       setOrderedData((prevOrder) => [...prevOrder, { type: 'langgraphButton', link: langsmithGuiLink }]);
 
@@ -930,6 +939,8 @@ export default function Home() {
                 promptValue={promptValue}
                 setPromptValue={setPromptValue}
                 handleDisplayResult={handleDisplayResult}
+                chatBoxSettings={chatBoxSettings}
+                setChatBoxSettings={setChatBoxSettings}
               />
             </>
           )
@@ -1002,7 +1013,7 @@ export default function Home() {
                 />
               )}
               
-              {showHumanFeedback && false && (
+              {showHumanFeedback && (
                 <HumanFeedback
                   questionForHuman={questionForHuman}
                   websocket={socket}

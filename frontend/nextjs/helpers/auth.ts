@@ -3,22 +3,38 @@ const EMAIL_KEY = 'bunny_auth_email';
 
 export function getToken(): string | null {
   if (typeof window === 'undefined') return null;
-  return localStorage.getItem(TOKEN_KEY);
+  try {
+    return window.localStorage?.getItem(TOKEN_KEY) || null;
+  } catch {
+    return null;
+  }
 }
 
 export function setAuth(token: string, email: string) {
-  localStorage.setItem(TOKEN_KEY, token);
-  localStorage.setItem(EMAIL_KEY, email);
+  try {
+    window.localStorage?.setItem(TOKEN_KEY, token);
+    window.localStorage?.setItem(EMAIL_KEY, email);
+  } catch {
+    // Ignore storage failures; AuthGuard will send the user back to login.
+  }
 }
 
 export function getAuthEmail(): string | null {
   if (typeof window === 'undefined') return null;
-  return localStorage.getItem(EMAIL_KEY);
+  try {
+    return window.localStorage?.getItem(EMAIL_KEY) || null;
+  } catch {
+    return null;
+  }
 }
 
 export function clearAuth() {
-  localStorage.removeItem(TOKEN_KEY);
-  localStorage.removeItem(EMAIL_KEY);
+  try {
+    window.localStorage?.removeItem(TOKEN_KEY);
+    window.localStorage?.removeItem(EMAIL_KEY);
+  } catch {
+    // Nothing else to clear when localStorage is unavailable.
+  }
 }
 
 export function authHeader(): Record<string, string> {

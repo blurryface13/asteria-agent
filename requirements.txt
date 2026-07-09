@@ -32,6 +32,7 @@ arxiv>=2.0.0
 beautifulsoup4>=4.12.2
 brotli>=1.2.0  # < 1.2.0 has no decompression size limit (CVE-2025-6176 decompression-bomb DoS)
 pymupdf>=1.23.6
+markitdown[pdf]>=0.1.0
 python-docx>=1.1.0
 python-pptx>=1.0.0
 unstructured>=0.13
@@ -41,6 +42,8 @@ pandas>=2.0.0
 # Vector Store & Embeddings
 tiktoken>=0.7.0
 numpy>=2.0.0,<2.3.0
+chromadb>=0.4.0
+jieba>=0.42
 
 # Utilities
 aiofiles>=23.2.1
@@ -60,6 +63,7 @@ htmldocx>=0.0.6
 # MCP Support (optional)
 mcp>=1.9.1
 langchain-mcp-adapters>=0.1.0
+streamlit>=1.30.0
 
 # Data Handling
 sqlalchemy>=2.0.28
@@ -74,3 +78,6 @@ asyncpg>=0.29.0
 python-jose[cryptography]>=3.3.0
 email-validator>=2.1.0
 
+# Modular RAG MCP bridge / evaluation
+ragas>=0.1.0
+datasets>=2.0.0

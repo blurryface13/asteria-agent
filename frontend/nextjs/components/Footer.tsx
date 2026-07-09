@@ -1,8 +1,6 @@
 import React from 'react';
-import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import Modal from './Settings/Modal';
 import { ChatBoxSettings } from '@/types/data';
 import { getAuthEmail, clearAuth } from '@/helpers/auth';
 
@@ -36,11 +34,10 @@ const Footer: React.FC<FooterProps> = ({ chatBoxSettings, setChatBoxSettings }) 
   return (
     <>
       <div className="container flex flex-col sm:flex-row min-h-[60px] sm:min-h-[72px] mt-2 items-center justify-center sm:justify-between border-t border-gray-200/30 px-4 pb-3 pt-4 sm:py-5 lg:px-0 bg-transparent backdrop-blur-sm gap-3 sm:gap-0">
-        <Modal setChatBoxSettings={setChatBoxSettings} chatBoxSettings={chatBoxSettings} />
-        <div className="text-xs sm:text-sm text-gray-800 text-center sm:text-left order-2 sm:order-1">
+        <div className="text-xs sm:text-sm text-gray-800 text-center sm:text-left">
             © {new Date().getFullYear()} Bunny Research. All rights reserved.
         </div>
-        <div className="flex items-center gap-4 order-1 sm:order-2 mb-2 sm:mb-0">
+        <div className="flex items-center gap-4 mb-2 sm:mb-0">
           {email && (
             <span className="text-xs text-gray-500 hidden sm:inline">{email}</span>
           )}

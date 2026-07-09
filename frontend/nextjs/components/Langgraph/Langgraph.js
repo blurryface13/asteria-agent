@@ -1,10 +1,16 @@
 import { Client } from "@langchain/langgraph-sdk";
 import { task } from '../../config/task';
 
-export async function startLanggraphResearch(newQuestion, report_source, langgraphHostUrl) {
+export async function startLanggraphResearch(newQuestion, report_source, langgraphHostUrl, search_strategy = 'general', retrievers = 'duckduckgo') {
     // Update the task query with the new question
     task.task.query = newQuestion;
     task.task.source = report_source;
+    task.task.search_strategy = search_strategy;
+    task.task.retrievers = retrievers;
+    task.task.headers = {
+      ...(task.task.headers || {}),
+      retrievers,
+    };
     const host = langgraphHostUrl;
     
     // Add your Langgraph Cloud Authentication token here

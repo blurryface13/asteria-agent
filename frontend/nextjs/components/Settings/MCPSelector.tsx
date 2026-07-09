@@ -181,6 +181,24 @@ const MCPSelector: React.FC<MCPSelectorProps> = ({
         command: 'npx',
         args: ['-y', '@modelcontextprotocol/server-filesystem', '/path/to/allowed/directory'],
         env: {}
+      },
+      knowledge_hub: {
+        name: 'knowledge_hub',
+        command: 'python',
+        args: ['-m', 'knowledge_hub.mcp_server'],
+        env: {}
+      },
+      modular_rag: {
+        name: 'modular_rag',
+        command: 'bash',
+        args: [
+          '-lc',
+          'cd ${MODULAR_RAG_MCP_ROOT:-/Users/dora/Documents/Codex/2026-07-07/wome/work/MODULAR-RAG-MCP-SERVER} && MODULAR_RAG_MCP_CONFIG=${MODULAR_RAG_MCP_CONFIG:-/Users/dora/Documents/项目/code/reference-repos/asteria-agent/backend/knowledge/modular_rag_settings.yaml} python -m src.mcp_server.server'
+        ],
+        env: {
+          MODULAR_RAG_MCP_ROOT: '/Users/dora/Documents/Codex/2026-07-07/wome/work/MODULAR-RAG-MCP-SERVER',
+          MODULAR_RAG_MCP_CONFIG: '/Users/dora/Documents/项目/code/reference-repos/asteria-agent/backend/knowledge/modular_rag_settings.yaml'
+        }
       }
     };
 
@@ -244,6 +262,12 @@ const MCPSelector: React.FC<MCPSelectorProps> = ({
         command: 'npx',
         args: ['-y', '@modelcontextprotocol/server-filesystem', '/path/to/allowed/directory'],
         env: {}
+      },
+      {
+        name: 'knowledge_hub',
+        command: 'python',
+        args: ['-m', 'knowledge_hub.mcp_server'],
+        env: {}
       }
     ];
 
@@ -301,6 +325,20 @@ const MCPSelector: React.FC<MCPSelectorProps> = ({
                   onClick={() => togglePreset('filesystem')}
                 >
                   <i className="fas fa-folder"></i> Local Files
+                </button>
+                <button
+                  type="button"
+                  className={`settings preset-btn ${isPresetSelected('knowledge_hub') ? 'selected' : ''}`}
+                  onClick={() => togglePreset('knowledge_hub')}
+                >
+                  <i className="fas fa-database"></i> Knowledge Hub
+                </button>
+                <button
+                  type="button"
+                  className={`settings preset-btn ${isPresetSelected('modular_rag') ? 'selected' : ''}`}
+                  onClick={() => togglePreset('modular_rag')}
+                >
+                  <i className="fas fa-project-diagram"></i> Modular RAG
                 </button>
               </div>
               <small className="text-muted" style={{ color: 'rgba(255, 255, 255, 0.6)', fontSize: '0.85rem', marginTop: '8px', display: 'block' }}>

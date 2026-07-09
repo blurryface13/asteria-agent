@@ -67,7 +67,7 @@ class ResearchRequest(BaseModel):
 class ChatRequest(BaseModel):
     model_config = ConfigDict(extra="allow")  # Allow extra fields in the request
     
-    report: str
+    report: str = ""
     messages: List[Dict[str, Any]]
 
 
@@ -405,7 +405,11 @@ async def chat(chat_request: ChatRequest, _email: str = Depends(get_current_user
         JSON response with the assistant's message and any tool usage metadata
     """
     try:
-        logger.info(f"Received chat request with {len(chat_request.messages)} messages")
+        logger.info(
+            "Received chat request with %s messages and report_length=%s",
+            len(chat_request.messages),
+            len(chat_request.report or ""),
+        )
 
         # Create chat agent with the report
         chat_agent = ChatAgentWithMemory(

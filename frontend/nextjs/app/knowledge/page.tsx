@@ -78,12 +78,20 @@ export default function KnowledgePage() {
               {totalDocs > 0 && ` · ${totalDocs} 篇论文`}
             </p>
           </div>
-          <Link
-            href="/"
-            className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50"
-          >
-            ← 返回调研
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link
+              href="/rag-workspace"
+              className="rounded-lg border border-teal-200 bg-teal-50 px-3 py-1.5 text-sm font-medium text-teal-700 hover:bg-teal-100"
+            >
+              RAG Workspace
+            </Link>
+            <Link
+              href="/"
+              className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50"
+            >
+              ← 返回调研
+            </Link>
+          </div>
         </div>
 
         <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
@@ -131,7 +139,15 @@ export default function KnowledgePage() {
 
         {answer && (
           <div className="mt-6 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-            <h2 className="mb-2 text-sm font-semibold uppercase text-gray-500">回答</h2>
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <h2 className="text-sm font-semibold uppercase text-gray-500">回答</h2>
+              <Link
+                href={`/rag-workspace?query=${encodeURIComponent(question.trim())}${collection ? `&collection=${encodeURIComponent(collection)}` : ""}`}
+                className="rounded-full border border-gray-200 px-3 py-1 text-xs font-medium text-gray-600 hover:border-teal-200 hover:text-teal-700"
+              >
+                查看检索链路
+              </Link>
+            </div>
             <div className="whitespace-pre-wrap text-[15px] leading-7 text-gray-800">{answer}</div>
           </div>
         )}

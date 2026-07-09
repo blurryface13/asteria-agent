@@ -1,5 +1,6 @@
 import React from 'react';
-import Image from "next/image";
+import Modal from './Settings/Modal';
+import { ChatBoxSettings } from '@/types/data';
 
 interface HeaderProps {
   loading?: boolean;      // Indicates if research is currently in progress
@@ -8,9 +9,22 @@ interface HeaderProps {
   onStop?: () => void;    // Handler for stopping ongoing research
   onNewResearch?: () => void;  // Handler for starting fresh research
   isCopilotMode?: boolean; // Indicates if we are in copilot mode
+  chatBoxSettings?: ChatBoxSettings;
+  setChatBoxSettings?: React.Dispatch<React.SetStateAction<ChatBoxSettings>>;
 }
 
-const Header = ({ loading, isStopped, showResult, onStop, onNewResearch, isCopilotMode }: HeaderProps) => {
+const Header = ({
+  loading,
+  isStopped,
+  showResult,
+  onStop,
+  onNewResearch,
+  isCopilotMode,
+  chatBoxSettings,
+  setChatBoxSettings
+}: HeaderProps) => {
+  const jagentUrl = process.env.NEXT_PUBLIC_JAGENT_URL?.trim();
+
   return (
     <div className="fixed top-0 left-0 right-0 z-50">
       {/* Pure transparent blur background */}
@@ -18,18 +32,70 @@ const Header = ({ loading, isStopped, showResult, onStop, onNewResearch, isCopil
       
       {/* Header container */}
       <div className="container relative h-[60px] px-4 lg:h-[80px] lg:px-0 pt-4 pb-4">
-        {/* Knowledge Hub entry - top right */}
-        <a
-          href="/knowledge"
-          className="absolute right-4 top-4 flex items-center gap-1.5 rounded-full border border-gray-200 bg-white/80 px-3 py-1.5 text-sm text-gray-600 shadow-sm hover:bg-gray-50 hover:text-teal-700 transition-colors"
-          title="文献知识库问答"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
-            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
-          </svg>
-          <span className="hidden sm:inline">知识库</span>
-        </a>
+        {/* Workspace entries - top right */}
+        <div className="absolute right-4 top-4 flex items-center gap-2 xl:right-0">
+          <div className="hidden h-9 items-center gap-2 rounded-full border border-gray-200 bg-white/70 px-3 text-xs font-medium text-gray-500 shadow-sm backdrop-blur-sm 2xl:flex">
+            <span className="h-1.5 w-1.5 rounded-full bg-teal-500"></span>
+            <span>Research workspace</span>
+          </div>
+          <a
+            href="/knowledge"
+            className="flex h-9 items-center gap-1.5 rounded-full border border-gray-200 bg-white/85 px-3 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:border-teal-200 hover:bg-white hover:text-teal-700"
+            title="文献知识库问答"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+              <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+            </svg>
+            <span className="hidden sm:inline">知识库</span>
+          </a>
+          <a
+            href="/rag-workspace"
+            className="hidden h-9 items-center gap-1.5 rounded-full border border-gray-200 bg-white/85 px-3 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:border-teal-200 hover:bg-white hover:text-teal-700 lg:flex"
+            title="RAG workflow, trace, and evaluation"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 3v18h18"></path>
+              <path d="m7 14 3-3 3 2 5-6"></path>
+            </svg>
+            <span>RAG Lab</span>
+          </a>
+          {jagentUrl ? (
+            <a
+              href={jagentUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="hidden h-9 items-center gap-1.5 rounded-full border border-gray-200 bg-white/85 px-3 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:border-teal-200 hover:bg-white hover:text-teal-700 md:flex"
+              title="Open personal homepage"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M7 17 17 7"></path>
+                <path d="M7 7h10v10"></path>
+              </svg>
+              <span>Personal Home</span>
+            </a>
+          ) : (
+            <button
+              type="button"
+              disabled
+              className="hidden h-9 cursor-not-allowed items-center gap-1.5 rounded-full border border-gray-200 bg-white/60 px-3 text-sm font-medium text-gray-400 shadow-sm md:flex"
+              title="配置 NEXT_PUBLIC_JAGENT_URL 后启用"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M7 17 17 7"></path>
+                <path d="M7 7h10v10"></path>
+              </svg>
+              <span>Personal Home</span>
+            </button>
+          )}
+          {chatBoxSettings && setChatBoxSettings && (
+            <Modal
+              chatBoxSettings={chatBoxSettings}
+              setChatBoxSettings={setChatBoxSettings}
+              variant="compact"
+            />
+          )}
+        </div>
 
         <div className="flex flex-col items-center">
           {/* Logo/Home link */}

@@ -1,7 +1,12 @@
 export const task = {
   "task": {
     "query": "Is AI in a hype cycle?",
-    "include_human_feedback": false,
+    "include_human_feedback": true,
+    "search_strategy": "general",
+    "retrievers": "duckduckgo",
+    "headers": {
+      "retrievers": "duckduckgo"
+    },
     "model": "deepseek-chat",
     "max_sections": 3,
     "publish_formats": {

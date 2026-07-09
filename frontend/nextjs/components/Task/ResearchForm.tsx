@@ -28,7 +28,7 @@ export default function ResearchForm({
   const [newDomain, setNewDomain] = useState('');
 
   // Destructure necessary fields from chatBoxSettings
-  let { report_type, report_source, tone, layoutType } = chatBoxSettings;
+  let { report_type, report_source, search_strategy, tone, layoutType } = chatBoxSettings;
 
   const [domains, setDomains] = useState<Domain[]>(() => {
     if (typeof window !== 'undefined') {
@@ -144,6 +144,23 @@ export default function ResearchForm({
           <option value="web">The Internet</option>
           <option value="local">My Documents</option>
           <option value="hybrid">Hybrid</option>
+        </select>
+      </div>
+
+      <div className="form-group">
+        <label htmlFor="search_strategy" className="agent_question">
+          Search Strategy{" "}
+        </label>
+        <select
+          name="search_strategy"
+          value={search_strategy || "general"}
+          onChange={onFormChange}
+          className="form-control-static"
+          required
+        >
+          <option value="general">General Web - web sources only</option>
+          <option value="academic">Academic - OpenAlex and arXiv</option>
+          <option value="hybrid">Hybrid - web plus academic sources</option>
         </select>
       </div>
 

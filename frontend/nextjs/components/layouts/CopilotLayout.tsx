@@ -51,6 +51,8 @@ export default function CopilotLayout({
           onStop={onStop || (() => {})}
           onNewResearch={onNewResearch}
           isCopilotMode={true}
+          chatBoxSettings={chatBoxSettings}
+          setChatBoxSettings={setChatBoxSettings}
         />
       )}
       

@@ -17,16 +17,29 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
       setChecked(true);
       return;
     }
-    const token = getToken();
-    if (!token) {
+
+    try {
+      const token = getToken();
+      if (!token) {
+        setChecked(true);
+        router.replace("/login");
+        return;
+      }
+
+      setChecked(true);
+    } catch (error) {
+      console.error("Auth check failed:", error);
+      setChecked(true);
       router.replace("/login");
-      return;
     }
-    setChecked(true);
   }, [pathname, router]);
 
   if (!checked) {
-    return <div className="min-h-screen w-full bg-white" />;
+    return (
+      <div className="flex min-h-screen w-full items-center justify-center bg-white text-sm text-gray-500">
+        Loading Bunny Research...
+      </div>
+    );
   }
 
   return <>{children}</>;

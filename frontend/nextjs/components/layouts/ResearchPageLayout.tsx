@@ -49,6 +49,8 @@ export default function ResearchPageLayout({
         showResult={showResult}
         onStop={onStop || (() => {})}
         onNewResearch={onNewResearch}
+        chatBoxSettings={chatBoxSettings}
+        setChatBoxSettings={setChatBoxSettings}
       />
       
       <div 
