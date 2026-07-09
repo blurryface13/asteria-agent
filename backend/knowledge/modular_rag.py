@@ -20,6 +20,11 @@ DEFAULT_ROOT = Path(
 DEFAULT_CONFIG = Path(__file__).resolve().with_name("modular_rag_settings.yaml")
 ASTERIA_ROOT = Path(__file__).resolve().parents[2]
 
+# The product + eval both query this single collection (336 papers / 25.8k
+# chunks). Upstream's tool falls back to an empty "default" collection when
+# none is given, so the bridge injects this default explicitly everywhere.
+DEFAULT_COLLECTION = os.getenv("MODULAR_RAG_COLLECTION", "research_papers")
+
 
 class ModularRAGError(RuntimeError):
     """Raised when the external Modular RAG engine cannot be used."""
@@ -166,7 +171,7 @@ class ModularRAGBridge:
         response = await self._get_query_tool().execute(
             query=query,
             top_k=top_k,
-            collection=collection,
+            collection=collection or DEFAULT_COLLECTION,
         )
         return {
             "engine": "modular",
@@ -221,7 +226,7 @@ class ModularRAGBridge:
         _ensure_project_path()
         from src.core.trace import TraceContext, TraceCollector
 
-        effective_collection = collection or self.settings.vector_store.collection_name or "default"
+        effective_collection = collection or DEFAULT_COLLECTION
         started = time.perf_counter()
         trace = TraceContext(trace_type="query")
         trace.metadata.update(

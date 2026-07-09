@@ -32,7 +32,7 @@ MODULAR_ROOT = Path(
 OUT_DIR = PROJECT_ROOT / "outputs" / "full_kb_rag_eval"
 REPORT_JSON = OUT_DIR / "full_kb_ragas_eval_report.json"
 REPORT_MD = OUT_DIR / "full_kb_ragas_eval_report.md"
-COMBINED_COLLECTION = "full_kb_rag_eval_20260709"
+COMBINED_COLLECTION = "research_papers"
 FORMAL_COLLECTION = "cs_research_eval_20260709"
 
 
@@ -237,7 +237,7 @@ def build_golden_set() -> list[dict[str, Any]]:
     papers = module.PAPERS
 
     golden: list[dict[str, Any]] = []
-    kh_path = PROJECT_ROOT / "knowledge_hub" / "eval" / "golden.jsonl"
+    kh_path = PROJECT_ROOT / "eval" / "golden.jsonl"
     for line in kh_path.read_text(encoding="utf-8").splitlines():
         if not line.strip():
             continue

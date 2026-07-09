@@ -182,12 +182,6 @@ const MCPSelector: React.FC<MCPSelectorProps> = ({
         args: ['-y', '@modelcontextprotocol/server-filesystem', '/path/to/allowed/directory'],
         env: {}
       },
-      knowledge_hub: {
-        name: 'knowledge_hub',
-        command: 'python',
-        args: ['-m', 'knowledge_hub.mcp_server'],
-        env: {}
-      },
       modular_rag: {
         name: 'modular_rag',
         command: 'bash',
@@ -262,12 +256,6 @@ const MCPSelector: React.FC<MCPSelectorProps> = ({
         command: 'npx',
         args: ['-y', '@modelcontextprotocol/server-filesystem', '/path/to/allowed/directory'],
         env: {}
-      },
-      {
-        name: 'knowledge_hub',
-        command: 'python',
-        args: ['-m', 'knowledge_hub.mcp_server'],
-        env: {}
       }
     ];
 
@@ -325,13 +313,6 @@ const MCPSelector: React.FC<MCPSelectorProps> = ({
                   onClick={() => togglePreset('filesystem')}
                 >
                   <i className="fas fa-folder"></i> Local Files
-                </button>
-                <button
-                  type="button"
-                  className={`settings preset-btn ${isPresetSelected('knowledge_hub') ? 'selected' : ''}`}
-                  onClick={() => togglePreset('knowledge_hub')}
-                >
-                  <i className="fas fa-database"></i> Knowledge Hub
                 </button>
                 <button
                   type="button"

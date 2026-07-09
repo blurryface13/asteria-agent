@@ -1,8 +1,8 @@
 """Knowledge Hub HTTP API - RAG Q&A over the lab paper corpus.
 
-Thin web layer over knowledge_hub's HybridSearch: retrieve with the
-hybrid pipeline, then have the LLM answer strictly from the retrieved
-passages with [n] citations. Same auth model as every other route.
+Thin web layer over the Modular RAG engine (Chroma + qwen3-rerank): retrieve
+with the hybrid pipeline, answer strictly from retrieved passages with [n]
+citations. Same auth model as every other route.
 """
 import logging
 import os
@@ -18,17 +18,6 @@ from backend.auth.dependencies import get_current_user_email
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/knowledge", tags=["knowledge"])
-
-_searcher = None
-
-
-def _get_searcher():
-    global _searcher
-    if _searcher is None:
-        from knowledge_hub.retrieval.hybrid import HybridSearch
-        _searcher = HybridSearch()
-    return _searcher
-
 
 class AskRequest(BaseModel):
     question: str = Field(min_length=2, max_length=2000)
@@ -78,20 +67,26 @@ Passages:
 
 @router.post("/ask")
 async def ask_knowledge(req: AskRequest, _email: str = Depends(get_current_user_email)):
+    """RAG Q&A: retrieve with the Modular RAG engine (Chroma hybrid + qwen3-
+    rerank), then synthesize a cited answer with the LLM. Upstream's query tool
+    only returns formatted retrieval dumps, so we do answer synthesis here."""
+    from backend.knowledge.modular_rag import get_modular_bridge
+
     try:
-        chunks = await _get_searcher().search(
-            req.question, top_k=req.top_k, collection=req.collection, mode=req.mode)
+        trace = await get_modular_bridge().trace(
+            query=req.question, top_k=req.top_k, collection=req.collection)
     except Exception as e:
         logger.error(f"knowledge search failed: {e}")
         raise HTTPException(status_code=502, detail="knowledge base search failed")
 
+    chunks = trace.get("stages", {}).get("rerank") or []
     sources = [
         {
             "index": i + 1,
-            "title": c.title,
-            "page": c.page_start,
-            "content": c.content[:600],
-            "scores": {k: round(v, 4) for k, v in c.provenance.items()},
+            "title": c.get("title") or f"source {i + 1}",
+            "page": c.get("page"),
+            "content": (c.get("content") or "")[:600],
+            "scores": c.get("scores") or {"score": c.get("score")},
         }
         for i, c in enumerate(chunks)
     ]
@@ -99,9 +94,7 @@ async def ask_knowledge(req: AskRequest, _email: str = Depends(get_current_user_
         return {"answer": "知识库中没有找到相关内容。", "sources": []}
 
     passages = "\n\n".join(
-        f"[{i + 1}] ({c.title}, p.{c.page_start})\n{c.content[:1200]}"
-        for i, c in enumerate(chunks)
-    )
+        f"[{i + 1}] ({s['title']}) {s['content']}" for i, s in enumerate(sources))
     from openai import AsyncOpenAI
     client = AsyncOpenAI(api_key=os.environ["DEEPSEEK_API_KEY"], base_url="https://api.deepseek.com")
     try:
@@ -120,72 +113,18 @@ async def ask_knowledge(req: AskRequest, _email: str = Depends(get_current_user_
     return {"answer": answer, "sources": sources}
 
 
-def _chunk_to_trace_item(chunk, rank: int):
-    return {
-        "rank": rank,
-        "chunk_id": chunk.chunk_id,
-        "doc_id": chunk.doc_id,
-        "title": chunk.title,
-        "page": chunk.page_start,
-        "content": chunk.content[:420],
-        "score": round(float(chunk.score), 4),
-        "scores": {k: round(float(v), 4) for k, v in chunk.provenance.items()},
-    }
-
-
 @router.post("/trace")
 async def trace_knowledge(req: TraceRequest, _email: str = Depends(get_current_user_email)):
-    """Expose the retrieval pipeline stages for the RAG workspace UI."""
-    import asyncio
-    from knowledge_hub.retrieval.fusion import rrf_fuse
-
-    searcher = _get_searcher()
-    started = time.perf_counter()
+    """Expose the retrieval pipeline stages (dense/sparse/RRF/rerank) for the
+    RAG workspace UI, served by the Modular RAG engine."""
+    from backend.knowledge.modular_rag import get_modular_bridge
 
     try:
-        dense_hits, sparse_hits = await asyncio.gather(
-            searcher.dense.search(req.query, req.candidates_per_retriever, req.collection),
-            searcher.sparse.search(req.query, req.candidates_per_retriever, req.collection),
-        )
-        fused_hits = rrf_fuse(
-            [dense_hits, sparse_hits],
-            k=searcher.cfg.rrf_k,
-            top_k=req.candidates_per_retriever if req.mode == "hybrid_rerank" else req.top_k,
-        )
-        final_hits = (
-            await searcher.reranker.rerank(req.query, fused_hits, top_k=req.top_k)
-            if req.mode == "hybrid_rerank"
-            else fused_hits[: req.top_k]
-        )
+        return await get_modular_bridge().trace(
+            query=req.query, top_k=req.top_k, collection=req.collection)
     except Exception as e:
         logger.error(f"knowledge trace failed: {e}")
         raise HTTPException(status_code=502, detail="knowledge retrieval trace failed")
-
-    elapsed = time.perf_counter() - started
-    return {
-        "query": req.query,
-        "collection": req.collection,
-        "mode": req.mode,
-        "rrf_k": searcher.cfg.rrf_k,
-        "latency_s": round(elapsed, 3),
-        "stages": {
-            "dense": [_chunk_to_trace_item(c, i + 1) for i, c in enumerate(dense_hits[: req.top_k])],
-            "sparse": [_chunk_to_trace_item(c, i + 1) for i, c in enumerate(sparse_hits[: req.top_k])],
-            "rrf": [_chunk_to_trace_item(c, i + 1) for i, c in enumerate(fused_hits[: req.top_k])],
-            "rerank": [_chunk_to_trace_item(c, i + 1) for i, c in enumerate(final_hits)],
-        },
-        "mcp_tool_call": {
-            "server": "knowledge-hub",
-            "tool": "query_knowledge_hub",
-            "arguments": {
-                "query": req.query,
-                "top_k": req.top_k,
-                "collection": req.collection,
-                "mode": req.mode,
-            },
-            "status": "ready",
-        },
-    }
 
 
 def _load_formal_report() -> dict | None:
@@ -222,29 +161,17 @@ def _load_formal_report() -> dict | None:
 @router.get("/evaluation")
 async def get_evaluation_summary(_email: str = Depends(get_current_user_email)):
     """Return the latest offline RAG evaluation snapshot."""
-    results_path = Path(__file__).resolve().parents[2] / "knowledge_hub" / "eval" / "RESULTS.md"
+    results_path = Path(__file__).resolve().parents[2] / "eval" / "EVAL_METHODOLOGY.md"
     markdown = results_path.read_text(encoding="utf-8") if results_path.exists() else ""
+    formal = _load_formal_report()
+    fc = (formal or {}).get("corpus") or {}
     return {
-        "formal": _load_formal_report(),
+        "formal": formal,
         "corpus": {
-            "documents": 321,
-            "chunks": 23269,
-            "collections": [
-                {"name": "watermark", "documents": 174},
-                {"name": "general", "documents": 147},
-            ],
-            "golden_queries": 60,
+            "documents": fc.get("total_docs"),
+            "chunks": fc.get("total_chunks"),
+            "golden_queries": (formal or {}).get("golden_queries"),
         },
-        "metrics": [
-            {"scenario": "watermark", "mode": "dense", "hit10": 0.933, "mrr10": 0.661, "latency_s": 0.12},
-            {"scenario": "watermark", "mode": "sparse", "hit10": 0.933, "mrr10": 0.765, "latency_s": 0.06},
-            {"scenario": "watermark", "mode": "hybrid", "hit10": 0.983, "mrr10": 0.685, "latency_s": 0.09},
-            {"scenario": "watermark", "mode": "hybrid_rerank", "hit10": 0.967, "mrr10": 0.718, "latency_s": 1.55},
-            {"scenario": "full_corpus", "mode": "dense", "hit10": 0.933, "mrr10": 0.642, "latency_s": 0.09},
-            {"scenario": "full_corpus", "mode": "sparse", "hit10": 0.933, "mrr10": 0.760, "latency_s": 0.11},
-            {"scenario": "full_corpus", "mode": "hybrid", "hit10": 0.983, "mrr10": 0.683, "latency_s": 0.10},
-            {"scenario": "full_corpus", "mode": "hybrid_rerank", "hit10": 0.950, "mrr10": 0.702, "latency_s": 1.53},
-        ],
         "markdown": markdown,
     }
 
@@ -258,17 +185,6 @@ async def get_mcp_presets(_email: str = Depends(get_current_user_email)):
     modular_config = str(get_modular_config())
     return {
         "presets": [
-            {
-                "name": "knowledge_hub",
-                "label": "Local Knowledge Hub",
-                "description": "Query this project's pgvector/BM25 research-paper RAG system through stdio MCP.",
-                "config": {
-                    "name": "knowledge_hub",
-                    "command": sys.executable,
-                    "args": ["-m", "knowledge_hub.mcp_server"],
-                    "env": {},
-                },
-            },
             {
                 "name": "modular_rag",
                 "label": "Modular RAG MCP",
@@ -391,12 +307,18 @@ async def evaluate_modular_ragas(req: ModularRagasRequest, _email: str = Depends
 
 @router.get("/collections")
 async def list_collections(_email: str = Depends(get_current_user_email)):
-    from knowledge_hub.config import KHConfig
-    from knowledge_hub.db import get_pool
+    """The knowledge base presented to the UI: the single research-paper
+    collection served by the Modular RAG engine."""
+    from backend.knowledge.modular_rag import get_modular_bridge, DEFAULT_COLLECTION
 
-    pool = await get_pool(KHConfig().database_url)
-    rows = await pool.fetch(
-        """SELECT d.collection, count(DISTINCT d.id) AS docs, count(c.id) AS chunks
-           FROM kh_documents d LEFT JOIN kh_chunks c ON c.doc_id = d.id
-           GROUP BY d.collection ORDER BY docs DESC""")
-    return {"collections": [dict(r) for r in rows]}
+    try:
+        data = await get_modular_bridge().collections()
+    except Exception as e:
+        logger.error(f"modular collections failed: {e}")
+        raise HTTPException(status_code=502, detail="failed to list collections")
+
+    cols = [c for c in (data.get("collections") or []) if c.get("collection") == DEFAULT_COLLECTION]
+    return {"collections": [
+        {"collection": c["collection"], "docs": c.get("docs"), "chunks": c.get("chunks")}
+        for c in cols
+    ]}
