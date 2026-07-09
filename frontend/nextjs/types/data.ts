@@ -38,9 +38,13 @@ export interface MCPConfig {
   env: Record<string, string>;
 }
 
+export type SearchStrategy = "general" | "academic" | "hybrid";
+
 export interface ChatBoxSettings {
   report_type: string;
   report_source: string;
+  search_strategy: SearchStrategy;
+  retrievers?: string;
   tone: string;
   domains: string[];
   defaultReportType: string;

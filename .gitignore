@@ -55,3 +55,8 @@ server_log.txt
 .cursorrules
 CURSOR_RULES.md
 /.history
+
+# Modular RAG local vector store & eval outputs
+data/
+outputs/full_kb_rag_eval/
+memory.md
