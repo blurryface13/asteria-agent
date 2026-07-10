@@ -129,6 +129,8 @@ app.include_router(auth_router)
 app.include_router(knowledge_router)
 from backend.doc_agent.routes import router as doc_agent_router
 app.include_router(doc_agent_router)
+from backend.watermark_lab.routes import router as watermark_lab_router
+app.include_router(watermark_lab_router)
 
 # Mount static files for frontend
 # Get the absolute path to the frontend directory
