@@ -6,6 +6,7 @@ normalizes HTTP responses for the local UI/API.
 from __future__ import annotations
 
 import asyncio
+import importlib.util
 import os
 import sys
 import time
@@ -222,9 +223,13 @@ class ModularRAGBridge:
         query: str,
         top_k: int = 5,
         collection: str | None = None,
+        mode: str = "hybrid_rerank",
     ) -> dict[str, Any]:
         _ensure_project_path()
         from src.core.trace import TraceContext, TraceCollector
+
+        if mode not in {"hybrid", "hybrid_rerank"}:
+            raise ModularRAGError(f"Unsupported retrieval mode: {mode}")
 
         effective_collection = collection or DEFAULT_COLLECTION
         started = time.perf_counter()
@@ -243,7 +248,7 @@ class ModularRAGBridge:
             )
             final_results = hybrid_result.results
             rerank_used = False
-            if reranker.is_enabled and final_results:
+            if mode == "hybrid_rerank" and reranker.is_enabled and final_results:
                 rerank_result = reranker.rerank(
                     query=query,
                     results=final_results,
@@ -295,6 +300,28 @@ class ModularRAGBridge:
                 "status": "ready",
             },
         }
+
+    async def formal_evaluation(
+        self,
+        faithfulness_samples: int | None = None,
+        rebuild_corpus: bool = True,
+    ) -> dict[str, Any]:
+        """Run Asteria's combined-corpus Golden Set and Ragas evaluation."""
+        script_path = ASTERIA_ROOT / "scripts" / "formal_full_kb_ragas_eval.py"
+        spec = importlib.util.spec_from_file_location("asteria_formal_rag_eval", script_path)
+        if spec is None or spec.loader is None:
+            raise ModularRAGError("Unable to load the formal RAG evaluation script")
+
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
+        spec.loader.exec_module(module)
+        return await module.run(
+            faithfulness_samples=faithfulness_samples,
+            rebuild=rebuild_corpus,
+            # BM25 index is persisted alongside the collection; only rebuild it
+            # when the corpus itself was rebuilt.
+            skip_bm25_rebuild=not rebuild_corpus,
+        )
 
     async def collections(self) -> dict[str, Any]:
         _ensure_project_path()

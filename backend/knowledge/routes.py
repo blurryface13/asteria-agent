@@ -41,9 +41,12 @@ class ModularIngestRequest(BaseModel):
 
 
 class ModularEvaluationRequest(BaseModel):
-    collection: str | None = None
     top_k: int = Field(default=10, ge=1, le=20)
-    test_set_path: str | None = None
+    faithfulness_samples: int | None = Field(default=None, ge=1, le=100)
+    # Default False: a rebuild re-upserts ~26k chunks + BM25 (30-60 min of
+    # synchronous work that would also block the event loop). The corpus is
+    # already ingested; rebuild only when the corpus actually changed.
+    rebuild_corpus: bool = False
 
 
 class ModularRagasRequest(BaseModel):
@@ -121,7 +124,7 @@ async def trace_knowledge(req: TraceRequest, _email: str = Depends(get_current_u
 
     try:
         return await get_modular_bridge().trace(
-            query=req.query, top_k=req.top_k, collection=req.collection)
+            query=req.query, top_k=req.top_k, collection=req.collection, mode=req.mode)
     except Exception as e:
         logger.error(f"knowledge trace failed: {e}")
         raise HTTPException(status_code=502, detail="knowledge retrieval trace failed")
@@ -141,6 +144,11 @@ def _load_formal_report() -> dict | None:
         raw = json.loads(report_path.read_text(encoding="utf-8"))
     except Exception:
         return None
+    return _summarize_formal_report(raw)
+
+
+def _summarize_formal_report(raw: dict) -> dict:
+    """Normalize persisted and freshly-run formal evaluations for the UI."""
     hit = (raw.get("hit_rate") or {}).get("summary") or {}
     faith = (raw.get("faithfulness") or {}).get("summary") or raw.get("faithfulness") or {}
     return {
@@ -242,6 +250,7 @@ async def trace_modular_knowledge(req: TraceRequest, _email: str = Depends(get_c
             query=req.query,
             top_k=req.top_k,
             collection=req.collection,
+            mode=req.mode,
         )
     except Exception as e:
         logger.error(f"modular rag trace failed: {e}")
@@ -279,11 +288,20 @@ async def evaluate_modular_rag(req: ModularEvaluationRequest, _email: str = Depe
     from backend.knowledge.modular_rag import get_modular_bridge
 
     try:
-        return await get_modular_bridge().evaluation(
-            collection=req.collection,
-            top_k=req.top_k,
-            test_set_path=req.test_set_path,
+        raw = await get_modular_bridge().formal_evaluation(
+            faithfulness_samples=req.faithfulness_samples,
+            rebuild_corpus=req.rebuild_corpus,
         )
+        formal = _summarize_formal_report(raw)
+        return {
+            "engine": "modular",
+            "formal": formal,
+            "corpus": {
+                "documents": formal["corpus"].get("total_docs"),
+                "chunks": formal["corpus"].get("total_chunks"),
+                "golden_queries": formal.get("golden_queries"),
+            },
+        }
     except Exception as e:
         logger.error(f"modular rag evaluation failed: {e}")
         raise HTTPException(status_code=502, detail=str(e))

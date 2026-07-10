@@ -9,6 +9,11 @@ export const task = {
     },
     "model": "deepseek-chat",
     "max_sections": 3,
+    "perspective_guided_research": true,
+    "max_perspectives": 2,
+    "questions_per_perspective": 2,
+    "max_parallel_perspective_research": 2,
+    "perspective_research_timeout_s": 360,
     "publish_formats": {
       "markdown": true,
       "pdf": true,

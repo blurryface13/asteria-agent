@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { authFetch } from "@/helpers/auth";
 
@@ -84,8 +84,6 @@ interface ModularStatus {
   };
 }
 
-type RagEngine = "modular" | "local";
-
 const stageLabels = {
   dense: "Dense",
   sparse: "BM25",
@@ -102,7 +100,6 @@ const stageDescriptions = {
 
 export default function RagWorkspacePage() {
   const searchParams = useSearchParams();
-  const [engine, setEngine] = useState<RagEngine>("modular");
   const [query, setQuery] = useState(
     searchParams.get("query") || "screen shooting resilient watermarking"
   );
@@ -119,45 +116,28 @@ export default function RagWorkspacePage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    const collectionUrl = engine === "modular"
-      ? "/api/knowledge/modular/collections"
-      : "/api/knowledge/collections";
-    authFetch(collectionUrl)
+    authFetch("/api/knowledge/modular/collections")
       .then((r) => (r.ok ? r.json() : { collections: [] }))
       .then((d) => setCollections(d.collections || []))
       .catch(() => {});
-
-    setTrace(null);
-    setEvaluation(null);
-    setError("");
-
-    if (engine === "local") {
-      authFetch("/api/knowledge/evaluation")
-        .then((r) => (r.ok ? r.json() : null))
-        .then((d) => d && setEvaluation(d))
-        .catch(() => {});
-      return;
-    }
 
     authFetch("/api/knowledge/modular/status")
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => d && setModularStatus(d))
       .catch(() => {});
-  }, [engine]);
 
-  const bestMetrics = useMemo(() => {
-    const rows = evaluation?.metrics || [];
-    return rows.filter((row) => row.scenario === "watermark");
-  }, [evaluation]);
+    authFetch("/api/knowledge/evaluation")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => d && setEvaluation(d))
+      .catch(() => {});
+  }, []);
 
   const runTrace = async () => {
     if (!query.trim() || loadingTrace) return;
     setLoadingTrace(true);
     setError("");
     try {
-      const res = await authFetch(
-        engine === "modular" ? "/api/knowledge/modular/trace" : "/api/knowledge/trace",
-        {
+      const res = await authFetch("/api/knowledge/modular/trace", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -214,7 +194,10 @@ export default function RagWorkspacePage() {
       const res = await authFetch("/api/knowledge/modular/evaluation", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ collection: collection || "knowledge_hub", top_k: 10 }),
+        // rebuild_corpus:false - the corpus is already ingested; a rebuild is a
+        // 30-60min operation and belongs to the CLI, not a dashboard button.
+        // 10 faithfulness samples keeps the run under ~5 minutes.
+        body: JSON.stringify({ top_k: 10, faithfulness_samples: 10, rebuild_corpus: false }),
       });
       if (!res.ok) {
         const detail = await res.json().catch(() => ({}));
@@ -240,30 +223,13 @@ export default function RagWorkspacePage() {
               Research retrieval lab
             </h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-              Inspect ingestion scope, retrieval stages, MCP tool calls, and offline evaluation in one place.
+              Inspect the production Modular RAG pipeline, retrieval stages, MCP contracts, and full-corpus evaluation.
             </p>
           </div>
           <nav className="flex flex-wrap items-center gap-2">
-            <button
-              onClick={() => setEngine("modular")}
-              className={`rounded-full border px-3 py-2 text-sm font-semibold shadow-sm ${
-                engine === "modular"
-                  ? "border-teal-200 bg-teal-50 text-teal-700"
-                  : "border-slate-200 bg-white text-slate-600"
-              }`}
-            >
+            <span className="rounded-full border border-teal-200 bg-teal-50 px-3 py-2 text-sm font-semibold text-teal-700 shadow-sm">
               Modular RAG MCP
-            </button>
-            <button
-              onClick={() => setEngine("local")}
-              className={`rounded-full border px-3 py-2 text-sm font-semibold shadow-sm ${
-                engine === "local"
-                  ? "border-teal-200 bg-teal-50 text-teal-700"
-                  : "border-slate-200 bg-white text-slate-600"
-              }`}
-            >
-              Local Knowledge Hub
-            </button>
+            </span>
             <Link
               href="/knowledge"
               className="rounded-full border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm hover:border-teal-200 hover:text-teal-700"
@@ -285,7 +251,7 @@ export default function RagWorkspacePage() {
               <div>
                 <h2 className="text-sm font-semibold text-slate-950">Ingestion Pipeline</h2>
                 <p className="mt-1 text-xs text-slate-500">
-                  {engine === "modular" ? "external MCP project" : "current local corpus"}
+                  combined research-paper corpus
                 </p>
               </div>
               <span className="rounded-full bg-teal-50 px-2 py-1 text-xs font-semibold text-teal-700">
@@ -310,14 +276,13 @@ export default function RagWorkspacePage() {
             </div>
 
             <div className="mt-6 grid grid-cols-2 gap-2">
-              <MetricChip label="Docs" value={evaluation?.corpus?.documents || (engine === "local" ? 321 : "-")} />
-              <MetricChip label="Chunks" value={evaluation?.corpus?.chunks || (engine === "local" ? 23269 : "-")} />
+              <MetricChip label="Docs" value={evaluation?.corpus?.documents || "-"} />
+              <MetricChip label="Chunks" value={evaluation?.corpus?.chunks || "-"} />
               <MetricChip label="Golden" value={evaluation?.corpus?.golden_queries || evaluation?.query_count || "-"} />
               <MetricChip label="RRF k" value={trace?.rrf_k || 60} />
             </div>
 
-            {engine === "modular" && (
-              <div className="mt-5 space-y-3">
+            <div className="mt-5 space-y-3">
                 <div className="rounded-lg border border-slate-100 bg-[#fbfdfd] p-3 text-xs leading-5 text-slate-500">
                   <p className="font-semibold text-slate-800">Model stack</p>
                   <p>LLM: {modularStatus?.models.llm.provider || "deepseek"} / {modularStatus?.models.llm.model || "deepseek-chat"}</p>
@@ -337,8 +302,7 @@ export default function RagWorkspacePage() {
                 >
                   {loadingIngest ? "Indexing..." : "Run Modular Ingest"}
                 </button>
-              </div>
-            )}
+            </div>
           </aside>
 
           <section className="rounded-lg border border-slate-200 bg-white/95 p-4 shadow-sm">
@@ -460,60 +424,13 @@ export default function RagWorkspacePage() {
                 </div>
               )}
 
-              {engine === "modular" && evaluation?.aggregate_metrics && (
-                <div className="rounded-lg border border-slate-100 bg-[#fbfdfd] p-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-semibold text-slate-800">
-                      {evaluation.evaluator_name || "CustomEvaluator"}
-                    </span>
-                    <span className="text-xs text-slate-400">
-                      {evaluation.total_elapsed_ms ? `${Math.round(evaluation.total_elapsed_ms)}ms` : ""}
-                    </span>
-                  </div>
-                  <div className="mt-3 space-y-2">
-                    {Object.entries(evaluation.aggregate_metrics).map(([name, value]) => (
-                      <div key={name}>
-                        <div className="flex justify-between text-xs text-slate-500">
-                          <span>{name}</span>
-                          <span>{value.toFixed(3)}</span>
-                        </div>
-                        <div className="mt-1 h-2 rounded-full bg-slate-100">
-                          <div className="h-2 rounded-full bg-teal-500" style={{ width: `${Math.round(value * 100)}%` }} />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {engine === "modular" && (
-                <button
-                  onClick={runModularEvaluation}
-                  disabled={loadingEval}
-                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:border-teal-200 hover:text-teal-700 disabled:opacity-40"
-                >
-                  {loadingEval ? "Evaluating..." : "Run Modular Eval"}
-                </button>
-              )}
-
-              {engine === "local" && bestMetrics.map((row) => (
-                <div key={row.mode} className="rounded-lg border border-slate-100 bg-[#fbfdfd] p-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-semibold text-slate-800">{row.mode}</span>
-                    <span className="text-xs text-slate-400">{row.latency_s}s</span>
-                  </div>
-                  <div className="mt-3 h-2 rounded-full bg-slate-100">
-                    <div
-                      className="h-2 rounded-full bg-teal-500"
-                      style={{ width: `${Math.round(row.hit10 * 100)}%` }}
-                    />
-                  </div>
-                  <div className="mt-2 flex justify-between text-xs text-slate-500">
-                    <span>Hit@10 {row.hit10.toFixed(3)}</span>
-                    <span>MRR {row.mrr10.toFixed(3)}</span>
-                  </div>
-                </div>
-              ))}
+              <button
+                onClick={runModularEvaluation}
+                disabled={loadingEval}
+                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:border-teal-200 hover:text-teal-700 disabled:opacity-40"
+              >
+                {loadingEval ? "Evaluating full corpus..." : "Run Evaluation"}
+              </button>
             </div>
           </aside>
         </section>
@@ -523,9 +440,7 @@ export default function RagWorkspacePage() {
             <div>
               <h2 className="text-sm font-semibold text-slate-950">MCP Tool Calls</h2>
               <p className="mt-1 text-xs text-slate-500">
-                {engine === "modular"
-                  ? "These calls are backed by jerry-ai-dev/MODULAR-RAG-MCP-SERVER."
-                  : "The same retrieval path can be exposed to report agents through MCP."}
+                These calls are backed by jerry-ai-dev/MODULAR-RAG-MCP-SERVER.
               </p>
             </div>
             <Link

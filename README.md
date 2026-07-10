@@ -43,3 +43,5 @@
 ## 🙏 致谢
 
 基于优秀的开源项目 [GPT Researcher](https://github.com/assafelovic/gpt-researcher) 的思路与实现模式构建,并围绕本地优先工作流、按用户持久化与不同的鉴权/存储架构进行了重塑。
+
+多智能体调研的预写作与多视角提问思路亦受到 STORM 启发：Shao et al., [Assisting in Writing Wikipedia-like Articles From Scratch with Large Language Models](https://arxiv.org/abs/2402.14207), 2024。

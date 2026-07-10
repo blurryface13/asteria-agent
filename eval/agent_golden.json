@@ -1,0 +1,42 @@
+{
+  "version": "1.0",
+  "description": "Reference outlines for end-to-end research-agent regression evaluation.",
+  "cases": [
+    {
+      "id": "slam_learning_roadmap",
+      "query": "Create a learning roadmap for SLAM algorithms.",
+      "expected_sections": [
+        "mathematical foundations",
+        "classical SLAM algorithms",
+        "implementation practice and learning resources"
+      ]
+    },
+    {
+      "id": "rag_evaluation",
+      "query": "Compare practical evaluation methods for a retrieval-augmented generation system.",
+      "expected_sections": [
+        "retrieval metrics",
+        "answer faithfulness",
+        "golden test set and regression testing"
+      ]
+    },
+    {
+      "id": "agentic_rag",
+      "query": "Explain the architecture choices and trade-offs of Agentic RAG.",
+      "expected_sections": [
+        "agent planning and tool use",
+        "retrieval workflow",
+        "reliability and evaluation"
+      ]
+    },
+    {
+      "id": "vision_transformers",
+      "query": "Review the development from CNNs to Vision Transformers for image recognition.",
+      "expected_sections": [
+        "convolutional neural network foundations",
+        "vision transformer architecture",
+        "comparison and practical trade-offs"
+      ]
+    }
+  ]
+}
