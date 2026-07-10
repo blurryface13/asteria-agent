@@ -127,6 +127,8 @@ app.add_middleware(
 # Auth routes (login/verify-code) - deliberately unprotected, everything else is behind a token
 app.include_router(auth_router)
 app.include_router(knowledge_router)
+from backend.doc_agent.routes import router as doc_agent_router
+app.include_router(doc_agent_router)
 
 # Mount static files for frontend
 # Get the absolute path to the frontend directory
