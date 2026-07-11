@@ -48,10 +48,21 @@ extract, including designing the control group.
 | 屏摄失真下提取准确率 | **30/30 bits(100%)**(透视+光照+摩尔纹+高斯) |
 | 无失真对照组 | 100% |
 
+## Protocol-driven experiments (declarative SOPs)
+
+Experiments are declared in `protocols/*.yaml` (objective / steps / control
+groups / metrics / success criteria). The agent loads the protocol into its
+context and self-orchestrates the run — deciding tool order, adapting to
+failures, and writing a report that must satisfy the protocol's success
+criteria. **Adding a new experiment = adding a YAML file; no agent code
+changes.** Verified 2026-07-11 with `screen_robustness.yaml`: the agent
+followed the SOP (including the identity control group) and flagged the
+n=1 statistical limitation on its own.
+
 ## API
 
-`POST /api/watermark-lab/run` `{"instruction": "..."}` (JWT) → ReAct trace +
-run metrics + Markdown experiment report.
+`POST /api/watermark-lab/run` `{"instruction": "...", "protocol": "screen_robustness"}`
+(JWT, protocol optional) → ReAct trace + run metrics + Markdown experiment report.
 
 ## Compat fixes made in watermark-mcp
 
