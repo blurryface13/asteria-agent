@@ -110,20 +110,28 @@ async def main(n_topics: int, variants: list[str], seed: int) -> None:
         refs = reference_headings(doc)
         query = f"Write a comprehensive research report about: {title}"
         for variant in variants:
+            report_path = OUT_DIR / f"{path.stem}_{variant}.md"
             started = time.perf_counter()
-            try:
-                report = await run_variant(query, variant)
-            except Exception as e:
-                print(f"[FAIL] {title} / {variant}: {e}", flush=True)
-                rows.append({"topic": title, "variant": variant, "error": str(e)[:300]})
-                continue
+            if report_path.exists():
+                # resume: reuse a report already generated in a previous run
+                report = report_path.read_text(encoding="utf-8")
+                elapsed = 0.0
+            else:
+                try:
+                    # network-bound pipeline; a hung scrape must not stall the eval
+                    report = await asyncio.wait_for(run_variant(query, variant), timeout=900)
+                except Exception as e:
+                    print(f"[FAIL] {title} / {variant}: {type(e).__name__} {e}", flush=True)
+                    rows.append({"topic": title, "variant": variant, "error": str(e)[:300]})
+                    continue
+                elapsed = round(time.perf_counter() - started, 1)
+                report_path.write_text(report, encoding="utf-8")
             recall = soft_recall(refs, generated_headings(report), embedder)
-            elapsed = round(time.perf_counter() - started, 1)
-            (OUT_DIR / f"{path.stem}_{variant}.md").write_text(report, encoding="utf-8")
             rows.append({"topic": title, "variant": variant, "soft_recall": round(recall, 4),
                          "ref_headings": len(refs), "gen_headings": len(generated_headings(report)),
                          "latency_s": elapsed})
-            print(f"[OK] {title} / {variant}: soft_recall={recall:.3f} ({elapsed}s)", flush=True)
+            print(f"[OK] {title} / {variant}: soft_recall={recall:.3f} ({elapsed}s)"
+                  + (" [cached]" if elapsed == 0.0 else ""), flush=True)
 
     summary = {}
     for variant in variants:
