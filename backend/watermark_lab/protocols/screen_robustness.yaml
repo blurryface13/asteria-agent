@@ -1,0 +1,21 @@
+# Experiment protocol: screen-shooting robustness evaluation
+# Declarative SOP - the ReAct agent loads this and self-orchestrates the run.
+# Adding a new experiment = adding a new protocol file; no agent code changes.
+name: screen_robustness
+title: 屏摄信道鲁棒性评估
+objective: >
+  评估水印模型在屏摄物理信道失真(透视、光照、摩尔纹、噪声)下的
+  提取鲁棒性,并与无失真条件对照。
+steps:
+  - 用 list_test_images 获取测试图像
+  - 用 embed_watermark 嵌入水印,记录每张图的 PSNR
+  - 用 apply_distortion 生成两组条件:screen_shooting(实验组)与 identity(对照组)
+  - 分别对两组用 extract_watermark 测提取比特准确率
+controls:
+  - identity(无失真)作为对照组,验证嵌入-提取链路本身无损
+metrics:
+  - PSNR(dB):嵌入不可感知性,越高越好
+  - bit_accuracy:30bit 消息提取准确率,主指标
+success_criteria: >
+  报告必须包含:每张图的 PSNR、两种条件下的 bit accuracy 对比表、
+  以及一段基于观测数字的结论。禁止编造任何未观测到的数值。

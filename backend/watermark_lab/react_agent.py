@@ -12,6 +12,7 @@ import json
 import logging
 import os
 import time
+from pathlib import Path
 
 from openai import AsyncOpenAI
 
@@ -20,29 +21,43 @@ from .tools import LabSession, registry
 logger = logging.getLogger(__name__)
 
 _SYSTEM = (
-    "You are a research assistant running digital-watermarking robustness "
-    "experiments on real models (not simulations - every tool call executes "
-    "real embedding/distortion/decoding).\n\n"
-    "A standard robustness experiment:\n"
-    "1. list_test_images to see available cover images.\n"
-    "2. embed_watermark on the chosen images (note the PSNR values).\n"
-    "3. apply_distortion with 'screen_shooting' (and optionally 'identity' as a "
-    "control group) on the watermarked images.\n"
-    "4. extract_watermark on the distorted images to measure bit accuracy.\n\n"
+    "You are a research assistant running digital-watermarking experiments on "
+    "real models (not simulations - every tool call executes real embedding/"
+    "distortion/decoding).\n\n"
+    "You will be given an EXPERIMENT PROTOCOL (a declarative SOP). Follow its "
+    "objective, steps, control groups and success criteria, deciding yourself "
+    "which tool to call at each turn and adapting when a tool fails.\n\n"
     "When the experiment is complete, stop calling tools and write a concise "
-    "experiment report in Markdown: setup, per-image PSNR, bit accuracy per "
-    "condition, and a one-paragraph conclusion. Report only numbers you "
-    "actually observed from tool results - never invent values."
+    "experiment report in Markdown that satisfies the protocol's success "
+    "criteria. Report only numbers you actually observed from tool results - "
+    "never invent values."
 )
+
+PROTOCOL_DIR = Path(__file__).resolve().parent / "protocols"
+
+
+def load_protocol(name: str) -> str:
+    """Load a declarative experiment protocol (YAML kept as text - the agent
+    reads it, we don't parse it into code; that's the point)."""
+    path = PROTOCOL_DIR / f"{name}.yaml"
+    if not path.exists():
+        available = [p.stem for p in PROTOCOL_DIR.glob("*.yaml")]
+        raise FileNotFoundError(f"protocol '{name}' not found; available: {available}")
+    return path.read_text(encoding="utf-8")
 
 
 async def run_experiment(session: LabSession, instruction: str,
+                         protocol: str | None = None,
                          max_steps: int = 10) -> dict:
     client = AsyncOpenAI(api_key=os.environ["DEEPSEEK_API_KEY"],
                          base_url="https://api.deepseek.com")
+    user_content = instruction
+    if protocol:
+        user_content = (f"EXPERIMENT PROTOCOL:\n{load_protocol(protocol)}\n\n"
+                        f"Additional instruction from the user: {instruction}")
     messages: list[dict] = [
         {"role": "system", "content": _SYSTEM},
-        {"role": "user", "content": instruction},
+        {"role": "user", "content": user_content},
     ]
     tools = registry.schemas()
     started = time.perf_counter()
