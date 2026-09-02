@@ -8,6 +8,7 @@ pydantic>=2.5.1
 python-dotenv>=1.0.0
 websockets>=13.1
 python-multipart>=0.0.6
+certifi>=2024.0.0
 
 # LangChain v1
 langchain>=1.0.0

@@ -21,7 +21,12 @@ export const getHost = ({ purpose }: GetHostParams = {}): string => {
     } else if (purpose === 'langgraph-gui') {
       return host.includes('localhost') ? 'http%3A%2F%2F127.0.0.1%3A8123' : `https://${host}`;
     } else {
-      return host.includes('localhost') ? 'http://localhost:8000' : `https://${host}`;
+      // Both loopback hostnames are used by the local startup script.  Treat
+      // them identically; otherwise 127.0.0.1 was incorrectly upgraded to
+      // https://127.0.0.1:3000 and browser requests failed before reaching
+      // the backend.
+      const isLocalhost = host.includes('localhost') || host.startsWith('127.0.0.1');
+      return isLocalhost ? 'http://127.0.0.1:8000' : `https://${host}`;
     }
   }
   return '';

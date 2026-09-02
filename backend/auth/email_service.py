@@ -12,6 +12,7 @@ from email.mime.text import MIMEText
 from email.header import Header
 
 import aiosmtplib
+import certifi
 
 logger = logging.getLogger(__name__)
 
@@ -45,5 +46,8 @@ async def send_verification_code(to_email: str, code: str, expire_minutes: int):
         username=username,
         password=password,
         start_tls=True,
+        # uv-managed Python on macOS may not expose the system CA bundle.
+        # Use certifi's public CA bundle while keeping certificate validation on.
+        cert_bundle=certifi.where(),
     )
     logger.info(f"Verification code sent to {to_email}")

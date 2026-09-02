@@ -12,7 +12,6 @@ from fastapi import APIRouter, HTTPException, Depends
 
 from backend.auth.db import get_pool
 from backend.auth.email_service import generate_code, send_verification_code
-from backend.auth.jwt_utils import create_access_token
 from backend.auth.models import SendCodeRequest, VerifyCodeRequest, AuthResponse, CurrentUser
 from backend.auth.dependencies import get_current_user_email
 
@@ -71,6 +70,8 @@ async def verify_code(req: VerifyCodeRequest):
             await conn.execute(
                 "UPDATE users SET last_login_at = NOW() WHERE email = $1", req.email
             )
+
+    from backend.auth.jwt_utils import create_access_token
 
     token = create_access_token(req.email)
     return AuthResponse(access_token=token, email=req.email, is_new_user=is_new_user)

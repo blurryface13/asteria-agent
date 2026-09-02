@@ -1,5 +1,3 @@
-import withPWAInit from "@ducanh2912/next-pwa";
-
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   experimental: {
@@ -32,11 +30,6 @@ const nextConfig = {
   },
 };
 
-const withPWA = withPWAInit({
-  dest: "public",
-  register: true,
-  skipWaiting: true,
-  disable: process.env.NODE_ENV === "development",
-});
-
-export default withPWA(nextConfig);
+// Keep the local development server independent from the optional PWA plugin.
+// The research UI and evaluation workflow do not require a service worker.
+export default nextConfig;

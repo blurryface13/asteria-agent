@@ -9,12 +9,6 @@ from typing import Dict, List
 
 from fastapi import WebSocket
 
-from backend.report_type import BasicReport, DetailedReport
-
-from asteria_researcher.utils.enum import ReportType, Tone
-from asteria_researcher.actions import stream_output  # Import stream_output
-from .multi_agent_runner import run_multi_agent_task
-from .server_utils import CustomLogsHandler
 
 logger = logging.getLogger(__name__)
 
@@ -98,8 +92,10 @@ class WebSocketManager:
             except Exception:
                 pass  # If this fails too, there's nothing more we can do
 
-    async def start_streaming(self, task, report_type, report_source, source_urls, document_urls, tone, websocket, headers=None, query_domains=[], mcp_enabled=False, mcp_strategy="fast", mcp_configs=[], max_search_results=None):
+    async def start_streaming(self, task, report_type, report_source, source_urls, document_urls, tone, websocket, headers=None, query_domains=[], mcp_enabled=False, mcp_strategy="fast", mcp_configs=[], max_search_results=None, logs_handler=None):
         """Start streaming the output."""
+        from asteria_researcher.utils.enum import Tone
+
         tone = Tone[tone]
         # add customized JSON config file path here
         config_path = os.environ.get("CONFIG_PATH", "default")
@@ -109,14 +105,25 @@ class WebSocketManager:
             task, report_type, report_source, source_urls, document_urls, tone, websocket, 
             headers=headers, query_domains=query_domains, config_path=config_path,
             mcp_enabled=mcp_enabled, mcp_strategy=mcp_strategy, mcp_configs=mcp_configs,
-            max_search_results=max_search_results
+            max_search_results=max_search_results,
+            logs_handler=logs_handler,
         )
         return report
 
-async def run_agent(task, report_type, report_source, source_urls, document_urls, tone: Tone, websocket, stream_output=stream_output, headers=None, query_domains=[], config_path="", return_researcher=False, mcp_enabled=False, mcp_strategy="fast", mcp_configs=[], max_search_results=None):
+async def run_agent(task, report_type, report_source, source_urls, document_urls, tone, websocket, stream_output=None, headers=None, query_domains=[], config_path="", return_researcher=False, mcp_enabled=False, mcp_strategy="fast", mcp_configs=[], max_search_results=None, logs_handler=None):
     """Run the agent."""    
-    # Create logs handler for this research task
-    logs_handler = CustomLogsHandler(websocket, task)
+    from asteria_researcher.utils.enum import ReportType
+    from asteria_researcher.actions import stream_output as default_stream_output
+    from backend.report_type import BasicReport, DetailedReport
+    from .multi_agent_runner import run_multi_agent_task
+    from .server_utils import CustomLogsHandler
+
+    if stream_output is None:
+        stream_output = default_stream_output
+    # Reuse the request-scoped handler created by the WebSocket command.
+    # This keeps the initial query, streamed events, and returned JSON path in
+    # one durable log instead of creating two timestamp-based files.
+    logs_handler = logs_handler or CustomLogsHandler(websocket, task)
 
     # Log MCP initialization. Retriever and strategy are configured per-request
     # inside AsteriaResearcher via mcp_configs/mcp_strategy params — no os.environ

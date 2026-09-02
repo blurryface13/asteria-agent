@@ -74,6 +74,7 @@ markdown>=3.5.1
 
 # Auth (email verification code login)
 aiosmtplib>=3.0.1
+certifi>=2024.0.0
 asyncpg>=0.29.0
 python-jose[cryptography]>=3.3.0
 email-validator>=2.1.0

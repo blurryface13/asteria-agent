@@ -12,7 +12,6 @@ from pydantic import BaseModel, Field
 
 from backend.auth.dependencies import get_current_user_email
 from .tools import DocSession, apply_edit
-from .react_agent import run_react
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +58,10 @@ async def upload_document(file: UploadFile = File(...),
 
 @router.post("/revise")
 async def revise_document(req: ReviseRequest, _email: str = Depends(get_current_user_email)):
+    # Keep the OpenAI client import out of server startup; it is only needed
+    # when this endpoint is actually used.
+    from .react_agent import run_react
+
     session = _get_session(req.session_id)
     session.trace = []
     try:

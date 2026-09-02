@@ -5,7 +5,6 @@ the Notion write-up for why (request-scoped auth state is the textbook DI
 use case, unlike the rest of the app's module-level singletons).
 """
 from fastapi import Header, HTTPException
-from backend.auth.jwt_utils import decode_access_token
 
 
 async def get_current_user_email(authorization: str | None = Header(default=None)) -> str:
@@ -13,6 +12,8 @@ async def get_current_user_email(authorization: str | None = Header(default=None
         raise HTTPException(status_code=401, detail="Missing or malformed Authorization header")
 
     token = authorization.removeprefix("Bearer ").strip()
+    from backend.auth.jwt_utils import decode_access_token
+
     email = decode_access_token(token)
     if email is None:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
@@ -27,4 +28,6 @@ async def get_current_user_email_from_query(token: str | None = None) -> str | N
     websocket lifecycle instead of during the HTTP upgrade."""
     if not token:
         return None
+    from backend.auth.jwt_utils import decode_access_token
+
     return decode_access_token(token)

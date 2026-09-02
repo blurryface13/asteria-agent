@@ -1,13 +1,10 @@
 import type { Metadata } from "next";
-import { Lexend } from "next/font/google";
 import PlausibleProvider from "next-plausible";
 import { GoogleAnalytics } from '@next/third-parties/google'
 import { ResearchHistoryProvider } from "@/hooks/ResearchHistoryContext";
 import AuthGuard from "@/components/AuthGuard";
 import "./globals.css";
 import Script from 'next/script';
-
-const inter = Lexend({ subsets: ["latin"] });
 
 let title = "Bunny Research";
 let description =
@@ -70,7 +67,7 @@ export default function RootLayout({
         <link rel="apple-touch-icon" href="/img/asteria-black-logo.png?v=bunny1" />
       </head>
       <body
-        className={`app-container ${inter.className} flex min-h-screen flex-col justify-between`}
+        className="app-container flex min-h-screen flex-col justify-between"
         suppressHydrationWarning
       >
         <ResearchHistoryProvider>

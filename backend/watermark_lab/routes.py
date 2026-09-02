@@ -11,7 +11,6 @@ from pydantic import BaseModel, Field
 
 from backend.auth.dependencies import get_current_user_email
 from .tools import new_session
-from .react_agent import run_experiment
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +25,10 @@ class RunRequest(BaseModel):
 
 @router.post("/run")
 async def run_lab_experiment(req: RunRequest, _email: str = Depends(get_current_user_email)):
+    # The OpenAI client is only required when the experiment endpoint runs;
+    # avoid importing its large type tree during normal server startup.
+    from .react_agent import run_experiment
+
     session = new_session()
     try:
         return await run_experiment(session, instruction=req.instruction, protocol=req.protocol)

@@ -7,26 +7,11 @@ import shutil
 import traceback
 from typing import Awaitable, Dict, List, Any
 from fastapi.responses import JSONResponse, FileResponse
-from asteria_researcher.document.document import DocumentLoader
-from asteria_researcher import AsteriaResearcher
-from utils import write_md_to_pdf, write_md_to_word, write_text_to_md
 from pathlib import Path
 from datetime import datetime
 from fastapi import HTTPException
 import logging
 import hashlib
-
-from .multi_agent_runner import run_multi_agent_task
-
-# Import chat agent
-try:
-    import sys
-    backend_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    if backend_path not in sys.path:
-        sys.path.insert(0, backend_path)
-    from chat.chat import ChatAgentWithMemory
-except ImportError:
-    ChatAgentWithMemory = None
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +66,8 @@ class CustomLogsHandler:
 
 class Researcher:
     def __init__(self, query: str, report_type: str = "research_report"):
+        from asteria_researcher import AsteriaResearcher
+
         self.query = query
         self.report_type = report_type
         # Generate unique ID for this research task
@@ -170,6 +157,7 @@ async def handle_start_command(websocket, data: str, manager):
         mcp_strategy,
         mcp_configs,
         max_search_results,
+        logs_handler=logs_handler,
     )
     report = str(report)
     file_paths = await generate_report_files(report, sanitized_filename)
@@ -207,14 +195,7 @@ async def handle_chat_command(websocket, data: str):
             })
             return
         
-        # Check if ChatAgentWithMemory is available
-        if ChatAgentWithMemory is None:
-            await websocket.send_json({
-                "type": "chat",
-                "content": "Chat functionality is not available. Please check the server configuration.",
-                "role": "assistant"
-            })
-            return
+        from chat.chat import ChatAgentWithMemory
         
         # Create chat agent with the report context
         chat_agent = ChatAgentWithMemory(
@@ -254,6 +235,8 @@ async def handle_chat_command(websocket, data: str):
         })
 
 async def generate_report_files(report: str, filename: str) -> Dict[str, str]:
+    from utils import write_md_to_pdf, write_md_to_word, write_text_to_md
+
     pdf_path = await write_md_to_pdf(report, filename)
     docx_path = await write_md_to_word(report, filename)
     md_path = await write_text_to_md(report, filename)
@@ -298,6 +281,8 @@ async def handle_file_upload(file, DOC_PATH: str) -> Dict[str, str]:
         shutil.copyfileobj(file.file, buffer)
     print(f"File uploaded to {file_path}")
 
+    from asteria_researcher.document.document import DocumentLoader
+
     document_loader = DocumentLoader(DOC_PATH)
     await document_loader.load()
 
@@ -316,6 +301,9 @@ async def handle_file_deletion(filename: str, DOC_PATH: str) -> JSONResponse:
 
 
 async def execute_multi_agents(manager) -> Any:
+    from asteria_researcher.actions import stream_output
+    from .multi_agent_runner import run_multi_agent_task
+
     websocket = manager.active_connections[0] if manager.active_connections else None
     if websocket:
         report = await run_multi_agent_task("Is AI in a hype cycle?", websocket, stream_output)
