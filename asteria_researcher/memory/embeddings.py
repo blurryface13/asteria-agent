@@ -83,6 +83,21 @@ class Memory:
         Raises:
             Exception: If the embedding provider is not supported.
         """
+        if embedding_provider not in _SUPPORTED_PROVIDERS:
+            raise Exception("Embedding not found.")
+
+        # Provider SDKs are intentionally loaded on first use. Constructing a
+        # researcher should not import every LangChain integration before a
+        # task has even started.
+        self.embedding_provider = embedding_provider
+        self.model = model
+        self.embedding_kwargs = dict(embedding_kwargs)
+        self._embeddings = None
+
+    def _build_embeddings(self):
+        embedding_provider = self.embedding_provider
+        model = self.model
+        embedding_kwargs = dict(self.embedding_kwargs)
         _embeddings = None
         match embedding_provider:
             case "custom":
@@ -214,7 +229,7 @@ class Memory:
             case _:
                 raise Exception("Embedding not found.")
 
-        self._embeddings = _embeddings
+        return _embeddings
 
     def get_embeddings(self):
         """Get the configured embeddings instance.
@@ -222,4 +237,6 @@ class Memory:
         Returns:
             The LangChain embeddings instance configured for this Memory.
         """
+        if self._embeddings is None:
+            self._embeddings = self._build_embeddings()
         return self._embeddings

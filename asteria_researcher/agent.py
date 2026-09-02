@@ -18,19 +18,8 @@ from .actions import (
     table_of_contents,
 )
 from .config import Config
-from .llm_provider import GenericLLMProvider
-from .memory import Memory
-from .prompts import get_prompt_family
-from .skills.browser import BrowserManager
-from .skills.context_manager import ContextManager
-from .skills.curator import SourceCurator
-from .skills.deep_research import DeepResearchSkill
-from .skills.image_generator import ImageGenerator
-from .skills.researcher import ResearchConductor
-from .skills.writer import ReportGenerator
 from .utils.enum import ReportSource, ReportType, Tone
 from .utils.llm import create_chat_completion
-from .vector_store import VectorStoreWrapper
 
 
 class AsteriaResearcher:
@@ -150,7 +139,11 @@ class AsteriaResearcher:
         self.research_sources = []  # The list of scraped sources including title, content and images
         self.research_images = []  # The list of selected research images
         self.documents = documents
-        self.vector_store = VectorStoreWrapper(vector_store) if vector_store else None
+        if vector_store:
+            from .vector_store import VectorStoreWrapper
+            self.vector_store = VectorStoreWrapper(vector_store)
+        else:
+            self.vector_store = None
         self.vector_store_filter = vector_store_filter
         self.websocket = websocket
         self.agent = agent
@@ -165,6 +158,7 @@ class AsteriaResearcher:
         self.step_costs: dict[str, float] = {}
         self._current_step: str = "general"
         self.log_handler = log_handler
+        from .prompts import get_prompt_family
         self.prompt_family = get_prompt_family(prompt_family or self.cfg.prompt_family, self.cfg)
         
         # Process MCP configurations if provided
@@ -173,6 +167,7 @@ class AsteriaResearcher:
             self._process_mcp_configs(mcp_configs)
         
         self.retrievers = get_retrievers(self.headers, self.cfg)
+        from .memory import Memory
         self.memory = Memory(
             self.cfg.embedding_provider, self.cfg.embedding_model, **self.cfg.embedding_kwargs
         )
@@ -181,14 +176,24 @@ class AsteriaResearcher:
         self.encoding = kwargs.get('encoding', 'utf-8')
         self.kwargs.pop('encoding', None)  # Remove encoding from kwargs to avoid passing it to LLM calls
 
-        # Initialize components
-        self.research_conductor: ResearchConductor = ResearchConductor(self)
-        self.report_generator: ReportGenerator = ReportGenerator(self)
-        self.context_manager: ContextManager = ContextManager(self)
-        self.scraper_manager: BrowserManager = BrowserManager(self)
-        self.source_curator: SourceCurator = SourceCurator(self)
-        self.deep_researcher: Optional[DeepResearchSkill] = None
+        # Initialize components. Keep these imports local because skills pull
+        # optional document, browser, and compression dependencies that are
+        # not needed until an actual researcher instance is created.
+        from .skills.browser import BrowserManager
+        from .skills.context_manager import ContextManager
+        from .skills.curator import SourceCurator
+        from .skills.image_generator import ImageGenerator
+        from .skills.researcher import ResearchConductor
+        from .skills.writer import ReportGenerator
+
+        self.research_conductor = ResearchConductor(self)
+        self.report_generator = ReportGenerator(self)
+        self.context_manager = ContextManager(self)
+        self.scraper_manager = BrowserManager(self)
+        self.source_curator = SourceCurator(self)
+        self.deep_researcher = None
         if report_type == ReportType.DeepResearch.value:
+            from .skills.deep_research import DeepResearchSkill
             self.deep_researcher = DeepResearchSkill(self)
 
         # Initialize image generator (optional - only if configured)

@@ -9,6 +9,9 @@ from typing import List, Dict, Any
 
 logger = logging.getLogger(__name__)
 
+from ..evaluation.trace import get_current_recorder
+from ..evaluation.models import SpanKind, TraceStatus
+
 
 class MCPResearchSkill:
     """
@@ -76,7 +79,15 @@ class MCPResearchSkill:
             
             # Invoke LLM with tools
             logger.info("LLM researching with bound tools...")
+            recorder = get_current_recorder()
+            llm_span = recorder.start_span(
+                f"llm:{self.cfg.strategic_llm_model}:mcp", SpanKind.LLM,
+                input_messages=messages,
+                attributes={"provider": self.cfg.strategic_llm_provider, "tool_count": len(selected_tools)},
+            ) if recorder else None
             response = await llm_with_tools.ainvoke(messages)
+            if llm_span and recorder:
+                recorder.finish_span(llm_span, output_messages=[{"role": "assistant", "content": str(getattr(response, "content", ""))}], attributes={"tool_call_count": len(getattr(response, "tool_calls", []) or [])})
             
             # Process tool calls and results
             research_results = []
@@ -98,9 +109,15 @@ class MCPResearchSkill:
                         logger.debug(f"Tool arguments: {args_str}")
                     
                     try:
+                        tool_span = recorder.start_span(
+                            f"tool:{tool_name}", SpanKind.TOOL, tool_name=tool_name,
+                            tool_arguments=tool_args,
+                        ) if recorder else None
                         # Find the tool by name
                         tool = next((t for t in selected_tools if t.name == tool_name), None)
                         if not tool:
+                            if tool_span and recorder:
+                                recorder.finish_span(tool_span, status=TraceStatus.ERROR, error="tool not found in selected tools")
                             logger.warning(f"Tool {tool_name} not found in selected tools")
                             continue
                         
@@ -129,8 +146,12 @@ class MCPResearchSkill:
                                 logger.debug(f"Result {j+1}: '{title}' - Content: {content_preview}")
                         else:
                             logger.warning(f"Tool {tool_name} returned empty result")
+                        if tool_span and recorder:
+                            recorder.finish_span(tool_span, tool_result=result)
                             
                     except Exception as e:
+                        if 'tool_span' in locals() and tool_span and recorder and tool_span.end_time is None:
+                            recorder.finish_span(tool_span, status=TraceStatus.ERROR, error=str(e))
                         logger.error(f"Error executing tool {tool_name}: {e}")
                         continue
                         
@@ -152,6 +173,8 @@ class MCPResearchSkill:
             return research_results
             
         except Exception as e:
+            if 'llm_span' in locals() and llm_span and recorder and llm_span.end_time is None:
+                recorder.finish_span(llm_span, status=TraceStatus.ERROR, error=str(e))
             logger.error(f"Error in LLM research with tools: {e}")
             return []
 
@@ -268,4 +291,4 @@ class MCPResearchSkill:
             }
             search_results.append(search_result)
         
-        return search_results 
+        return search_results

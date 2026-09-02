@@ -29,9 +29,6 @@ from server.server_utils import (
 from server.agent_discovery import build_agent_discovery_document
 
 from server.websocket_manager import run_agent
-from utils import write_md_to_word, write_md_to_pdf
-from asteria_researcher.utils.enum import Tone
-from chat.chat import ChatAgentWithMemory
 
 from backend.auth.report_store_pg import PgReportStore
 
@@ -131,6 +128,8 @@ from backend.doc_agent.routes import router as doc_agent_router
 app.include_router(doc_agent_router)
 from backend.watermark_lab.routes import router as watermark_lab_router
 app.include_router(watermark_lab_router)
+from backend.evaluation.routes import router as evaluation_router
+app.include_router(evaluation_router)
 
 # Mount static files for frontend
 # Get the absolute path to the frontend directory
@@ -296,6 +295,9 @@ async def add_report_chat_message(research_id: str, request: Request, _email: st
 
 
 async def write_report(research_request: ResearchRequest, research_id: str = None):
+    from asteria_researcher.utils.enum import Tone
+    from utils import write_md_to_word, write_md_to_pdf
+
     report_information = await run_agent(
         task=research_request.task,
         report_type=research_request.report_type,
@@ -409,6 +411,8 @@ async def chat(chat_request: ChatRequest, _email: str = Depends(get_current_user
         JSON response with the assistant's message and any tool usage metadata
     """
     try:
+        from chat.chat import ChatAgentWithMemory
+
         logger.info(
             "Received chat request with %s messages and report_length=%s",
             len(chat_request.messages),
@@ -452,6 +456,8 @@ async def research_report_chat(research_id: str, request: Request, _email: str =
     Directly processes the raw request data to avoid validation errors.
     """
     try:
+        from chat.chat import ChatAgentWithMemory
+
         # Get raw JSON data from request
         data = await request.json()
         

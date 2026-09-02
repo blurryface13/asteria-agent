@@ -14,6 +14,8 @@ from langchain_core.tools import tool
 
 from .costs import calculate_llm_cost
 from .llm import create_chat_completion
+from ..evaluation.trace import get_current_recorder
+from ..evaluation.models import SpanKind, TraceStatus
 
 logger = logging.getLogger(__name__)
 
@@ -113,7 +115,14 @@ async def create_chat_completion_with_tools(
         from langchain_core.messages import ToolMessage
         
         # First call to LLM
+        recorder = get_current_recorder()
+        llm_span = recorder.start_span(
+            f"llm:{model}", SpanKind.LLM, input_messages=messages,
+            attributes={"model": model, "provider": llm_provider, "bound_tools": [getattr(item, "name", str(item)) for item in tools]},
+        ) if recorder else None
         response = await llm_with_tools.ainvoke(lc_messages)
+        if llm_span and recorder:
+            recorder.finish_span(llm_span, output_messages=[{"role": "assistant", "content": str(getattr(response, "content", ""))}], attributes={"tool_call_count": len(getattr(response, "tool_calls", []) or [])})
         _track_response_cost(
             llm_provider=llm_provider,
             model=model,
@@ -142,6 +151,10 @@ async def create_chat_completion_with_tools(
                     args_str = ", ".join([f"{k}={v}" for k, v in tool_args.items()])
                     logger.debug(f"Tool arguments: {args_str}")
                 
+                tool_span = recorder.start_span(
+                    f"tool:{tool_name}", SpanKind.TOOL, tool_name=tool_name,
+                    tool_arguments=tool_args, attributes={"call_id": tool_id},
+                ) if recorder else None
                 # Find and execute the tool
                 tool_result = "Tool execution failed"
                 for tool in tools:
@@ -170,6 +183,11 @@ async def create_chat_completion_with_tools(
                                 tool_result = f"Tool '{tool_name}' failed due to insufficient permissions. Please check your API keys or access credentials."
                             else:
                                 tool_result = f"Tool '{tool_name}' encountered an error: {error_msg}. Please check the logs for more details."
+                            if tool_span and recorder:
+                                recorder.finish_span(tool_span, status=TraceStatus.ERROR, tool_result=tool_result, error=error_msg)
+
+                if tool_span and recorder and tool_span.end_time is None:
+                    recorder.finish_span(tool_span, tool_result=tool_result)
                 
                 # Add tool result to conversation
                 tool_message = ToolMessage(content=str(tool_result), tool_call_id=tool_id)
@@ -185,7 +203,13 @@ async def create_chat_completion_with_tools(
             
             # Get final response from LLM after tool execution
             logger.info("Getting final response from LLM after tool execution")
+            final_span = recorder.start_span(
+                f"llm:{model}:final", SpanKind.LLM, input_messages=messages,
+                attributes={"model": model, "provider": llm_provider, "phase": "final"},
+            ) if recorder else None
             final_response = await llm_with_tools.ainvoke(lc_messages)
+            if final_span and recorder:
+                recorder.finish_span(final_span, output_messages=[{"role": "assistant", "content": str(getattr(final_response, "content", ""))}])
              
             # Track costs if callback provided
             _track_response_cost(
@@ -204,6 +228,10 @@ async def create_chat_completion_with_tools(
             return response.content, []
         
     except Exception as e:
+        if 'llm_span' in locals() and llm_span and recorder and llm_span.end_time is None:
+            recorder.finish_span(llm_span, status=TraceStatus.ERROR, error=f"{type(e).__name__}: {e}")
+        if 'final_span' in locals() and final_span and recorder and final_span.end_time is None:
+            recorder.finish_span(final_span, status=TraceStatus.ERROR, error=f"{type(e).__name__}: {e}")
         error_type = type(e).__name__
         error_msg = str(e)
         logger.error(

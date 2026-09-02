@@ -15,18 +15,6 @@ from colorama import Fore, init
 
 from asteria_researcher.utils.workers import WorkerPool
 
-from . import (
-    ArxivScraper,
-    BeautifulSoupScraper,
-    BrowserScraper,
-    FireCrawl,
-    NoDriverScraper,
-    PyMuPDFScraper,
-    TavilyExtract,
-    WebBaseLoaderScraper,
-)
-
-
 class Scraper:
     """
     Scraper class to extract the content from the links
@@ -185,17 +173,6 @@ class Scraper:
         `PyMuPDFScraper` class. If the link contains "arxiv.org", it selects the `ArxivScraper
         """
 
-        SCRAPER_CLASSES = {
-            "pdf": PyMuPDFScraper,
-            "arxiv": ArxivScraper,
-            "bs": BeautifulSoupScraper,
-            "web_base_loader": WebBaseLoaderScraper,
-            "browser": BrowserScraper,
-            "nodriver": NoDriverScraper,
-            "tavily_extract": TavilyExtract,
-            "firecrawl": FireCrawl,
-        }
-
         scraper_key = None
 
         if link.endswith(".pdf"):
@@ -205,8 +182,33 @@ class Scraper:
         else:
             scraper_key = self.scraper
 
-        scraper_class = SCRAPER_CLASSES.get(scraper_key)
-        if scraper_class is None:
+        # Import only the backend needed for this URL. In particular, do not
+        # import the PDF/LangChain stack for ordinary HTML research pages.
+        if scraper_key == "pdf":
+            from .pymupdf.pymupdf import PyMuPDFScraper
+            scraper_class = PyMuPDFScraper
+        elif scraper_key == "arxiv":
+            from .arxiv.arxiv import ArxivScraper
+            scraper_class = ArxivScraper
+        elif scraper_key == "bs":
+            from .beautiful_soup.beautiful_soup import BeautifulSoupScraper
+            scraper_class = BeautifulSoupScraper
+        elif scraper_key == "web_base_loader":
+            from .web_base_loader.web_base_loader import WebBaseLoaderScraper
+            scraper_class = WebBaseLoaderScraper
+        elif scraper_key == "browser":
+            from .browser.browser import BrowserScraper
+            scraper_class = BrowserScraper
+        elif scraper_key == "nodriver":
+            from .browser.nodriver_scraper import NoDriverScraper
+            scraper_class = NoDriverScraper
+        elif scraper_key == "tavily_extract":
+            from .tavily_extract.tavily_extract import TavilyExtract
+            scraper_class = TavilyExtract
+        elif scraper_key == "firecrawl":
+            from .firecrawl.firecrawl import FireCrawl
+            scraper_class = FireCrawl
+        else:
             raise Exception("Scraper not found.")
 
         return scraper_class

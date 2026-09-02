@@ -10,9 +10,6 @@ import os
 from typing import Any
 import asyncio
 
-from langchain_core.output_parsers import PydanticOutputParser
-from langchain_core.prompts import PromptTemplate
-
 from asteria_researcher.llm_provider.generic.base import (
     NO_SUPPORT_TEMPERATURE_MODELS,
     SUPPORT_REASONING_EFFORT_MODELS,
@@ -22,6 +19,8 @@ from asteria_researcher.llm_provider.generic.base import (
 from ..prompts import PromptFamily
 from .costs import calculate_llm_cost
 from .validators import Subtopics
+from ..evaluation.trace import get_current_recorder
+from ..evaluation.models import SpanKind, TraceStatus
 
 
 def get_llm(llm_provider: str, **kwargs):
@@ -102,6 +101,12 @@ async def create_chat_completion(
             provider_kwargs['openai_api_base'] = base_url
 
     provider = get_llm(llm_provider, **provider_kwargs)
+    recorder = get_current_recorder()
+    llm_span = recorder.start_span(
+        f"llm:{model}", SpanKind.LLM,
+        input_messages=messages,
+        attributes={"model": model, "provider": llm_provider, "stream": stream},
+    ) if recorder else None
     response = ""
     # create response
     max_attempts = 1 if (stream and websocket is not None) else 10
@@ -143,8 +148,16 @@ async def create_chat_completion(
             )
             cost_callback(llm_costs)
 
+        if llm_span and recorder:
+            recorder.finish_span(
+                llm_span,
+                output_messages=[{"role": "assistant", "content": response}],
+                attributes={"attempt": attempt, "usage": getattr(provider, "last_usage_metadata", {}) or {}},
+            )
         return response
 
+    if llm_span and recorder:
+        recorder.finish_span(llm_span, status=TraceStatus.ERROR, error=str(last_exception or "unknown LLM failure"))
     logging.error(f"Failed to get response from {llm_provider} API")
     raise RuntimeError(f"Failed to get response from {llm_provider} API") from last_exception
 
@@ -169,9 +182,12 @@ async def construct_subtopics(
         **kwargs: Additional keyword arguments.
 
     Returns:
-        list: A list of constructed subtopics.
+    list: A list of constructed subtopics.
     """
     try:
+        from langchain_core.output_parsers import PydanticOutputParser
+        from langchain_core.prompts import PromptTemplate
+
         parser = PydanticOutputParser(pydantic_object=Subtopics)
 
         prompt = PromptTemplate(
