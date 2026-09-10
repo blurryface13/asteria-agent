@@ -1,7 +1,7 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
 import { Data, ChatBoxSettings, QuestionData } from '../types/data';
 import { getHost } from '../helpers/getHost';
-import { getToken, clearAuth } from '../helpers/auth';
+import { getToken, clearAuth, isLocalAuthBypassEnabled } from '../helpers/auth';
 import { getRetrieversForStrategy } from '../utils/searchStrategy';
 
 export const useWebSocket = (
@@ -184,12 +184,23 @@ export const useWebSocket = (
             output: event.reason || 'Research connection closed unexpectedly.',
           } as Data]);
         }
-        // 4401 = backend rejected the handshake token (expired or JWT_SECRET
-        // rotated). The stored session is stale - clear it and go to /login,
-        // otherwise the research page spins forever with no feedback.
+        // 4401 = backend rejected the handshake token. In normal mode the
+        // stored session is stale, so clear it and go to /login. In explicit
+        // local bypass mode, a 4401 means frontend/backend startup flags or
+        // API targets are inconsistent; keep the real error visible instead
+        // of sending the user through a login loop.
         if (event.code === 4401) {
-          clearAuth();
-          window.location.href = '/login';
+          if (isLocalAuthBypassEnabled()) {
+            setLoading(false);
+            setOrderedData((prevOrder) => [...prevOrder, {
+              type: 'logs',
+              content: 'error',
+              output: '本地免登录已开启，但后端拒绝了 WebSocket 鉴权。请检查后端是否使用 ASTERIA_DEV_AUTH_BYPASS=1 启动，以及前端 API 地址是否指向同一后端。',
+            } as Data]);
+          } else {
+            clearAuth();
+            window.location.href = '/login';
+          }
         }
       };
 

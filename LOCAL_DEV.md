@@ -42,7 +42,9 @@ langgraph dev --port 2024 --config langgraph-multiagent.json --no-browser --no-r
 
 启动检查以 `/login`、`/docs` 和 `/openapi.json` 的实际 HTTP 返回为准；只看到端口被占用，不代表服务已经完成首次编译或可以访问。
 
-本机开发启动脚本默认启用本地免登录模式：前端不会被 AuthGuard 重定向，后端 API 和 WebSocket 使用 `local@asteria.dev` 作为本地身份。该开关只写在本机启动命令中，不应带到共享或生产环境；要验证真实登录链路时去掉两个 `ASTERIA_*_AUTH_BYPASS` 环境变量即可。
+本机开发启动脚本默认启用本地免登录模式：前端不会被 AuthGuard 重定向，后端 API 和 WebSocket 使用 `local@asteria.dev` 作为本地身份。前端开关同时记录在 `frontend/nextjs/.env.example`；当前机器的 `.env.local` 也固定了该开关，避免手动启动 Next 时因遗漏环境变量反复跳回登录页。该模式只用于本机，不应带到共享或生产环境；要验证真实登录链路时去掉前端 `NEXT_PUBLIC_ASTERIA_DEV_AUTH_BYPASS` 和后端两个 `ASTERIA_*_AUTH_BYPASS` 环境变量即可。
+
+如果已经打开过旧的 `/login` 标签页，刷新即可：本地免登录模式会自动回到首页。若研究过程中出现 401/4401，前端不会在本地模式下再次跳登录，而会显示鉴权配置错误；此时检查后端是否也以 `ASTERIA_DEV_AUTH_BYPASS=1` 启动，以及 `ASTERIA_API_URL`/`NEXT_PUBLIC_ASTERIA_API_URL` 是否指向同一个后端。
 
 ## 停止服务
 ```bash

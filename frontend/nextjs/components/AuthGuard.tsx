@@ -2,9 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { getToken } from "@/helpers/auth";
-
-const localAuthBypass = process.env.NEXT_PUBLIC_ASTERIA_DEV_AUTH_BYPASS === "1";
+import { getToken, isLocalAuthBypassEnabled } from "@/helpers/auth";
 
 // Wraps the whole app (mounted from layout.tsx). Redirects to /login when
 // there's no token in localStorage. The /login page itself is excluded so
@@ -20,7 +18,7 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    if (localAuthBypass) {
+    if (isLocalAuthBypassEnabled()) {
       setChecked(true);
       return;
     }

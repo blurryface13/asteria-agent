@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getHost } from "@/helpers/getHost";
-import { setAuth } from "@/helpers/auth";
+import { isLocalAuthBypassEnabled, setAuth } from "@/helpers/auth";
 
 type Step = "email" | "code";
 
@@ -17,6 +17,15 @@ export default function LoginPage() {
   const [info, setInfo] = useState("");
 
   const apiBase = getHost();
+
+  useEffect(() => {
+    // A stale tab can remain on /login after the dev server is restarted with
+    // the explicit local bypass. Move it back to the app instead of making
+    // the user refresh or enter a fake OTP.
+    if (isLocalAuthBypassEnabled()) {
+      router.replace("/");
+    }
+  }, [router]);
 
   const handleSendCode = async () => {
     if (!email.trim()) return;
