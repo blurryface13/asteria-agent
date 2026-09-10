@@ -144,7 +144,7 @@ export default function MobileHomeScreen({
         <div className="flex justify-center mb-3">
           <img
             src="/img/asteria-logo.png?v=bunny1"
-            alt="Bunny Research"
+            alt="Asteria Research"
             width={60}
             height={60}
             className="rounded-xl"
