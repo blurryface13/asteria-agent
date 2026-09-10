@@ -1287,3 +1287,35 @@
 .results :global(.log-message) {
   white-space: normal;
 }
+.latexSplit {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  height: 60vh;
+}
+.latexSplit pre {
+  overflow: auto;
+  background: #1d1d1d;
+  padding: 15px;
+}
+.latexSplit iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #eee;
+}
+.dialog:has(.latexSplit) {
+  width: min(1400px, calc(100vw - 32px));
+}
+@media (max-width: 700px) {
+  .latexSplit {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+  .latexSplit pre {
+    max-height: 35vh;
+  }
+  .latexSplit iframe {
+    height: 50vh;
+  }
+}

@@ -16,6 +16,13 @@ class HumanAgent:
         user_feedback = None
 
         if task.get("include_human_feedback"):
+            if self.websocket and getattr(self.websocket, "feedback_queue", None) is not None:
+                user_feedback = await self.websocket.request_feedback(
+                    f"请确认计划，留空表示同意，或填写修改意见：{layout}")
+                return {
+                    "human_feedback": user_feedback,
+                    "plan_revision_count": research_state.get("plan_revision_count", 0) + bool(user_feedback),
+                }
             # Stream response to the user if a websocket is provided (such as from web app)
             if self.websocket and self.stream_output:
                 try:

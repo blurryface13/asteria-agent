@@ -6,6 +6,7 @@ import { ResearchHistoryItem, ChatBoxSettings } from "@/types/data";
 import { markdownToHtml } from "@/helpers/markdownHelper";
 import Icon from "./Icon";
 import s from "./harness.module.css";
+import LatexPreview from "./LatexPreview";
 
 interface Props {
   history: ResearchHistoryItem[];
@@ -28,6 +29,7 @@ interface Props {
   settings: ChatBoxSettings;
   setSettings: React.Dispatch<React.SetStateAction<ChatBoxSettings>>;
   logCount: number;
+  artifactPaths?: Record<string, string>;
   children: React.ReactNode;
 }
 
@@ -259,7 +261,13 @@ export default function ResearchHarness(p: Props) {
   const value = mode === "chat" ? p.chatPrompt : p.prompt;
   const setValue = mode === "chat" ? p.setChatPrompt : p.setPrompt;
   const submit = () => {
-    if (!value.trim() || p.loading || p.chatting || (mode === "chat" && !p.answer)) return;
+    if (
+      !value.trim() ||
+      p.loading ||
+      p.chatting ||
+      (mode === "chat" && !p.answer)
+    )
+      return;
     if (mode === "chat") p.onChat(value.trim());
     else p.onResearch(value.trim());
     setNotice("");
@@ -301,14 +309,10 @@ export default function ResearchHarness(p: Props) {
           onClick={() => setRail(false)}
         />
       )}
-      <aside
-        className={s.rail}
-        aria-label="工作台导航"
-      >
+      <aside className={s.rail} aria-label="工作台导航">
         <button className={s.brand} onClick={() => open("个人设置")}>
           <img src="/img/asteria-logo.png" alt="Asteria" />
           <span>个人</span>
-          <small>Free</small>
           <Icon name="down" size={16} />
         </button>
         <nav>
@@ -703,7 +707,7 @@ export default function ResearchHarness(p: Props) {
                       </button>
                       <button
                         className={s.outline}
-                        onClick={() => pending("LaTeX 编译")}
+                        onClick={() => open("LaTeX 报告")}
                       >
                         LaTeX
                       </button>
@@ -808,7 +812,9 @@ export default function ResearchHarness(p: Props) {
             <h2>
               {modal === "Agent" || modal === "主机管理" ? section : modal}
             </h2>
-            {modal === "个人设置" ? (
+            {modal === "LaTeX 报告" ? (
+              <LatexPreview paths={p.artifactPaths || {}} />
+            ) : modal === "个人设置" ? (
               <>
                 <p>显示名称仅保存在此浏览器，不改变登录账号。</p>
                 <label>
@@ -967,21 +973,21 @@ export default function ResearchHarness(p: Props) {
                         ? "按需加载研究方法、工具约束与输出规范。"
                         : "管理授权服务器、允许目录与实验执行权限。"}
                 </p>
-                <div className={s.pendingBadge}>待接入运行时</div>
+                <div className={s.pendingBadge}>{section === "技能" ? "内置能力 · 自定义技能管理待接入" : "待接入运行时"}</div>
                 {section === "技能" ? (
                   <div className={s.skillList}>
                     {[
-                      "文献检索与筛选",
-                      "论文精读与比较",
-                      "引用与证据核验",
-                      "LaTeX 报告排版",
-                      "实验设计与复现",
-                      "公开数据分析",
-                    ].map((name) => (
+                      ["文献综述与证据审阅", "已接入"],
+                      ["论文原文读取", "已接入"],
+                      ["LaTeX 报告排版", "已接入"],
+                      ["复现实验设计", "仅设计，不执行"],
+                      ["逐条引用事实核验", "规划中"],
+                      ["公开数据分析", "规划中"],
+                    ].map(([name, status]) => (
                       <div key={name}>
                         <Icon name="skill" />
                         <span>{name}</span>
-                        <small>规划中</small>
+                        <small>{status}</small>
                       </div>
                     ))}
                   </div>

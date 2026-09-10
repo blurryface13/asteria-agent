@@ -104,6 +104,8 @@ ALLOWED_ORIGINS = (
     else [
         "http://localhost:3000",
         "http://127.0.0.1:3000",
+        "http://localhost:3023",
+        "http://127.0.0.1:3023",
         "https://app.asteria.dev",
     ]
 )

@@ -17,9 +17,11 @@ logger = logging.getLogger(__name__)
 
 class CustomLogsHandler:
     """Custom handler to capture streaming logs from the research process"""
-    def __init__(self, websocket, task: str):
+    def __init__(self, websocket, task: str, feedback_queue=None):
         self.logs = []
         self.websocket = websocket
+        self.feedback_queue = feedback_queue
+        self.awaiting_feedback = False
         sanitized_filename = sanitize_filename(f"task_{int(time.time())}_{task}")
         self.log_file = os.path.join("outputs", f"{sanitized_filename}.json")
         self.timestamp = datetime.now().isoformat()
@@ -37,6 +39,16 @@ class CustomLogsHandler:
                     "costs": 0.0
                 }
             }, f, indent=2)
+
+    async def request_feedback(self, question):
+        if self.feedback_queue is None:
+            raise RuntimeError("Human feedback transport is unavailable")
+        self.awaiting_feedback = True
+        try:
+            await self.send_json({"type": "human_feedback", "content": "request", "output": question})
+            return await asyncio.wait_for(self.feedback_queue.get(), timeout=600)
+        finally:
+            self.awaiting_feedback = False
 
     async def send_json(self, data: Dict[str, Any]) -> None:
         """Store log data and send to websocket"""
@@ -110,7 +122,7 @@ def sanitize_filename(filename: str) -> str:
     return re.sub(r"[^\w\s-]", "", sanitized).strip()
 
 
-async def handle_start_command(websocket, data: str, manager):
+async def handle_start_command(websocket, data: str, manager, feedback_queue=None):
     json_data = json.loads(data[6:])
     (
         task,
@@ -138,7 +150,9 @@ async def handle_start_command(websocket, data: str, manager):
         return
 
     # Create logs handler with websocket and task
-    logs_handler = CustomLogsHandler(websocket, task)
+    logs_handler = CustomLogsHandler(websocket, task, feedback_queue)
+    if feedback_queue is not None:
+        feedback_queue.handler = logs_handler
     # Initialize log content with query
     await logs_handler.send_json({
         "query": task,
@@ -166,7 +180,11 @@ async def handle_start_command(websocket, data: str, manager):
         logs_handler=logs_handler,
     )
     report = str(report)
-    file_paths = await generate_report_files(report, sanitized_filename)
+    scientific_paths = getattr(logs_handler, "artifact_paths", {})
+    if scientific_paths:
+        file_paths = {**scientific_paths, "pdf": scientific_paths["latex_pdf"]}
+    else:
+        file_paths = await generate_report_files(report, sanitized_filename)
     # Add JSON log path to file_paths
     file_paths["json"] = os.path.relpath(logs_handler.log_file)
     await send_file_paths(websocket, file_paths)
@@ -320,6 +338,7 @@ async def execute_multi_agents(manager) -> Any:
 
 async def handle_websocket_communication(websocket, manager):
     running_task: asyncio.Task | None = None
+    feedback_queue = asyncio.Queue(maxsize=1)
 
     def run_long_running_task(awaitable: Awaitable) -> asyncio.Task:
         async def safe_run():
@@ -348,6 +367,16 @@ async def handle_websocket_communication(websocket, manager):
                 
                 if data == "ping":
                     await websocket.send_text("pong")
+                elif data.lstrip().startswith('{') and json.loads(data).get("type") == "human_feedback":
+                    payload = json.loads(data)
+                    handler = getattr(feedback_queue, "handler", None)
+                    if handler and handler.awaiting_feedback and feedback_queue.empty():
+                        content = payload.get("content")
+                        if content is not None and not isinstance(content, str):
+                            raise ValueError("Invalid human feedback")
+                        await feedback_queue.put(content)
+                    else:
+                        await websocket.send_json({"type": "logs", "content": "warning", "output": "当前没有等待确认的计划。"})
                 elif running_task and not running_task.done():
                     # discard any new request if a task is already running
                     logger.warning(
@@ -364,7 +393,7 @@ async def handle_websocket_communication(websocket, manager):
                 elif data.strip().startswith("start"):
                     logger.info(f"Processing start command")
                     running_task = run_long_running_task(
-                        handle_start_command(websocket, data, manager)
+                        handle_start_command(websocket, data, manager, feedback_queue)
                     )
                 elif data.strip().startswith("human_feedback"):
                     logger.info(f"Processing human_feedback command")

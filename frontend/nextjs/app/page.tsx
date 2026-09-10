@@ -61,7 +61,7 @@ export default function Home() {
   const [question, setQuestion] = useState("");
   const [orderedData, setOrderedData] = useState<Data[]>([]);
   const [showHumanFeedback, setShowHumanFeedback] = useState(false);
-  const [questionForHuman, setQuestionForHuman] = useState<true | false>(false);
+  const [questionForHuman, setQuestionForHuman] = useState<string | false>(false);
   const [allLogs, setAllLogs] = useState<any[]>([]);
   const [isStopped, setIsStopped] = useState(false);
   const mainContentRef = useRef<HTMLDivElement>(null);
@@ -100,21 +100,20 @@ export default function Home() {
   } = useResearchHistoryContext();
 
   // Only initialize the WebSocket hook reference, don't connect automatically
-  const websocketRef = useRef(useWebSocket(
+  const { socket, initializeWebSocket } = useWebSocket(
     setOrderedData,
     setAnswer,
     setLoading,
     setShowHumanFeedback,
     setQuestionForHuman
-  ));
-  
-  // Use the reference to access websocket functions
-  const { socket, initializeWebSocket } = websocketRef.current;
+  );
 
   const handleFeedbackSubmit = (feedback: string | null) => {
-    if (socket) {
-      socket.send(JSON.stringify({ type: 'human_feedback', content: feedback }));
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      toast.error('任务连接已断开，无法提交计划确认。');
+      return;
     }
+    socket.send(JSON.stringify({ type: 'human_feedback', content: feedback }));
     setShowHumanFeedback(false);
   };
 
@@ -851,12 +850,12 @@ export default function Home() {
         return [...acc, ...logs];
       } 
       // Process status reports
-      else if (statusReports.includes(data.content)) {
+      else if (data.type === 'logs' || statusReports.includes(data.content)) {
         return [...acc, {
           header: data.content,
-          text: data.output,
+          text: typeof data.output === 'string' ? data.output : JSON.stringify(data.output),
           metadata: data.metadata,
-          key: `${data.type}-${data.content}`,
+          key: `${data.type}-${data.content}-${acc.length}`,
         }];
       }
       return acc;
@@ -889,6 +888,7 @@ export default function Home() {
       onNew={handleStartNewResearch} onEnter={handleEnterWorkspace}
       onStop={handleStopResearch} onSelect={handleSelectResearch}
       settings={chatBoxSettings} setSettings={setChatBoxSettings} logCount={allLogs.length}
+      artifactPaths={preprocessOrderedData(orderedData).filter((item: any) => item.type === 'path').at(-1)?.output}
     >
       <ResearchResults compact orderedData={orderedData} answer={answer} allLogs={allLogs}
         chatBoxSettings={chatBoxSettings} handleClickSuggestion={handleClickSuggestion}

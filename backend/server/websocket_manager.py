@@ -137,6 +137,27 @@ async def run_agent(task, report_type, report_source, source_urls, document_urls
             "output": f"🔧 MCP enabled with strategy '{mcp_strategy}' and {len(mcp_configs)} server(s)"
         })
 
+    # Explicit scientific deliverables opt into the coordinator only on the
+    # interactive WebSocket path. REST/mobile contracts stay unchanged.
+    capability = None
+    if not return_researcher and getattr(logs_handler, "feedback_queue", None) is not None:
+        from asteria_researcher.agentic.intent import analyze_intent
+        from .agentic_runner import configured_model
+        await logs_handler.send_json({"type": "logs", "content": "intent_analysis", "output": "分析目标与交付要求"})
+        intent = await analyze_intent(task, configured_model(config_path))
+        capability = intent.capability if intent.capability != "general_research" else None
+        await logs_handler.send_json({"type": "logs", "content": "intent_resolved", "output": intent.model_dump()})
+    if capability:
+        from .agentic_runner import run_agentic_task
+        return await run_agentic_task(task, capability, logs_handler, {
+            "query_domains": query_domains, "report_type": "research_report",
+            "report_source": report_source, "source_urls": source_urls,
+            "document_urls": document_urls, "tone": tone, "config_path": config_path,
+            "headers": headers, "mcp_configs": mcp_configs if mcp_enabled else None,
+            "mcp_strategy": mcp_strategy if mcp_enabled else None,
+            "max_search_results": max_search_results,
+        })
+
     # Initialize researcher based on report type
     if report_type == "multi_agents":
         report = await run_multi_agent_task(
