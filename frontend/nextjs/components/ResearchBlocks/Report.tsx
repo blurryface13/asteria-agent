@@ -19,7 +19,7 @@ export default function Report({ answer, researchId }: { answer: string, researc
     }, [answer]);
     
     return (
-      <div className="container flex h-auto w-full shrink-0 gap-4 bg-white/30 backdrop-blur-md shadow-lg rounded-lg border border-solid border-gray-200/40 p-5">
+      <div className="container flex h-auto w-full shrink-0 gap-4 rounded-xl border border-white/[0.08] bg-white/[0.04] p-5 shadow-[0_12px_36px_rgba(2,6,23,0.12)] backdrop-blur-md">
         <div className="w-full">
           <div className="flex items-center justify-between pb-3">
             <div className="flex items-center gap-3">
@@ -63,15 +63,15 @@ export default function Report({ answer, researchId }: { answer: string, researc
           </div>
           
           <div className="flex flex-wrap content-center items-center gap-[15px] pl-5 pr-5">
-            <div className="w-full whitespace-pre-wrap text-base font-light leading-[152.5%] text-gray-900 log-message">
+            <div className="log-message w-full whitespace-pre-wrap text-base font-light leading-[152.5%] text-white/80">
               {answer ? (
                 <div className="markdown-content prose  max-w-none" dangerouslySetInnerHTML={{ __html: htmlContent }} />
               ) : (
                 <div className="flex w-full flex-col gap-2">
-                  <div className="h-6 w-full animate-pulse rounded-md bg-gray-300/20" />
-                  <div className="h-6 w-[85%] animate-pulse rounded-md bg-gray-300/20" />
-                  <div className="h-6 w-[90%] animate-pulse rounded-md bg-gray-300/20" />
-                  <div className="h-6 w-[70%] animate-pulse rounded-md bg-gray-300/20" />
+                  <div className="h-6 w-full animate-pulse rounded-md bg-white/[0.08]" />
+                  <div className="h-6 w-[85%] animate-pulse rounded-md bg-white/[0.08]" />
+                  <div className="h-6 w-[90%] animate-pulse rounded-md bg-white/[0.08]" />
+                  <div className="h-6 w-[70%] animate-pulse rounded-md bg-white/[0.08]" />
                 </div>
               )}
             </div>
@@ -79,4 +79,4 @@ export default function Report({ answer, researchId }: { answer: string, researc
         </div>
       </div>
     );
-} 
+}

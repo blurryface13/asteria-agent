@@ -7,7 +7,7 @@ interface QuestionProps {
 
 const Question: React.FC<QuestionProps> = ({ question }) => {
   return (
-    <div className="container w-full flex flex-col sm:flex-row items-start gap-3 pt-5 mb-5 px-4 sm:px-6 py-4 rounded-lg border border-gray-200/30 backdrop-blur-sm bg-white/20 mt-5">
+    <div className="container mt-5 mb-5 flex w-full flex-col items-start gap-3 rounded-xl border border-white/[0.08] bg-white/[0.04] px-4 py-4 pt-5 backdrop-blur-sm sm:flex-row sm:px-6">
       <div className="flex items-center gap-2 sm:gap-4">
         <img
           src={"/img/message-question-circle.svg"}
@@ -20,7 +20,7 @@ const Question: React.FC<QuestionProps> = ({ question }) => {
           Research Task:
         </p>*/}
       </div>
-      <div className="grow text-gray-900 break-words max-w-full log-message mt-1 sm:mt-0 font-medium">{question}</div>
+      <div className="log-message mt-1 max-w-full grow break-words font-medium text-white/80 sm:mt-0">{question}</div>
     </div>
   );
 };

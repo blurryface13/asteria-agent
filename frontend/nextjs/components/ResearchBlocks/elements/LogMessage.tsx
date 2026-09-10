@@ -68,9 +68,9 @@ const LogMessage: React.FC<LogMessageProps> = ({ logs }) => {
           return (
             <div
               key={index}
-              className="w-full max-w-4xl mx-auto rounded-lg pt-2 mt-3 pb-2 px-4 bg-white shadow-md"
+              className="mx-auto mt-3 w-full max-w-4xl rounded-lg border border-white/[0.08] bg-white/[0.045] px-4 pb-2 pt-2"
             >
-              <p className="py-3 text-base leading-relaxed text-gray-900 dark:text-gray-900">
+              <p className="py-3 text-base leading-relaxed text-white/65">
                 {log.text}
               </p>
             </div>

@@ -45,9 +45,9 @@ const AccessReport: React.FC<AccessReportProps> = ({ accessData, chatBoxSettings
   }
 
   return (
-    <div className="container rounded-lg border border-solid border-gray-200/30 bg-white/30 backdrop-blur-md shadow-lg p-5 my-5">
+    <div className="container my-5 rounded-xl border border-white/[0.08] bg-white/[0.04] p-5 shadow-[0_12px_36px_rgba(2,6,23,0.12)] backdrop-blur-md">
       <div className="flex flex-col items-center">
-        <h3 className="text-lg font-bold mb-4 text-gray-900">Access Your Research Report</h3>
+        <h3 className="mb-4 text-lg font-bold text-white/75">Access Your Research Report</h3>
         
         <div className="flex flex-wrap justify-center gap-3">
           {accessData.pdf && (

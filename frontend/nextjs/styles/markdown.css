@@ -1,6 +1,6 @@
 .markdown-content {
   /* Base styles */
-  color: #1f2937;
+  color: oklch(88% 0.012 255);
   font-family: Georgia, 'Times New Roman', Times, serif;
   font-size: 18px;
   line-height: 1.6;
@@ -105,8 +105,8 @@
     font-family: 'Courier New', Courier, monospace;
     font-size: 0.9em;
     padding: 0 0.4em;
-    background-color: #f3f4f6;
-    color: #1f2937;
+    background-color: oklch(24% 0.018 255);
+    color: oklch(88% 0.012 255);
     border-radius: 3px;
   }
 
@@ -133,15 +133,15 @@
     border-collapse: collapse;
     width: 100%;
     margin: 1em 0;
-    background-color: #ffffff;
+    background-color: oklch(21% 0.018 255);
     border-radius: 4px;
     overflow: hidden;
-    border: 2px solid #e5e7eb;
+    border: 2px solid oklch(34% 0.018 255);
     box-shadow: 0 0 0 1px rgba(20, 184, 166, 0.1);
   }
 
   th, td {
-    border: 1px solid #e5e7eb;
+    border: 1px solid oklch(34% 0.018 255);
     padding: 0.75em;
     text-align: left;
   }
@@ -164,13 +164,13 @@
   }
 
   th {
-    background-color: #f3f4f6;
+    background-color: oklch(26% 0.018 255);
     font-weight: 600;
-    color: #1f2937;
+    color: oklch(88% 0.012 255);
   }
 
   tr:nth-child(even) {
-    background-color: #f9fafb; /* Slightly darker for alternating rows */
+    background-color: oklch(23% 0.018 255); /* Slightly darker for alternating rows */
   }
 
   tr:hover {
@@ -235,4 +235,4 @@
     margin-left: 2em;
     margin-bottom: 0.5em;
   }
-} 
+}
