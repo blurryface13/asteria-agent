@@ -91,6 +91,16 @@ Sub-Agent 不需要和 Tool 一一对应。工具少且逻辑简单时可直接�
 
 因此，下一步不是简单增加更多 Agent，而是补齐任务状态、能力注册、工具边界、重规划和产物管理。
 
+### 3.3 Phase 1 实现进度
+
+- [x] 增加 `TaskSpec`、`IntentResult`、`SkillManifest`、`AgentProfile` 和 `ToolSpec` 契约。
+- [x] 增加内存版 `CapabilityRegistry`，注册当前科研路径和未来实验、离线 RAG、数据分析扩展点。
+- [x] 增加不依赖外部模型的 `IntentRouter`，用户不需要手动选择任务类型。
+- [x] 为现有 Editor、Researcher、Writer 和 Fact Checker 建立初始 Agent Profile。
+- [x] 为意图路由、Skill 解析、任务构造和重复注册增加单元测试。
+- [ ] 将 Intent Router 接入 API 请求和现有主编排入口。
+- [ ] 用结构化 LLM 分类器替换或增强规则路由，并保留确定性回退。
+
 ## 4. 目标架构
 
 ```text
