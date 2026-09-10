@@ -12,20 +12,11 @@ import { preprocessOrderedData } from '../utils/dataProcessing';
 import { toast } from "react-hot-toast";
 import { v4 as uuidv4 } from 'uuid';
 
-import Hero from "@/components/Hero";
-import ResearchPageLayout from "@/components/layouts/ResearchPageLayout";
-import CopilotLayout from "@/components/layouts/CopilotLayout";
-import ResearchContent from "@/components/research/ResearchContent";
-import CopilotResearchContent from "@/components/research/CopilotResearchContent";
 import HumanFeedback from "@/components/HumanFeedback";
-import WorkspaceRail from "@/components/WorkspaceRail";
-import { getAppropriateLayout } from "@/utils/getLayout";
-
-// Import the mobile components
-import MobileHomeScreen from "@/components/mobile/MobileHomeScreen";
-import MobileResearchContent from "@/components/mobile/MobileResearchContent";
 import { authFetch } from "@/helpers/auth";
 import { getRetrieversForStrategy } from "@/utils/searchStrategy";
+import ResearchHarness from '@/components/harness/ResearchHarness';
+import { ResearchResults } from '@/components/ResearchResults';
 
 export default function Home() {
   const router = useRouter();
@@ -820,8 +811,14 @@ export default function Home() {
     try {
       const research = await getResearchById(id);
       if (research) {
-        // Navigate to the research page instead of loading it here
-        router.push(`/research/${id}`);
+        setCurrentResearchId(id);
+        setQuestion(research.question);
+        setAnswer(research.answer || '');
+        setOrderedData(research.orderedData || []);
+        setShowResult(true);
+        setLoading(false);
+        setIsStopped(false);
+        setIsInChatMode(false);
       }
     } catch (error) {
       console.error('Error selecting research:', error);
@@ -880,166 +877,25 @@ export default function Home() {
     }
   }, [showResult, loading, answer, isInChatMode]);
 
-  // Update the renderMobileContent function to use both mobile-specific functions
-  const renderMobileContent = () => {
-    if (!showResult) {
-      return (
-        <MobileHomeScreen
-          promptValue={promptValue}
-          setPromptValue={setPromptValue}
-          handleDisplayResult={handleMobileDisplayResult}
-          onEnterWorkspace={handleEnterWorkspace}
-          isLoading={loading}
-        />
-      );
-    } else {
-      return (
-        <MobileResearchContent
-          orderedData={orderedData}
-          answer={answer}
-          loading={loading}
-          isStopped={isStopped}
-          chatPromptValue={chatPromptValue}
-          setChatPromptValue={setChatPromptValue}
-          handleChat={handleMobileChat} // Use mobile-specific chat handler
-          isProcessingChat={isProcessingChat}
-          onNewResearch={handleStartNewResearch}
-          currentResearchId={currentResearchId || undefined}
-          onShareClick={currentResearchId ? handleCopyUrl : undefined}
-        />
-      );
-    }
-  };
-
-  const workspaceRail = (
-    <WorkspaceRail
-      history={history}
-      isOpen={sidebarOpen}
-      onToggle={toggleSidebar}
-      onNewResearch={handleStartNewResearch}
-      onSelectResearch={handleSelectResearch}
-      onDeleteResearch={deleteResearch}
-    />
-  );
 
   return (
-    <>
-      {isMobile ? (
-        // Mobile view - simplified layout with focus on chat
-        getAppropriateLayout({
-          loading,
-          isStopped,
-          showResult,
-          onStop: handleStopResearch,
-          onNewResearch: handleStartNewResearch,
-          chatBoxSettings,
-          setChatBoxSettings,
-          mainContentRef,
-          toggleSidebar,
-          sidebarOpen,
-          isProcessingChat,
-          workspaceRail,
-          children: renderMobileContent()
-        })
-      ) : !showResult ? (
-        // Desktop view - home page
-        getAppropriateLayout({
-          loading,
-          isStopped,
-          showResult,
-          onStop: handleStopResearch,
-          onNewResearch: handleStartNewResearch,
-          chatBoxSettings,
-          setChatBoxSettings,
-          mainContentRef,
-          showScrollButton,
-          onScrollToBottom: scrollToBottom,
-          sidebarOpen,
-          workspaceRail,
-          children: (
-            <Hero
-                promptValue={promptValue}
-                setPromptValue={setPromptValue}
-                handleDisplayResult={handleDisplayResult}
-                onEnterWorkspace={handleEnterWorkspace}
-                history={history}
-                chatBoxSettings={chatBoxSettings}
-                setChatBoxSettings={setChatBoxSettings}
-            />
-          )
-        })
-      ) : (
-        // Desktop view - research results
-        getAppropriateLayout({
-          loading,
-          isStopped,
-          showResult,
-          onStop: handleStopResearch,
-          onNewResearch: handleStartNewResearch,
-          chatBoxSettings,
-          setChatBoxSettings,
-          mainContentRef,
-          sidebarOpen,
-          workspaceRail,
-          children: (
-            <div className="relative">
-              {chatBoxSettings.layoutType === 'copilot' ? (
-                <CopilotResearchContent
-                  orderedData={orderedData}
-                  answer={answer}
-                  allLogs={allLogs}
-                  chatBoxSettings={chatBoxSettings}
-                  loading={loading}
-                  isStopped={isStopped}
-                  promptValue={promptValue}
-                  chatPromptValue={chatPromptValue}
-                  setPromptValue={setPromptValue}
-                  setChatPromptValue={setChatPromptValue}
-                  handleDisplayResult={handleDisplayResult}
-                  handleChat={handleChat}
-                  handleClickSuggestion={handleClickSuggestion}
-                  currentResearchId={currentResearchId || undefined}
-                  onShareClick={currentResearchId ? handleCopyUrl : undefined}
-                  reset={reset}
-                  isProcessingChat={isProcessingChat}
-                  onNewResearch={handleStartNewResearch}
-                  toggleSidebar={toggleSidebar}
-                />
-              ) : (
-                <ResearchContent
-                  showResult={showResult}
-                  orderedData={orderedData}
-                  answer={answer}
-                  allLogs={allLogs}
-                  chatBoxSettings={chatBoxSettings}
-                  loading={loading}
-                  isInChatMode={isInChatMode}
-                  isStopped={isStopped}
-                  promptValue={promptValue}
-                  chatPromptValue={chatPromptValue}
-                  setPromptValue={setPromptValue}
-                  setChatPromptValue={setChatPromptValue}
-                  handleDisplayResult={handleDisplayResult}
-                  handleChat={handleChat}
-                  handleClickSuggestion={handleClickSuggestion}
-                  currentResearchId={currentResearchId || undefined}
-                  onShareClick={currentResearchId ? handleCopyUrl : undefined}
-                  reset={reset}
-                  isProcessingChat={isProcessingChat}
-                />
-              )}
-              
-              {showHumanFeedback && (
-                <HumanFeedback
-                  questionForHuman={questionForHuman}
-                  websocket={socket}
-                  onFeedbackSubmit={handleFeedbackSubmit}
-                />
-              )}
-            </div>
-          )
-        })
-      )}
-    </>
+    <ResearchHarness
+      history={history} active={showResult} question={question} answer={answer}
+      loading={loading} chatting={isProcessingChat} stopped={isStopped}
+      prompt={promptValue} setPrompt={setPromptValue}
+      chatPrompt={chatPromptValue} setChatPrompt={setChatPromptValue}
+      onResearch={isMobile ? handleMobileDisplayResult : handleDisplayResult}
+      onChat={isMobile ? handleMobileChat : handleChat}
+      onNew={handleStartNewResearch} onEnter={handleEnterWorkspace}
+      onStop={handleStopResearch} onSelect={handleSelectResearch}
+      settings={chatBoxSettings} setSettings={setChatBoxSettings} logCount={allLogs.length}
+    >
+      <ResearchResults compact orderedData={orderedData} answer={answer} allLogs={allLogs}
+        chatBoxSettings={chatBoxSettings} handleClickSuggestion={handleClickSuggestion}
+        currentResearchId={currentResearchId || undefined} isProcessingChat={isProcessingChat}
+        onShareClick={currentResearchId ? handleCopyUrl : undefined}/>
+      {showHumanFeedback && <HumanFeedback questionForHuman={questionForHuman}
+        websocket={socket} onFeedbackSubmit={handleFeedbackSubmit}/>}
+    </ResearchHarness>
   );
 }

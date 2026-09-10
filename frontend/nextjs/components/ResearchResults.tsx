@@ -1,13 +1,13 @@
-import React from 'react';
-import Question from './ResearchBlocks/Question';
-import Report from './ResearchBlocks/Report';
-import Sources from './ResearchBlocks/Sources';
-import ImageSection from './ResearchBlocks/ImageSection';
-import SubQuestions from './ResearchBlocks/elements/SubQuestions';
-import LogsSection from './ResearchBlocks/LogsSection';
-import AccessReport from './ResearchBlocks/AccessReport';
-import { preprocessOrderedData } from '../utils/dataProcessing';
-import { Data } from '../types/data';
+import React from "react";
+import Question from "./ResearchBlocks/Question";
+import Report from "./ResearchBlocks/Report";
+import Sources from "./ResearchBlocks/Sources";
+import ImageSection from "./ResearchBlocks/ImageSection";
+import SubQuestions from "./ResearchBlocks/elements/SubQuestions";
+import LogsSection from "./ResearchBlocks/LogsSection";
+import AccessReport from "./ResearchBlocks/AccessReport";
+import { preprocessOrderedData } from "../utils/dataProcessing";
+import { Data } from "../types/data";
 
 interface ResearchResultsProps {
   orderedData: Data[];
@@ -18,6 +18,7 @@ interface ResearchResultsProps {
   currentResearchId?: string;
   isProcessingChat?: boolean;
   onShareClick?: () => void;
+  compact?: boolean;
 }
 
 export const ResearchResults: React.FC<ResearchResultsProps> = ({
@@ -28,21 +29,22 @@ export const ResearchResults: React.FC<ResearchResultsProps> = ({
   handleClickSuggestion,
   currentResearchId,
   isProcessingChat = false,
-  onShareClick
+  onShareClick,
+  compact = false,
 }) => {
   const groupedData = preprocessOrderedData(orderedData);
-  const pathData = groupedData.find(data => data.type === 'path');
-  const initialQuestion = groupedData.find(data => data.type === 'question');
+  const pathData = groupedData.find((data) => data.type === "path");
+  const initialQuestion = groupedData.find((data) => data.type === "question");
 
   const chatComponents = groupedData
-    .filter(data => {
-      if (data.type === 'question' && data === initialQuestion) {
+    .filter((data) => {
+      if (data.type === "question" && data === initialQuestion) {
         return false;
       }
-      return (data.type === 'question' || data.type === 'chat');
+      return data.type === "question" || data.type === "chat";
     })
     .map((data, index) => {
-      if (data.type === 'question') {
+      if (data.type === "question") {
         return <Question key={`question-${index}`} question={data.content} />;
       } else {
         return <Report key={`chat-${index}`} answer={data.content} />;
@@ -50,27 +52,51 @@ export const ResearchResults: React.FC<ResearchResultsProps> = ({
     });
 
   const sourceComponents = groupedData
-    .filter(data => data.type === 'sourceBlock')
+    .filter((data) => data.type === "sourceBlock")
     .map((data, index) => (
-      <Sources key={`sourceBlock-${index}`} sources={data.items}/>
+      <Sources key={`sourceBlock-${index}`} sources={data.items} />
     ));
 
   const imageComponents = groupedData
-    .filter(data => data.type === 'imagesBlock')
+    .filter((data) => data.type === "imagesBlock")
     .map((data, index) => (
-      <ImageSection key={`images-${index}-${data.metadata?.length || 0}`} metadata={data.metadata} />
+      <ImageSection
+        key={`images-${index}-${data.metadata?.length || 0}`}
+        metadata={data.metadata}
+      />
     ));
 
-  const initialReport = groupedData.find(data => data.type === 'reportBlock');
+  const initialReport = groupedData.find((data) => data.type === "reportBlock");
   const finalReport = groupedData
-    .filter(data => data.type === 'reportBlock')
+    .filter((data) => data.type === "reportBlock")
     .pop();
-  const subqueriesComponent = groupedData.find(data => data.content === 'subqueries');
+  const subqueriesComponent = groupedData.find(
+    (data) => data.content === "subqueries",
+  );
 
   return (
     <>
-      {initialQuestion && <Question question={initialQuestion.content} />}
-      {orderedData.length > 0 && <LogsSection logs={allLogs} />}
+      {!compact && initialQuestion && (
+        <Question question={initialQuestion.content} />
+      )}
+      {orderedData.length > 0 &&
+        (compact ? (
+          <details className="research-execution" open={!answer}>
+            <summary>执行过程 · {allLogs.length} 条记录</summary>
+            {allLogs.map((log, index) => (
+              <details key={log.key || index}>
+                <summary>{log.header || "执行记录"}</summary>
+                <pre>
+                  {typeof log.text === "string"
+                    ? log.text
+                    : JSON.stringify(log.text, null, 2)}
+                </pre>
+              </details>
+            ))}
+          </details>
+        ) : (
+          <LogsSection logs={allLogs} />
+        ))}
       {subqueriesComponent && (
         <SubQuestions
           metadata={subqueriesComponent.metadata}
@@ -79,9 +105,18 @@ export const ResearchResults: React.FC<ResearchResultsProps> = ({
       )}
       {sourceComponents}
       {imageComponents}
-      {finalReport && <Report answer={finalReport.content} researchId={currentResearchId} />}
-      {pathData && <AccessReport accessData={pathData.output} report={answer} chatBoxSettings={chatBoxSettings} onShareClick={onShareClick} />}
+      {finalReport && (
+        <Report answer={finalReport.content} researchId={currentResearchId} />
+      )}
+      {pathData && (
+        <AccessReport
+          accessData={pathData.output}
+          report={answer}
+          chatBoxSettings={chatBoxSettings}
+          onShareClick={onShareClick}
+        />
+      )}
       {chatComponents}
     </>
   );
-}; 
+};
