@@ -60,7 +60,7 @@ export default function CopilotLayout({
       
       <div 
         ref={contentRef}
-        className={`flex-1 flex flex-col pt-[72px] ${workspaceRail ? (sidebarOpen ? 'lg:pl-[268px]' : 'lg:pl-[64px]') : ''}`}
+        className={`flex-1 flex flex-col pt-[72px] ${workspaceRail ? (sidebarOpen ? 'lg:pl-[296px]' : 'lg:pl-[68px]') : ''}`}
       >
         {children}
       </div>

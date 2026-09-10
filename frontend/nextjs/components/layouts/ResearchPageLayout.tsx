@@ -61,7 +61,7 @@ export default function ResearchPageLayout({
       
       <div 
         ref={contentRef}
-        className={`min-h-[100vh] pt-[72px] ${workspaceRail ? (sidebarOpen ? 'lg:pl-[268px]' : 'lg:pl-[64px]') : ''}`}
+        className={`min-h-[100vh] pt-[72px] ${workspaceRail ? (sidebarOpen ? 'lg:pl-[296px]' : 'lg:pl-[68px]') : ''}`}
       >
         {children}
       </div>

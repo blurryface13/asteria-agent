@@ -34,24 +34,13 @@ const Hero: FC<HeroProps> = ({
     <section className="relative min-h-[calc(100vh-72px)] w-full overflow-hidden bg-[oklch(12%_0.012_255)] px-5 pb-16 pt-16 text-white sm:px-8 sm:pt-20">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_18%,oklch(28%_0.045_255_/_0.34),transparent_34%),radial-gradient(circle_at_85%_85%,oklch(32%_0.055_70_/_0.10),transparent_28%)]" />
       <div className="relative mx-auto flex w-full max-w-[1080px] flex-col items-center">
-        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/[0.06] ring-1 ring-white/[0.10] shadow-[0_12px_40px_rgba(4,8,20,0.24)]">
-          <img src="/img/asteria-logo.png" alt="Asteria Research" width={38} height={38} className="h-9 w-9 object-contain" />
-        </div>
-
-        <div className="mt-8 flex items-center gap-2 rounded-full border border-white/[0.10] bg-white/[0.05] px-3 py-1.5 text-xs text-white/55">
-          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-          自动识别研究意图
-        </div>
-        <h1 className="mt-5 text-center text-[clamp(2rem,4vw,3.2rem)] font-semibold tracking-[-0.055em] text-white/90">今天想研究什么？</h1>
-
-        <div className="mt-9 w-full max-w-[920px]">
+        <div className="mt-20 w-full max-w-[900px]">
           <InputArea
             promptValue={promptValue}
             setPromptValue={setPromptValue}
             handleSubmit={onEnterWorkspace ? (query) => query ? handleDisplayResult(query) : onEnterWorkspace() : handleDisplayResult}
             allowEmptySubmit={Boolean(onEnterWorkspace)}
           />
-          <p className="mt-4 text-center text-xs text-white/35">描述目标、问题或假设，Agent 会自动组织检索与分析</p>
         </div>
 
         {recentHistory.length > 0 && (

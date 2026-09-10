@@ -140,18 +140,7 @@ export default function MobileHomeScreen({
   return (
     <div className="flex min-h-[calc(100vh-56px)] flex-col h-full w-full bg-[oklch(12%_0.012_255)] pb-16 text-white">
       {/* Header with logo and title */}
-      <div className="mb-8 px-6 pt-10 text-center">
-        <div className="flex justify-center mb-3">
-          <img
-            src="/img/asteria-logo.png?v=bunny1"
-            alt="Asteria Research"
-            width={60}
-            height={60}
-            className="rounded-xl"
-          />
-        </div>
-        <p className="text-sm text-white/45">今天想研究什么？</p>
-      </div>
+      <div className="mb-4 px-6 pt-8 text-center" aria-hidden="true" />
 
       {/* Search Box */}
       <div className="px-4 md:px-8 w-full max-w-lg mx-auto">

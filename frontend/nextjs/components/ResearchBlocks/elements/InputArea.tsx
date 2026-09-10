@@ -28,7 +28,7 @@ const InputArea: FC<InputAreaProps> = ({ promptValue, setPromptValue, handleSubm
     <form onSubmit={(event) => { event.preventDefault(); submit(); }}>
       <textarea ref={textareaRef} rows={3} required={!allowEmptySubmit} value={promptValue} disabled={disabled} onChange={handleChange} onKeyDown={handleKeyDown} onFocus={() => setIsFocused(true)} onBlur={() => setIsFocused(false)} placeholder="描述你的研究任务..." className="block min-h-[132px] w-full resize-none bg-transparent px-7 pt-6 text-[17px] leading-7 text-white/85 outline-none placeholder:text-white/30 disabled:cursor-wait" />
       <div className="flex items-center justify-between px-5 pb-5">
-        <div className="flex items-center gap-2 text-xs text-white/35"><span className="rounded-lg border border-white/[0.10] bg-white/[0.04] px-2 py-1">本地工作区</span><span>·</span><span>自动分配</span><span>·</span><span>Research</span></div>
+        <div className="flex items-center gap-2 text-xs text-white/35"><span>自动分配</span><span>·</span><span>Research</span></div>
         <button type="submit" disabled={disabled || (!allowEmptySubmit && !promptValue.trim())} aria-label="进入研究工作区" className="flex h-11 w-11 items-center justify-center rounded-full bg-white/[0.08] text-white/55 transition-colors hover:bg-[oklch(72%_0.15_55)] hover:text-[oklch(18%_0.02_55)] disabled:cursor-not-allowed disabled:opacity-60">{disabled ? <TypeAnimation /> : <span className="text-2xl leading-none">↑</span>}</button>
       </div>
     </form>

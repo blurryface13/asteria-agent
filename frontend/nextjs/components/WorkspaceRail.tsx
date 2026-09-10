@@ -4,6 +4,7 @@ import React, { useRef, useEffect } from "react";
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
 import { ResearchHistoryItem } from "@/types/data";
+import { getAuthEmail } from "@/helpers/auth";
 
 interface WorkspaceRailProps {
   history: ResearchHistoryItem[];
@@ -36,6 +37,8 @@ const navItems: Array<{ href: string; label: string; icon: IconKind }> = [
 
 export default function WorkspaceRail({ history, isOpen, onToggle, onNewResearch, onSelectResearch, onDeleteResearch }: WorkspaceRailProps) {
   const railRef = useRef<HTMLElement>(null);
+  const email = typeof window !== "undefined" ? getAuthEmail() : null;
+  const username = email?.split("@")[0] || "bunny";
 
   useEffect(() => {
     if (typeof window === "undefined" || window.matchMedia("(min-width: 1024px)").matches) return;
@@ -55,7 +58,7 @@ export default function WorkspaceRail({ history, isOpen, onToggle, onNewResearch
   return (
     <>
       {isOpen && <button type="button" aria-label="关闭导航遮罩" onClick={onToggle} className="fixed inset-0 z-40 bg-black/30 lg:hidden" />}
-      <aside ref={railRef} aria-label="Asteria 工作区导航" className={`fixed inset-y-0 left-0 z-50 flex flex-col border-r border-white/[0.08] bg-[oklch(16%_0.012_255_/_0.94)] text-white shadow-[18px_0_60px_rgba(3,7,18,0.24)] backdrop-blur-2xl transition-[width,transform] duration-200 lg:translate-x-0 ${isOpen ? "w-[268px]" : "w-[64px] -translate-x-full lg:translate-x-0"}`}>
+      <aside ref={railRef} aria-label="Asteria 工作区导航" className={`fixed inset-y-0 left-0 z-50 flex flex-col border-r border-white/[0.08] bg-[oklch(16%_0.012_255_/_0.94)] text-white shadow-[18px_0_60px_rgba(3,7,18,0.24)] backdrop-blur-2xl transition-[width,transform] duration-200 lg:translate-x-0 ${isOpen ? "w-[296px]" : "w-[68px] -translate-x-full lg:translate-x-0"}`}>
         <div className={`flex h-[72px] items-center border-b border-white/[0.08] ${isOpen ? "justify-between px-4" : "justify-center"}`}>
           {isOpen ? (
             <Link href="/" onClick={onNewResearch} className="flex items-center gap-2.5" aria-label="返回 Asteria Research 首页">
@@ -69,7 +72,7 @@ export default function WorkspaceRail({ history, isOpen, onToggle, onNewResearch
         </div>
 
         <div className={`px-3 pt-4 ${isOpen ? "" : "px-2"}`}>
-          <button type="button" onClick={onNewResearch} className={`flex w-full items-center rounded-xl bg-white/[0.10] text-left text-[13px] font-medium text-white/90 transition hover:bg-white/[0.16] ${isOpen ? "gap-3 px-3 py-2.5" : "justify-center px-2 py-3"}`}>
+          <button type="button" onClick={onNewResearch} className={`flex w-full items-center rounded-2xl bg-white/[0.10] text-left text-[13px] font-medium text-white/90 transition hover:bg-white/[0.16] ${isOpen ? "gap-3 px-3 py-2.5" : "justify-center px-2 py-3"}`}>
             <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-[oklch(72%_0.15_55)] text-[oklch(18%_0.02_55)]"><RailIcon kind="new" /></span>
             {isOpen && <span>新建任务</span>}
           </button>
@@ -85,7 +88,7 @@ export default function WorkspaceRail({ history, isOpen, onToggle, onNewResearch
         {isOpen && <div className="mt-7 flex min-h-0 flex-1 flex-col px-3">
           <div className="flex items-center justify-between px-2 text-[11px] font-medium tracking-[0.13em] text-white/35"><span>最近任务</span><span>{history.length}</span></div>
           <div className="mt-3 min-h-0 flex-1 space-y-1 overflow-y-auto pr-1 [scrollbar-width:thin]">
-            {history.length === 0 ? <div className="rounded-xl border border-dashed border-white/[0.12] px-3 py-5 text-center text-xs leading-5 text-white/32">完成一次研究后，任务会显示在这里。</div> : history.map((item) => <div key={item.id} className="group relative rounded-xl transition hover:bg-white/[0.07]">
+            {history.length > 0 && history.map((item) => <div key={item.id} className="group relative rounded-xl transition hover:bg-white/[0.07]">
               <Link href={`/research/${item.id}`} onClick={() => onSelectResearch(item.id)} className="block px-3 py-2.5 pr-8"><p className="truncate text-xs font-medium text-white/72">{item.question}</p><p className="mt-1 text-[11px] text-white/32">{timestamp(item.timestamp || (item as any).updated_at || (item as any).created_at)}</p></Link>
               <button type="button" onClick={(event) => { event.stopPropagation(); onDeleteResearch(item.id); }} className="absolute right-2 top-2.5 hidden rounded p-1 text-white/30 hover:bg-white/[0.10] hover:text-red-300 group-hover:block" aria-label="删除研究记录">×</button>
             </div>)}
@@ -93,7 +96,7 @@ export default function WorkspaceRail({ history, isOpen, onToggle, onNewResearch
         </div>}
 
         <div className={`border-t border-white/[0.08] ${isOpen ? "mx-3 px-2" : "mx-2 px-0"} py-4`}>
-          {isOpen ? <div className="flex items-center justify-between text-xs text-white/40"><span>本地工作区</span><span className="flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />已连接</span></div> : <span className="mx-auto block h-1.5 w-1.5 rounded-full bg-emerald-400" title="本地工作区已连接" />}
+          {isOpen ? <div className="flex items-center gap-2.5 text-xs text-white/60"><span className="flex h-7 w-7 items-center justify-center rounded-full bg-[oklch(72%_0.15_55)] text-[10px] font-semibold text-[oklch(18%_0.02_55)]">{username.slice(0, 1).toUpperCase()}</span><span className="min-w-0 flex-1 truncate">{username}</span><span className="text-white/30">⌄</span></div> : <span className="mx-auto flex h-7 w-7 items-center justify-center rounded-full bg-[oklch(72%_0.15_55)] text-[10px] font-semibold text-[oklch(18%_0.02_55)]" title={username}>{username.slice(0, 1).toUpperCase()}</span>}
         </div>
       </aside>
     </>

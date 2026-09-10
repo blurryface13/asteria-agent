@@ -33,7 +33,7 @@ const Header = ({
 }: HeaderProps) => {
   const jagentUrl = process.env.NEXT_PUBLIC_JAGENT_URL?.trim();
   const iconButton = "flex h-10 w-10 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.06] text-white/55 backdrop-blur-xl transition hover:border-white/[0.16] hover:bg-white/[0.10] hover:text-white";
-  const headerOffset = railOpen ? (sidebarOpen ? "lg:left-[268px]" : "lg:left-[64px]") : "";
+  const headerOffset = railOpen ? (sidebarOpen ? "lg:left-[296px]" : "lg:left-[68px]") : "";
 
   return (
     <header className={`fixed inset-x-0 top-0 z-30 transition-[left] duration-200 ${headerOffset}`}>
