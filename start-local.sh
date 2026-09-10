@@ -35,8 +35,12 @@ echo "  backend PID: $!  日志: /tmp/asteria-backend.log"
 
 echo "启动多智能体服务 (langgraph dev, :2024,可选,只有要用 Multi Agents Report 才需要)..."
 cd "$(dirname "$0")"
-nohup "$PYTHON_ENV_DIR/bin/langgraph" dev --port 2024 --config langgraph-multiagent.json --no-browser --no-reload --allow-blocking > /tmp/asteria-langgraph.log 2>&1 &
-echo "  langgraph PID: $!  日志: /tmp/asteria-langgraph.log"
+if [ -x "$PYTHON_ENV_DIR/bin/langgraph" ]; then
+  nohup "$PYTHON_ENV_DIR/bin/langgraph" dev --port 2024 --config langgraph-multiagent.json --no-browser --no-reload --allow-blocking > /tmp/asteria-langgraph.log 2>&1 &
+  echo "  langgraph PID: $!  日志: /tmp/asteria-langgraph.log"
+else
+  echo "  未启动 LangGraph: dora 环境缺少 langgraph CLI (需要 Multi Agents Report 时再安装 langgraph-cli)"
+fi
 
 echo "启动前端 (next dev, :3000)..."
 cd frontend/nextjs
@@ -44,6 +48,8 @@ cd frontend/nextjs
 # 用 keg-only 的 node@22 启动,不影响全局 node。显式绑 127.0.0.1 避免 IPv6 监听导致连不上。
 export PATH="/opt/homebrew/opt/node@22/bin:$PATH"
 export NEXT_TELEMETRY_DISABLED=1
+export WATCHPACK_POLLING=true
+export WATCHPACK_POLL_INTERVAL=1000
 nohup ./node_modules/.bin/next dev -H 127.0.0.1 -p 3000 > /tmp/asteria-frontend.log 2>&1 &
 echo "  frontend PID: $!  日志: /tmp/asteria-frontend.log  (node $(node -v))"
 
