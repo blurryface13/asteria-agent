@@ -44,17 +44,17 @@ const Header = ({
             <span>Research task</span>
           </div>
         ) : (
-          <a href="/" className="flex items-center gap-3" aria-label="返回 Bunny Research 首页">
+          <a href="/" className={`flex items-center gap-3 ${railOpen ? "lg:hidden" : ""}`} aria-label="返回 Asteria Research 首页">
             <img src="/img/asteria-logo.png" alt="" width={38} height={38} className="h-9 w-9 object-contain" />
             <span className="text-[1.1rem] font-semibold tracking-[-0.025em] text-white/85">Asteria Research</span>
           </a>
         )}
 
         <div className="flex items-center gap-2">
-          <a href="/knowledge" className={`${iconButton} hidden sm:flex`} aria-label="打开知识库" title="知识库">
+          <a href="/knowledge" className={`${iconButton} hidden sm:flex ${railOpen ? "lg:hidden" : ""}`} aria-label="打开知识库" title="知识库">
             <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M4.5 5.5A2.5 2.5 0 0 1 7 3h11.5v16H7a2.5 2.5 0 0 0-2.5 2.5V5.5Z" /><path d="M4.5 21.5A2.5 2.5 0 0 1 7 19h11.5" /></svg>
           </a>
-          <a href="/rag-workspace" className={`${iconButton} hidden md:flex`} aria-label="打开 RAG 工作区" title="RAG 工作区">
+          <a href="/rag-workspace" className={`${iconButton} hidden md:flex ${railOpen ? "lg:hidden" : ""}`} aria-label="打开 RAG 工作区" title="RAG 工作区">
             <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M5 4.5h14v15H5z" /><path d="M8 8h8M8 12h8M8 16h5" /></svg>
           </a>
           {jagentUrl ? <a href={jagentUrl} target="_blank" rel="noreferrer" className="hidden rounded-xl px-3 py-2 text-sm text-white/50 transition hover:bg-white/[0.08] hover:text-white xl:block">个人主页</a> : null}

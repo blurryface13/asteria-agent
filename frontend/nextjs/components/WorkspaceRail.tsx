@@ -27,7 +27,7 @@ function RailIcon({ kind }: { kind: IconKind }) {
   return <svg viewBox="0 0 24 24" className={common} fill="none" stroke="currentColor" strokeWidth="1.7"><rect x="4" y="5" width="16" height="14" rx="2" /><path d="M9 5v14" /></svg>;
 }
 
-const navItems: Array<{ href: string; label: string; icon: IconKind; externalPage?: boolean }> = [
+const navItems: Array<{ href: string; label: string; icon: IconKind }> = [
   { href: "/rag-workspace", label: "主机与工作区", icon: "host" },
   { href: "/doc-agent", label: "Agent 能力", icon: "agent" },
   { href: "/knowledge", label: "知识库", icon: "knowledge" },
