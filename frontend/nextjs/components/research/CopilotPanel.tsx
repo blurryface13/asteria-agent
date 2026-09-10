@@ -76,7 +76,7 @@ const CopilotPanel: React.FC<CopilotPanelProps> = ({
   return (
     <>
       {/* Panel Header */}
-      <div className="flex justify-between items-center px-2 py-3 border-b border-gray-200/60 bg-white/40">
+      <div className="flex items-center justify-between border-b border-slate-200/70 bg-white/55 px-4 py-3 backdrop-blur-xl">
         {/* Left side */}
         <div className="flex items-center">
           <a href="/" className="mr-3">
@@ -88,7 +88,7 @@ const CopilotPanel: React.FC<CopilotPanelProps> = ({
               className="rounded-md"
             />
           </a>
-          <h2 className="text-base font-medium text-gray-700">
+          <h2 className="text-base font-semibold tracking-[-0.02em] text-slate-700">
             Bunny Research
           </h2>
         </div>
@@ -108,7 +108,7 @@ const CopilotPanel: React.FC<CopilotPanelProps> = ({
                 e.preventDefault();
                 setIsCopilotVisible(false);
               }}
-              className="flex items-center justify-center w-7 h-7 rounded-md hover:bg-gray-50 text-gray-500 hover:text-gray-700 transition-colors border border-transparent hover:border-gray-200/50"
+              className="flex h-8 w-8 items-center justify-center rounded-full border border-transparent text-slate-500 transition-colors hover:border-slate-200 hover:bg-white hover:text-slate-700"
               aria-label="Hide copilot panel"
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -122,11 +122,11 @@ const CopilotPanel: React.FC<CopilotPanelProps> = ({
       {/* Chat Messages - Scrollable */}
       <div 
         ref={chatContainerRef} 
-        className="flex-1 overflow-y-auto py-2 px-2 custom-scrollbar bg-white/20"
+        className="flex-1 overflow-y-auto bg-white/30 px-3 py-3 custom-scrollbar"
       >
         {/* Status message - conditional on research state */}
         <div className="mb-4">
-          <div className="p-3 bg-gray-50/30 rounded-md border border-gray-200/40 shadow-sm">
+          <div className="rounded-xl border border-slate-200/70 bg-white/65 p-3 shadow-[0_4px_18px_rgba(15,23,42,0.04)]">
             <div className="flex items-start gap-3">
               <div className="w-7 h-7 rounded-md bg-gray-50 flex items-center justify-center flex-shrink-0 text-gray-600 border border-gray-200/50">
                 <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -178,7 +178,7 @@ const CopilotPanel: React.FC<CopilotPanelProps> = ({
       </div>
 
       {/* Chat Input */}
-      <div className="py-3 px-2 border-t border-gray-200/60 bg-white/40">
+      <div className="border-t border-slate-200/70 bg-white/55 px-3 py-3 backdrop-blur-xl">
         {!isStopped && (
           <ChatInput
             promptValue={chatPromptValue}
@@ -226,4 +226,4 @@ const CopilotPanel: React.FC<CopilotPanelProps> = ({
   );
 };
 
-export default CopilotPanel; 
+export default CopilotPanel;

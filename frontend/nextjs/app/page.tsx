@@ -327,6 +327,7 @@ export default function Home() {
   const handleDisplayResult = async (newQuestion: string) => {
     // Exit chat mode when starting a new research
     setIsInChatMode(false);
+    setSidebarOpen(true);
     setShowResult(true);
     setLoading(true);
     setQuestion(newQuestion);
@@ -925,24 +926,14 @@ export default function Home() {
           showScrollButton,
           onScrollToBottom: scrollToBottom,
           children: (
-            <>
-              <ResearchSidebar
-                history={history}
-                onSelectResearch={handleSelectResearch}
-                onNewResearch={handleStartNewResearch}
-                onDeleteResearch={deleteResearch}
-                isOpen={sidebarOpen}
-                toggleSidebar={toggleSidebar}
-              />
-              
-              <Hero
+            <Hero
                 promptValue={promptValue}
                 setPromptValue={setPromptValue}
                 handleDisplayResult={handleDisplayResult}
+                history={history}
                 chatBoxSettings={chatBoxSettings}
                 setChatBoxSettings={setChatBoxSettings}
-              />
-            </>
+            />
           )
         })
       ) : (

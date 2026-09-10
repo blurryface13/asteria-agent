@@ -23,6 +23,11 @@ const ResearchSidebar: React.FC<ResearchSidebarProps> = ({ history, onSelectRese
   const sidebarRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    // The rail is persistent on desktop. The previous global listener closed it
+    // whenever the user clicked the main work area, which made the sidebar look
+    // as if it had randomly disappeared.
+    if (window.matchMedia("(min-width: 1024px)").matches) return;
+
     const handleClickOutside = (event: MouseEvent) => { if (isOpen && sidebarRef.current && !sidebarRef.current.contains(event.target as Node)) toggleSidebar(); };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
@@ -35,10 +40,10 @@ const ResearchSidebar: React.FC<ResearchSidebarProps> = ({ history, onSelectRese
 
   return <>
     <AnimatePresence>{isOpen && <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-40 bg-slate-950/10 md:hidden" onClick={toggleSidebar} aria-hidden="true" />}</AnimatePresence>
-    <motion.aside ref={sidebarRef} initial={false} animate={{ width: isOpen ? 276 : 16 }} transition={{ duration: 0.2, ease: "easeOut" }} className="fixed inset-y-0 left-0 z-50 overflow-hidden border-r border-slate-200 bg-[#f6f7f9] text-slate-800" aria-label="研究工作区导航">
+    <motion.aside ref={sidebarRef} initial={false} animate={{ width: isOpen ? 276 : 16 }} transition={{ duration: 0.2, ease: "easeOut" }} className="fixed inset-y-0 left-0 z-50 overflow-hidden border-r border-slate-200 bg-[oklch(97.8%_0.006_250)] text-slate-800" aria-label="研究工作区导航">
       {isOpen ? <div className="flex h-full w-[276px] flex-col px-3 py-4">
         <div className="flex items-center justify-between px-2 pb-6">
-          <Link href="/" className="flex items-center gap-2.5" onClick={onNewResearch}><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-900 text-sm font-semibold text-white">A</span><span className="text-sm font-semibold tracking-tight text-slate-900">Asteria Research</span></Link>
+          <Link href="/" className="flex items-center gap-2.5" onClick={onNewResearch}><img src="/img/asteria-logo.png" alt="" width={32} height={32} className="h-8 w-8 object-contain" /><span className="text-sm font-semibold tracking-tight text-slate-900">Bunny Research</span></Link>
           <button type="button" onClick={toggleSidebar} className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-white hover:text-slate-700" aria-label="收起导航栏"><span className="text-lg leading-none">‹</span></button>
         </div>
         <nav className="space-y-1" aria-label="主导航">
@@ -46,7 +51,7 @@ const ResearchSidebar: React.FC<ResearchSidebarProps> = ({ history, onSelectRese
         </nav>
         <div className="mt-7 flex min-h-0 flex-1 flex-col">
           <div className="flex items-center justify-between px-2"><span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">最近研究</span><span className="text-xs text-slate-400">{history.length}</span></div>
-          <div className="mt-3 min-h-0 flex-1 space-y-1 overflow-y-auto pr-1">{history.length === 0 ? <div className="rounded-lg border border-dashed border-slate-300 px-3 py-5 text-center text-xs leading-5 text-slate-400">完成一次研究后，记录会显示在这里。</div> : history.map((item) => <div key={item.id} className="group relative rounded-lg transition-colors hover:bg-white"><Link href={`/research/${item.id}`} onClick={() => { onSelectResearch(item.id); toggleSidebar(); }} className="block px-3 py-2.5 pr-8"><p className="truncate text-xs font-medium text-slate-700">{item.question}</p><p className="mt-1 text-[11px] text-slate-400">{formatTimestamp(item.timestamp || (item as any).updated_at || (item as any).created_at)}</p></Link><button type="button" onClick={(event) => { event.stopPropagation(); onDeleteResearch(item.id); }} className="absolute right-2 top-2.5 hidden rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-red-600 group-hover:block" aria-label="删除研究记录">×</button></div>)}</div>
+          <div className="mt-3 min-h-0 flex-1 space-y-1 overflow-y-auto pr-1">{history.length === 0 ? <div className="rounded-lg border border-dashed border-slate-300 px-3 py-5 text-center text-xs leading-5 text-slate-400">完成一次研究后，记录会显示在这里。</div> : history.map((item) => <div key={item.id} className="group relative rounded-lg transition-colors hover:bg-white"><Link href={`/research/${item.id}`} onClick={() => onSelectResearch(item.id)} className="block px-3 py-2.5 pr-8"><p className="truncate text-xs font-medium text-slate-700">{item.question}</p><p className="mt-1 text-[11px] text-slate-400">{formatTimestamp(item.timestamp || (item as any).updated_at || (item as any).created_at)}</p></Link><button type="button" onClick={(event) => { event.stopPropagation(); onDeleteResearch(item.id); }} className="absolute right-2 top-2.5 hidden rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-red-600 group-hover:block" aria-label="删除研究记录">×</button></div>)}</div>
         </div>
         <div className="mt-4 flex items-center justify-between rounded-lg border border-slate-200 bg-white/70 px-3 py-2.5 text-xs text-slate-500"><span>个人工作区</span><span className="h-2 w-2 rounded-full bg-emerald-500" title="本地服务已连接" /></div>
       </div> : <button type="button" onClick={toggleSidebar} className="flex h-12 w-12 items-center justify-center text-slate-500 hover:text-slate-900" aria-label="展开导航栏"><span className="text-lg">›</span></button>}

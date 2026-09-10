@@ -55,7 +55,7 @@ export default function ResearchPageLayout({
       
       <div 
         ref={contentRef}
-        className="min-h-[100vh] pt-[88px] md:pl-[276px]"
+        className={`min-h-[100vh] pt-[72px] ${showResult ? 'lg:pl-[276px]' : ''}`}
       >
         {children}
       </div>
@@ -63,7 +63,7 @@ export default function ResearchPageLayout({
       {showScrollButton && showResult && (
         <button
           onClick={onScrollToBottom}
-          className="fixed bottom-8 right-8 flex items-center justify-center w-12 h-12 text-gray-900 bg-gradient-to-br from-teal-500 to-teal-600 rounded-full hover:from-teal-600 hover:to-teal-700 transform hover:scale-105 transition-all duration-200 shadow-lg z-50 backdrop-blur-sm border border-teal-400/20"
+          className="fixed bottom-8 right-8 z-50 flex h-12 w-12 items-center justify-center rounded-full border border-white/90 bg-white/80 text-slate-600 shadow-[0_10px_30px_rgba(15,23,42,0.12)] backdrop-blur-xl transition hover:scale-105 hover:text-sky-700"
         >
           <svg 
             xmlns="http://www.w3.org/2000/svg" 

@@ -194,16 +194,15 @@ export default function CopilotResearchContent({
   return (
     <div 
       ref={containerRef}
-      className="flex flex-col lg:flex-row w-full h-screen gap-1 px-2 lg:px-2 relative"
+      className="relative flex h-[calc(100vh-72px)] w-full flex-col gap-2 bg-[oklch(98.7%_0.004_250)] px-2 lg:flex-row lg:px-3"
     >
-      {/* Subtle background gradient */}
-      <div className="absolute inset-0 bg-gradient-to-br from-white/5 via-gray-800/5 to-white/5 pointer-events-none"></div>
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_15%_10%,rgba(186,230,253,0.18),transparent_32%),radial-gradient(circle_at_85%_90%,rgba(226,232,240,0.4),transparent_38%)]" />
       
       {/* Research Results Panel (Left) */}
       <div 
         ref={researchPanelRef}
         data-panel="research"
-        className={`w-full ${isCopilotVisible ? '' : 'lg:w-full'} h-full overflow-hidden flex flex-col bg-white/30 backdrop-blur-sm rounded-lg border border-gray-200/50 shadow-lg ${!resizingActive ? 'transition-width duration-300' : ''}`}
+        className={`relative z-10 flex h-full w-full flex-col overflow-hidden rounded-2xl border border-white/90 bg-white/78 shadow-[0_14px_45px_rgba(15,23,42,0.08)] backdrop-blur-xl ${isCopilotVisible ? '' : 'lg:w-full'} ${!resizingActive ? 'transition-width duration-300' : ''}`}
         style={isCopilotVisible && !isMobile ? { width: `${researchPanelWidth}%` } : {}}
       >
         <ResearchPanel 
@@ -225,7 +224,7 @@ export default function CopilotResearchContent({
       {/* Resizer handle */}
       {isCopilotVisible && (
         <div
-          className={`hidden lg:flex flex-col items-center justify-center w-1 h-full cursor-col-resize ${resizingActive ? 'bg-teal-500/50' : 'bg-gray-100/30 hover:bg-teal-500/30'} transition-colors duration-150 active:bg-teal-500/50 z-10 mx-0.5`}
+          className={`z-10 mx-0.5 hidden h-full w-1 cursor-col-resize flex-col items-center justify-center rounded-full transition-colors duration-150 lg:flex ${resizingActive ? 'bg-sky-500/50' : 'bg-slate-200/70 hover:bg-sky-500/30'} active:bg-sky-500/50`}
           onMouseDown={handleResizeStart}
         >
           <div className="flex flex-col items-center justify-center">
@@ -239,7 +238,7 @@ export default function CopilotResearchContent({
         <div 
           ref={chatPanelRef}
           data-panel="chat"
-          className={`w-full h-1/2 lg:h-full overflow-hidden flex flex-col bg-white/30 backdrop-blur-sm rounded-lg border border-gray-200/50 shadow-lg ${!resizingActive ? 'transition-width duration-300' : ''} ${
+          className={`relative z-10 flex h-1/2 w-full flex-col overflow-hidden rounded-2xl border border-white/90 bg-white/78 shadow-[0_14px_45px_rgba(15,23,42,0.08)] backdrop-blur-xl lg:h-full ${!resizingActive ? 'transition-width duration-300' : ''} ${
             showAnimation ? 'animate-copilot-entrance' : ''
           }`}
           style={!isMobile ? { width: `${100 - researchPanelWidth}%` } : {}}
@@ -337,4 +336,4 @@ export default function CopilotResearchContent({
       `}</style>
     </div>
   );
-} 
+}

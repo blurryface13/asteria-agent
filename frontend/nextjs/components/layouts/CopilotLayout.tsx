@@ -1,9 +1,8 @@
-import React, { useRef, useEffect, useState } from "react";
+import React, { useRef } from "react";
 import { Toaster } from "react-hot-toast";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { ChatBoxSettings } from "@/types/data";
-import Image from "next/image";
 
 interface CopilotLayoutProps {
   children: React.ReactNode;
@@ -42,23 +41,20 @@ export default function CopilotLayout({
         toastOptions={toastOptions}
       />
       
-      {/* Show Header only when not in research mode */}
-      {!showResult && (
-        <Header 
-          loading={loading}
-          isStopped={isStopped}
-          showResult={showResult}
-          onStop={onStop || (() => {})}
-          onNewResearch={onNewResearch}
-          isCopilotMode={true}
-          chatBoxSettings={chatBoxSettings}
-          setChatBoxSettings={setChatBoxSettings}
-        />
-      )}
+      <Header
+        loading={loading}
+        isStopped={isStopped}
+        showResult={showResult}
+        onStop={onStop || (() => {})}
+        onNewResearch={onNewResearch}
+        isCopilotMode={true}
+        chatBoxSettings={chatBoxSettings}
+        setChatBoxSettings={setChatBoxSettings}
+      />
       
       <div 
         ref={contentRef}
-        className={`flex-1 flex flex-col md:pl-[276px] ${!showResult ? 'pt-[88px]' : ''}`}
+        className={`flex-1 flex flex-col ${showResult ? 'pt-[72px] lg:pl-[276px]' : 'pt-[72px]'}`}
       >
         {children}
       </div>

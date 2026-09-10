@@ -23,12 +23,11 @@ const InputArea: FC<InputAreaProps> = ({ promptValue, setPromptValue, handleSubm
   const handleChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => { const target = event.target; target.style.height = "auto"; target.style.height = `${target.scrollHeight}px`; setPromptValue(target.value); };
 
   if (isStopped) return null;
-  return <div className={`rounded-xl border bg-white shadow-[0_8px_30px_rgba(15,23,42,0.06)] transition-colors ${isFocused ? "border-teal-400 ring-4 ring-teal-500/10" : "border-slate-300"}`}>
+  return <div className={`rounded-2xl border bg-white/75 shadow-[0_12px_38px_rgba(15,23,42,0.08)] backdrop-blur-xl transition-colors ${isFocused ? "border-sky-400 ring-4 ring-sky-500/10" : "border-slate-200"}`}>
     <form onSubmit={(event) => { event.preventDefault(); submit(); }}>
-      <textarea ref={textareaRef} rows={3} required value={promptValue} disabled={disabled} onChange={handleChange} onKeyDown={handleKeyDown} onFocus={() => setIsFocused(true)} onBlur={() => setIsFocused(false)} placeholder="描述你的研究目标、问题或想验证的假设..." className="block min-h-[104px] w-full resize-none bg-transparent px-5 pt-4 text-[15px] leading-6 text-slate-800 outline-none placeholder:text-slate-400 disabled:cursor-wait" />
-      <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3">
-        <span className="text-xs text-slate-400">Asteria 会组织检索、分析与报告生成</span>
-        <button type="submit" disabled={disabled || !promptValue.trim()} className="flex h-9 w-9 items-center justify-center rounded-lg bg-teal-600 text-white transition-colors hover:bg-teal-700 disabled:cursor-not-allowed disabled:bg-slate-200">{disabled ? <TypeAnimation /> : <span className="text-lg leading-none">↑</span>}</button>
+      <textarea ref={textareaRef} rows={3} required value={promptValue} disabled={disabled} onChange={handleChange} onKeyDown={handleKeyDown} onFocus={() => setIsFocused(true)} onBlur={() => setIsFocused(false)} placeholder="What would you like to research today?" className="block min-h-[132px] w-full resize-none bg-transparent px-7 pt-6 text-[17px] leading-7 text-slate-800 outline-none placeholder:text-slate-400 disabled:cursor-wait" />
+      <div className="flex justify-end px-5 pb-5">
+        <button type="submit" disabled={disabled || !promptValue.trim()} className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-100 text-slate-500 transition-colors hover:bg-sky-100 hover:text-sky-700 disabled:cursor-not-allowed disabled:opacity-60">{disabled ? <TypeAnimation /> : <span className="text-2xl leading-none">→</span>}</button>
       </div>
     </form>
   </div>;

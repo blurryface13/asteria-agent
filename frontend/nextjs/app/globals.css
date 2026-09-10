@@ -69,8 +69,7 @@ body {
     vertical-align: middle;
     width: 7px;
     height: 7px;
-    /* background: #4b4b4b; */
-    background: white;
+    background: oklch(55% 0.02 250);
     border-radius: 50%;
     animation: loader 0.6s infinite alternate;
   }
