@@ -18,6 +18,7 @@ interface ResearchPageLayoutProps {
   onScrollToBottom?: () => void;
   toastOptions?: object;
   sidebarOpen?: boolean;
+  workspaceRail?: ReactNode;
 }
 
 export default function ResearchPageLayout({
@@ -33,13 +34,14 @@ export default function ResearchPageLayout({
   showScrollButton = false,
   onScrollToBottom,
   toastOptions = {},
-  sidebarOpen = true
+  sidebarOpen = true,
+  workspaceRail
 }: ResearchPageLayoutProps) {
   const defaultRef = useRef<HTMLDivElement>(null);
   const contentRef = mainContentRef || defaultRef;
 
   return (
-    <main className="flex min-h-screen flex-col bg-[#f8fafc]">
+    <main className="flex min-h-screen flex-col bg-[oklch(12%_0.012_255)] text-white">
       <Toaster 
         position="bottom-center" 
         toastOptions={toastOptions}
@@ -50,6 +52,7 @@ export default function ResearchPageLayout({
         isStopped={isStopped}
         showResult={showResult}
         sidebarOpen={sidebarOpen}
+        railOpen={Boolean(workspaceRail)}
         onStop={onStop || (() => {})}
         onNewResearch={onNewResearch}
         chatBoxSettings={chatBoxSettings}
@@ -58,10 +61,12 @@ export default function ResearchPageLayout({
       
       <div 
         ref={contentRef}
-        className={`min-h-[100vh] pt-[72px] ${showResult ? (sidebarOpen ? 'lg:pl-[276px]' : 'lg:pl-[56px]') : ''}`}
+        className={`min-h-[100vh] pt-[72px] ${workspaceRail ? (sidebarOpen ? 'lg:pl-[268px]' : 'lg:pl-[64px]') : ''}`}
       >
         {children}
       </div>
+
+      {workspaceRail}
       
       {showScrollButton && showResult && (
         <button

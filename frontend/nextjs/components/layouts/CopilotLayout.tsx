@@ -17,6 +17,7 @@ interface CopilotLayoutProps {
   toastOptions?: Record<string, any>;
   toggleSidebar?: () => void;
   sidebarOpen?: boolean;
+  workspaceRail?: React.ReactNode;
 }
 
 export default function CopilotLayout({
@@ -31,13 +32,14 @@ export default function CopilotLayout({
   mainContentRef,
   toastOptions = {},
   toggleSidebar,
-  sidebarOpen = true
+  sidebarOpen = true,
+  workspaceRail
 }: CopilotLayoutProps) {
   const defaultRef = useRef<HTMLDivElement>(null);
   const contentRef = mainContentRef || defaultRef;
   
   return (
-    <main className="flex min-h-screen flex-col bg-[#f8fafc]">
+    <main className="flex min-h-screen flex-col bg-[oklch(12%_0.012_255)] text-white">
       <Toaster 
         position="bottom-center" 
         toastOptions={toastOptions}
@@ -48,6 +50,7 @@ export default function CopilotLayout({
         isStopped={isStopped}
         showResult={showResult}
         sidebarOpen={sidebarOpen}
+        railOpen={Boolean(workspaceRail)}
         onStop={onStop || (() => {})}
         onNewResearch={onNewResearch}
         isCopilotMode={true}
@@ -57,10 +60,12 @@ export default function CopilotLayout({
       
       <div 
         ref={contentRef}
-        className={`flex-1 flex flex-col ${showResult ? `pt-[72px] ${sidebarOpen ? 'lg:pl-[276px]' : 'lg:pl-[56px]'}` : 'pt-[72px]'}`}
+        className={`flex-1 flex flex-col pt-[72px] ${workspaceRail ? (sidebarOpen ? 'lg:pl-[268px]' : 'lg:pl-[64px]') : ''}`}
       >
         {children}
       </div>
+
+      {workspaceRail}
       
       <div className="relative z-10">
         <Footer setChatBoxSettings={setChatBoxSettings} chatBoxSettings={chatBoxSettings} />

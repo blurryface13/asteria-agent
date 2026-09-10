@@ -8,6 +8,7 @@ interface MobileHomeScreenProps {
   promptValue: string;
   setPromptValue: React.Dispatch<React.SetStateAction<string>>;
   handleDisplayResult: (newQuestion: string) => Promise<void>;
+  onEnterWorkspace?: () => void;
   isLoading?: boolean;
   placeholder?: string;
   handleKeyDown?: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
@@ -17,6 +18,7 @@ export default function MobileHomeScreen({
   promptValue,
   setPromptValue,
   handleDisplayResult,
+  onEnterWorkspace,
   isLoading = false,
   placeholder = "What would you like to research today?",
   handleKeyDown
@@ -64,7 +66,12 @@ export default function MobileHomeScreen({
 
   const handleSubmit = useCallback(async () => {
     // Don't submit if empty, already loading, or already submitting
-    if (!promptValue.trim() || isLoading || isSubmitting) {
+    if ((!promptValue.trim() && !onEnterWorkspace) || isLoading || isSubmitting) {
+      return;
+    }
+
+    if (!promptValue.trim() && onEnterWorkspace) {
+      onEnterWorkspace();
       return;
     }
     
@@ -115,7 +122,7 @@ export default function MobileHomeScreen({
         submissionTimeoutRef.current = null;
       }
     }
-  }, [promptValue, isLoading, isSubmitting, handleDisplayResult]);
+  }, [promptValue, isLoading, isSubmitting, handleDisplayResult, onEnterWorkspace]);
 
   // Handle enter key for submission
   const handleKeyPress = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -131,9 +138,9 @@ export default function MobileHomeScreen({
   }, [handleKeyDown, handleSubmit]);
 
   return (
-    <div className="flex flex-col h-full w-full bg-gradient-to-b from-white to-gray-50 pb-16">
+    <div className="flex min-h-[calc(100vh-56px)] flex-col h-full w-full bg-[oklch(12%_0.012_255)] pb-16 text-white">
       {/* Header with logo and title */}
-      <div className="pt-10 px-6 text-center mb-8">
+      <div className="mb-8 px-6 pt-10 text-center">
         <div className="flex justify-center mb-3">
           <img
             src="/img/asteria-logo.png?v=bunny1"
@@ -143,17 +150,17 @@ export default function MobileHomeScreen({
             className="rounded-xl"
           />
         </div>
-        <p className="text-gray-500 text-sm">Say Hello to Bunny Research, your AI partner for instant insights and comprehensive research</p>
+        <p className="text-sm text-white/45">今天想研究什么？</p>
       </div>
 
       {/* Search Box */}
       <div className="px-4 md:px-8 w-full max-w-lg mx-auto">
         <div 
-          className={`relative bg-gray-50 border ${isFocused ? 'border-sky-500/70 input-glow-active' : 'border-gray-200/50 input-glow-subtle'} rounded-xl shadow-lg transition-all duration-300`}
+          className={`relative rounded-2xl border bg-white/[0.06] shadow-[0_18px_50px_rgba(2,6,23,0.24)] transition-all duration-300 ${isFocused ? 'border-sky-300/70 input-glow-active' : 'border-white/[0.12]'}`}
         >
           <textarea
             ref={textareaRef}
-            className="w-full bg-transparent text-gray-700 px-4 pt-4 pb-12 focus:outline-none resize-none rounded-xl"
+            className="w-full resize-none rounded-xl bg-transparent px-4 pb-12 pt-4 text-white/85 focus:outline-none"
             placeholder={placeholder}
             value={promptValue}
             onChange={handlePromptChange}
@@ -167,11 +174,11 @@ export default function MobileHomeScreen({
           <div className="absolute bottom-3 right-3">
             <button
               onClick={handleSubmit}
-              disabled={isLoading || isSubmitting || !promptValue.trim()}
+              disabled={isLoading || isSubmitting}
               className={`rounded-full p-2 ${
                 isLoading || isSubmitting || !promptValue.trim() 
-                  ? 'bg-gray-100 text-gray-400' 
-                  : 'bg-sky-600 text-gray-900 hover:bg-sky-500'
+                ? 'bg-white/[0.08] text-white/30'
+                : 'bg-[oklch(72%_0.15_55)] text-[oklch(18%_0.02_55)] hover:bg-[oklch(78%_0.14_55)]'
               } transition-colors focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-opacity-50`}
               aria-label="Start research"
             >
@@ -187,24 +194,24 @@ export default function MobileHomeScreen({
             </button>
           </div>
         </div>
-        <p className="text-xs text-gray-500 mt-2 text-center px-2">
-          Enter any research topic or specific question
+        <p className="mt-2 px-2 text-center text-xs text-white/30">
+          输入任务，或点击箭头进入工作区
         </p>
       </div>
 
       {/* Recent research history */}
       {recentHistory.length > 0 && (
         <div className="mt-10 px-4">
-          <h2 className="text-sm font-medium text-gray-500 mb-3 px-2">Recent Research</h2>
+          <h2 className="mb-3 px-2 text-sm font-medium text-white/50">最近任务</h2>
           <div className="space-y-2">
             {recentHistory.map((item) => (
               <button
                 key={item.id}
                 onClick={() => handleHistoryItemClick(item.id)}
-                className="w-full bg-gray-50/60 hover:bg-gray-50 rounded-lg p-3 text-left transition-colors focus:outline-none focus:ring-2 focus:ring-gray-600"
+                className="w-full rounded-xl border border-white/[0.08] bg-white/[0.04] p-3 text-left transition-colors hover:bg-white/[0.08] focus:outline-none focus:ring-2 focus:ring-sky-300/50"
               >
-                <h3 className="text-sm font-medium text-gray-700 line-clamp-1">{item.question}</h3>
-                <p className="text-xs text-gray-500 mt-1">
+                <h3 className="line-clamp-1 text-sm font-medium text-white/75">{item.question}</h3>
+                <p className="mt-1 text-xs text-white/35">
                   {new Date(item.timestamp || Date.now()).toLocaleString()}
                 </p>
               </button>
@@ -213,7 +220,7 @@ export default function MobileHomeScreen({
           <div className="mt-3 text-center">
             <a
               href="/history"
-              className="inline-block text-sm text-sky-600 hover:text-sky-600 transition-colors"
+              className="inline-block text-sm text-sky-300 transition-colors hover:text-sky-200"
             >
               View all research
             </a>
@@ -221,26 +228,7 @@ export default function MobileHomeScreen({
         </div>
       )}
 
-      {/* Features or tips section */}
-      <div className="mt-auto pb-6 pt-8 px-4">
-        <div className="bg-gray-50/40 border border-gray-200/50 rounded-xl p-4">
-          <h3 className="text-sm font-medium text-gray-600 mb-2">Research Tips</h3>
-          <ul className="text-xs text-gray-500 space-y-1.5">
-            <li className="flex items-start">
-              <span className="text-sky-600 mr-1.5">•</span>
-              <span>Ask specific questions for better results</span>
-            </li>
-            <li className="flex items-start">
-              <span className="text-sky-600 mr-1.5">•</span>
-              <span>Include key details like dates or context</span>
-            </li>
-            <li className="flex items-start">
-              <span className="text-sky-600 mr-1.5">•</span>
-              <span>Chat with your research results for deeper insights</span>
-            </li>
-          </ul>
-        </div>
-      </div>
+      <div className="mt-auto px-4 pt-10 text-center text-xs text-white/25">Asteria Research · 本地工作区</div>
 
       {/* Styling for line clamp and input glow */}
       <style jsx global>{`
@@ -312,4 +300,4 @@ export default function MobileHomeScreen({
       `}</style>
     </div>
   );
-} 
+}

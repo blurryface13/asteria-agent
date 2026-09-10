@@ -18,7 +18,7 @@ import CopilotLayout from "@/components/layouts/CopilotLayout";
 import ResearchContent from "@/components/research/ResearchContent";
 import CopilotResearchContent from "@/components/research/CopilotResearchContent";
 import HumanFeedback from "@/components/HumanFeedback";
-import ResearchSidebar from "@/components/ResearchSidebar";
+import WorkspaceRail from "@/components/WorkspaceRail";
 import { getAppropriateLayout } from "@/utils/getLayout";
 
 // Import the mobile components
@@ -888,6 +888,7 @@ export default function Home() {
           promptValue={promptValue}
           setPromptValue={setPromptValue}
           handleDisplayResult={handleMobileDisplayResult}
+          onEnterWorkspace={handleEnterWorkspace}
           isLoading={loading}
         />
       );
@@ -910,6 +911,17 @@ export default function Home() {
     }
   };
 
+  const workspaceRail = (
+    <WorkspaceRail
+      history={history}
+      isOpen={sidebarOpen}
+      onToggle={toggleSidebar}
+      onNewResearch={handleStartNewResearch}
+      onSelectResearch={handleSelectResearch}
+      onDeleteResearch={deleteResearch}
+    />
+  );
+
   return (
     <>
       {isMobile ? (
@@ -926,6 +938,7 @@ export default function Home() {
           toggleSidebar,
           sidebarOpen,
           isProcessingChat,
+          workspaceRail,
           children: renderMobileContent()
         })
       ) : !showResult ? (
@@ -942,6 +955,7 @@ export default function Home() {
           showScrollButton,
           onScrollToBottom: scrollToBottom,
           sidebarOpen,
+          workspaceRail,
           children: (
             <Hero
                 promptValue={promptValue}
@@ -966,17 +980,9 @@ export default function Home() {
           setChatBoxSettings,
           mainContentRef,
           sidebarOpen,
+          workspaceRail,
           children: (
             <div className="relative">
-              <ResearchSidebar
-                history={history}
-                onSelectResearch={handleSelectResearch}
-                onNewResearch={handleStartNewResearch}
-                onDeleteResearch={deleteResearch}
-                isOpen={sidebarOpen}
-                toggleSidebar={toggleSidebar}
-              />
-              
               {chatBoxSettings.layoutType === 'copilot' ? (
                 <CopilotResearchContent
                   orderedData={orderedData}

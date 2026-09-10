@@ -60,26 +60,26 @@ export default function MobileLayout({
   };
   
   return (
-    <main className="flex flex-col min-h-screen bg-white">
+    <main className="flex min-h-screen flex-col bg-[oklch(12%_0.012_255)] text-white">
       <Toaster 
         position="bottom-center" 
         toastOptions={toastOptions}
       />
       
       {/* Mobile Header - simplified and compact */}
-      <header className="fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-b border-gray-200/50 shadow-md">
+      <header className="fixed left-0 right-0 top-0 z-50 border-b border-white/[0.08] bg-[oklch(12%_0.012_255_/_0.90)] shadow-[0_10px_30px_rgba(2,6,23,0.18)] backdrop-blur-2xl">
         <div className="flex items-center justify-between px-4 h-14">
           {/* Logo */}
           <div className="flex items-center">
             <a href="/" className="flex items-center">
               <img
                 src="/img/asteria-logo.png?v=bunny1"
-                alt="Bunny Research"
+                alt="Asteria Research"
                 width={30}
                 height={30}
                 className="rounded-md mr-2"
               />
-              <span className="font-medium text-gray-700 text-sm">Bunny Research</span>
+              <span className="text-sm font-medium text-white/80">Asteria Research</span>
             </a>
           </div>
           
@@ -112,7 +112,7 @@ export default function MobileLayout({
             
             <a
               href="/knowledge"
-              className="p-2 rounded-full bg-gray-50/50 text-gray-600 hover:bg-gray-100"
+              className="rounded-xl bg-white/[0.06] p-2 text-white/55 hover:bg-white/[0.10]"
               aria-label="Knowledge Hub"
               title="文献知识库问答"
             >
@@ -128,7 +128,7 @@ export default function MobileLayout({
                 setShowSettings(false);
                 if (toggleSidebar) toggleSidebar();
               }}
-              className="p-2 rounded-full bg-gray-50/50 text-gray-600 hover:bg-gray-100"
+              className="rounded-xl bg-white/[0.06] p-2 text-white/55 hover:bg-white/[0.10]"
               aria-label="View history"
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -145,7 +145,7 @@ export default function MobileLayout({
                 setShowSettings(!showSettings);
                 setShowHistory(false);
               }}
-              className="p-2 rounded-full bg-gray-50/50 text-gray-600 hover:bg-gray-100"
+              className="rounded-xl bg-white/[0.06] p-2 text-white/55 hover:bg-white/[0.10]"
               aria-label="Settings"
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -319,7 +319,7 @@ export default function MobileLayout({
       </div>
       
       {/* Footer */}
-      <footer className="mt-auto py-3 px-4 text-center border-t border-gray-200/40 bg-white/80 backdrop-blur-sm">
+      <footer className="mt-auto border-t border-white/[0.08] bg-transparent px-4 py-3 text-center backdrop-blur-sm">
         <div className="flex items-center justify-center gap-5 mb-3">
           <a href="https://github.com/blurryface13" target="_blank" className="text-gray-500 hover:text-gray-600 transition-colors">
             <img
@@ -331,8 +331,8 @@ export default function MobileLayout({
             />
           </a>
         </div>
-        <div className="text-xs text-gray-500">
-          © {new Date().getFullYear()} Bunny Research. All rights reserved.
+        <div className="text-xs text-white/30">
+          © {new Date().getFullYear()} Asteria Research. All rights reserved.
         </div>
       </footer>
       

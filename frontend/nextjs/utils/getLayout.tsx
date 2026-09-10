@@ -20,6 +20,7 @@ interface LayoutProps {
   toggleSidebar?: () => void;
   isProcessingChat?: boolean;
   sidebarOpen?: boolean;
+  workspaceRail?: React.ReactNode;
 }
 
 export const getAppropriateLayout = ({
@@ -37,7 +38,8 @@ export const getAppropriateLayout = ({
   toastOptions = {},
   toggleSidebar,
   isProcessingChat = false,
-  sidebarOpen = true
+  sidebarOpen = true,
+  workspaceRail
 }: LayoutProps) => {
   const [isMobile, setIsMobile] = useState(false);
   
@@ -92,6 +94,7 @@ export const getAppropriateLayout = ({
         toastOptions={toastOptions}
         toggleSidebar={toggleSidebar}
         sidebarOpen={sidebarOpen}
+        workspaceRail={workspaceRail}
       >
         {children}
       </CopilotLayout>
@@ -113,6 +116,7 @@ export const getAppropriateLayout = ({
       onScrollToBottom={onScrollToBottom}
       toastOptions={toastOptions}
       sidebarOpen={sidebarOpen}
+      workspaceRail={workspaceRail}
     >
       {children}
     </ResearchPageLayout>

@@ -31,46 +31,41 @@ const Hero: FC<HeroProps> = ({
   };
 
   return (
-    <section className="min-h-[calc(100vh-72px)] w-full bg-[oklch(99.2%_0.003_250)] px-5 pb-16 pt-16 sm:px-8 sm:pt-20">
-      <div className="mx-auto flex w-full max-w-[1120px] flex-col items-center">
-        <img
-          src="/img/asteria-logo.png"
-          alt="Bunny Research"
-          width={72}
-          height={72}
-          className="h-[72px] w-[72px] object-contain"
-        />
+    <section className="relative min-h-[calc(100vh-72px)] w-full overflow-hidden bg-[oklch(12%_0.012_255)] px-5 pb-16 pt-16 text-white sm:px-8 sm:pt-20">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_18%,oklch(28%_0.045_255_/_0.34),transparent_34%),radial-gradient(circle_at_85%_85%,oklch(32%_0.055_70_/_0.10),transparent_28%)]" />
+      <div className="relative mx-auto flex w-full max-w-[1080px] flex-col items-center">
+        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/[0.06] ring-1 ring-white/[0.10] shadow-[0_12px_40px_rgba(4,8,20,0.24)]">
+          <img src="/img/asteria-logo.png" alt="Asteria Research" width={38} height={38} className="h-9 w-9 object-contain" />
+        </div>
 
-        <p className="mt-7 text-center text-[clamp(1.05rem,2vw,1.35rem)] font-medium tracking-[-0.02em] text-slate-500">
-          Say Hello to Bunny Research, your AI partner for instant insights and comprehensive research
-        </p>
+        <div className="mt-8 flex items-center gap-2 rounded-full border border-white/[0.10] bg-white/[0.05] px-3 py-1.5 text-xs text-white/55">
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+          自动识别研究意图
+        </div>
+        <h1 className="mt-5 text-center text-[clamp(2rem,4vw,3.2rem)] font-semibold tracking-[-0.055em] text-white/90">今天想研究什么？</h1>
 
-        <div className="mt-10 w-full max-w-[960px]">
+        <div className="mt-9 w-full max-w-[920px]">
           <InputArea
             promptValue={promptValue}
             setPromptValue={setPromptValue}
             handleSubmit={onEnterWorkspace ? (query) => query ? handleDisplayResult(query) : onEnterWorkspace() : handleDisplayResult}
             allowEmptySubmit={Boolean(onEnterWorkspace)}
           />
-          <p className="mt-4 text-center text-sm text-slate-500">
-            Enter any research topic or specific question
-          </p>
+          <p className="mt-4 text-center text-xs text-white/35">描述目标、问题或假设，Agent 会自动组织检索与分析</p>
         </div>
 
         {recentHistory.length > 0 && (
-          <section className="mt-20 w-full" aria-labelledby="recent-research-heading">
-            <h2 id="recent-research-heading" className="mb-5 text-2xl font-semibold tracking-[-0.03em] text-slate-700">
-              Recent Research
-            </h2>
-            <div className="divide-y divide-slate-200/80 rounded-2xl border border-slate-200/70 bg-white/65 shadow-[0_10px_35px_rgba(15,23,42,0.035)] backdrop-blur-xl">
+          <section className="mt-16 w-full" aria-labelledby="recent-research-heading">
+            <div className="mb-4 flex items-center justify-between"><h2 id="recent-research-heading" className="text-sm font-medium text-white/55">最近任务</h2><span className="text-xs text-white/30">{history.length} 条</span></div>
+            <div className="divide-y divide-white/[0.07] overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.035] backdrop-blur-xl">
               {recentHistory.map((item) => (
                 <a
                   key={item.id}
                   href={`/research/${item.id}`}
-                  className="block px-6 py-5 transition-colors first:rounded-t-2xl last:rounded-b-2xl hover:bg-white/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60"
+                  className="flex items-center justify-between gap-4 px-5 py-4 transition-colors hover:bg-white/[0.06] focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60"
                 >
-                  <p className="truncate text-lg font-medium text-slate-700">{item.question}</p>
-                  <p className="mt-1 text-sm text-slate-500">{formatTimestamp(item.timestamp)}</p>
+                  <p className="truncate text-sm font-medium text-white/75">{item.question}</p>
+                  <p className="shrink-0 text-xs text-white/30">{formatTimestamp(item.timestamp)}</p>
                 </a>
               ))}
             </div>

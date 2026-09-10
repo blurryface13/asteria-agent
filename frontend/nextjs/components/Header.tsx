@@ -11,6 +11,7 @@ interface HeaderProps {
   isStopped?: boolean;
   showResult?: boolean;
   sidebarOpen?: boolean;
+  railOpen?: boolean;
   onStop?: () => void;
   onNewResearch?: () => void;
   isCopilotMode?: boolean;
@@ -23,6 +24,7 @@ const Header = ({
   isStopped,
   showResult = false,
   sidebarOpen = true,
+  railOpen = false,
   onStop,
   onNewResearch,
   isCopilotMode,
@@ -30,20 +32,21 @@ const Header = ({
   setChatBoxSettings,
 }: HeaderProps) => {
   const jagentUrl = process.env.NEXT_PUBLIC_JAGENT_URL?.trim();
-  const iconButton = "flex h-10 w-10 items-center justify-center rounded-full border border-slate-200/70 bg-white/75 text-slate-500 shadow-[0_4px_14px_rgba(15,23,42,0.04)] backdrop-blur-xl transition hover:border-sky-200 hover:bg-white hover:text-sky-700";
+  const iconButton = "flex h-10 w-10 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.06] text-white/55 backdrop-blur-xl transition hover:border-white/[0.16] hover:bg-white/[0.10] hover:text-white";
+  const headerOffset = railOpen ? (sidebarOpen ? "lg:left-[268px]" : "lg:left-[64px]") : "";
 
   return (
-    <header className={`fixed inset-x-0 top-0 z-30 transition-[left] duration-200 ${showResult ? (sidebarOpen ? "lg:left-[276px]" : "lg:left-[56px]") : ""}`}>
-      <div className={`flex h-[72px] items-center justify-between border-b px-5 backdrop-blur-xl sm:px-8 lg:px-10 ${showResult ? "border-slate-200/70 bg-white/75" : "border-slate-200/80 bg-white/90"}`}>
+    <header className={`fixed inset-x-0 top-0 z-30 transition-[left] duration-200 ${headerOffset}`}>
+      <div className="flex h-[72px] items-center justify-between border-b border-white/[0.08] bg-[oklch(12%_0.012_255_/_0.82)] px-5 backdrop-blur-2xl sm:px-8 lg:px-10">
         {showResult ? (
-          <div className="flex items-center gap-2 text-sm font-medium text-slate-600">
-            <span className="h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_0_4px_rgba(16,185,129,0.12)]" />
-            <span>研究任务</span>
+          <div className="flex items-center gap-2 text-sm font-medium text-white/60">
+            <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_0_4px_rgba(52,211,153,0.12)]" />
+            <span>Research task</span>
           </div>
         ) : (
           <a href="/" className="flex items-center gap-3" aria-label="返回 Bunny Research 首页">
             <img src="/img/asteria-logo.png" alt="" width={38} height={38} className="h-9 w-9 object-contain" />
-            <span className="text-[1.1rem] font-semibold tracking-[-0.025em] text-slate-700">Bunny Research</span>
+            <span className="text-[1.1rem] font-semibold tracking-[-0.025em] text-white/85">Asteria Research</span>
           </a>
         )}
 
@@ -54,7 +57,7 @@ const Header = ({
           <a href="/rag-workspace" className={`${iconButton} hidden md:flex`} aria-label="打开 RAG 工作区" title="RAG 工作区">
             <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M5 4.5h14v15H5z" /><path d="M8 8h8M8 12h8M8 16h5" /></svg>
           </a>
-          {jagentUrl ? <a href={jagentUrl} target="_blank" rel="noreferrer" className="hidden rounded-full px-3 py-2 text-sm text-slate-500 transition hover:bg-slate-100 hover:text-slate-800 xl:block">个人主页</a> : null}
+          {jagentUrl ? <a href={jagentUrl} target="_blank" rel="noreferrer" className="hidden rounded-xl px-3 py-2 text-sm text-white/50 transition hover:bg-white/[0.08] hover:text-white xl:block">个人主页</a> : null}
           {chatBoxSettings && setChatBoxSettings && (
             <PreferencesModal
               chatBoxSettings={chatBoxSettings}
@@ -64,7 +67,7 @@ const Header = ({
             />
           )}
           {loading && !isStopped && <button type="button" onClick={onStop} className="rounded-full bg-rose-50 px-4 py-2 text-sm font-medium text-rose-600 transition hover:bg-rose-100">停止</button>}
-          {showResult && !loading && !isCopilotMode && <button type="button" onClick={onNewResearch} className="rounded-full bg-slate-800 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700">新建研究</button>}
+          {showResult && !loading && !isCopilotMode && <button type="button" onClick={onNewResearch} className="rounded-xl bg-white/[0.10] px-4 py-2 text-sm font-medium text-white/85 transition hover:bg-white/[0.16]">新建研究</button>}
         </div>
       </div>
     </header>
