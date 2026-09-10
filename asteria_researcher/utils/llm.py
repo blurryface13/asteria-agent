@@ -109,7 +109,16 @@ async def create_chat_completion(
     ) if recorder else None
     response = ""
     # create response
-    max_attempts = 1 if (stream and websocket is not None) else 10
+    # A broken proxy or unavailable provider must not leave a research run
+    # retrying indefinitely. Keep streaming requests single-shot, while local
+    # and batch requests use a small bounded retry budget that can be tuned
+    # without changing code.
+    configured_attempts = os.environ.get("ASTERIA_LLM_MAX_ATTEMPTS", "3")
+    try:
+        retry_attempts = max(1, min(int(configured_attempts), 10))
+    except ValueError:
+        retry_attempts = 3
+    max_attempts = 1 if (stream and websocket is not None) else retry_attempts
     last_exception: Exception | None = None
     for attempt in range(1, max_attempts + 1):
         try:

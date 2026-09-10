@@ -13,6 +13,7 @@ export const useWebSocket = (
 ) => {
   const [socket, setSocket] = useState<WebSocket | null>(null);
   const heartbeatInterval = useRef<number>();
+  const connectionTimeout = useRef<number>();
 
   // Cleanup function for heartbeat and socket on unmount
   useEffect(() => {
@@ -20,6 +21,9 @@ export const useWebSocket = (
       // Clear heartbeat interval
       if (heartbeatInterval.current) {
         clearInterval(heartbeatInterval.current);
+      }
+      if (connectionTimeout.current) {
+        clearTimeout(connectionTimeout.current);
       }
       
       // Close socket on unmount if it exists and is open
@@ -71,10 +75,18 @@ export const useWebSocket = (
       console.log(`Creating new WebSocket connection to ${ws_uri}`);
       const newSocket = new WebSocket(ws_uri);
       setSocket(newSocket);
+      connectionTimeout.current = window.setTimeout(() => {
+        if (newSocket.readyState === WebSocket.CONNECTING) {
+          newSocket.close(4000, "Connection timed out");
+        }
+      }, 15000);
 
       // WebSocket connection opened handler
       newSocket.onopen = () => {
         console.log('WebSocket connection opened');
+        if (connectionTimeout.current) {
+          clearTimeout(connectionTimeout.current);
+        }
         
         const domainFilters = JSON.parse(localStorage.getItem('domainFilters') || '[]');
         const domains = domainFilters ? domainFilters.map((domain: any) => domain.value) : [];
@@ -119,8 +131,15 @@ export const useWebSocket = (
           console.log(`Received WebSocket message: ${event.data.substring(0, 100)}...`);
           const data = JSON.parse(event.data);
           
-          if (data.type === 'error') {
-            console.error(`Server error: ${data.output}`);
+          if (data.type === 'error' || (data.type === 'logs' && data.content === 'error')) {
+            const errorMessage = data.output || 'Research task failed.';
+            console.error(`Server error: ${errorMessage}`);
+            setLoading(false);
+            setOrderedData((prevOrder) => [...prevOrder, {
+              type: 'logs',
+              content: 'error',
+              output: errorMessage,
+            } as Data]);
           } else if (data.type === 'human_feedback' && data.content === 'request') {
             setQuestionForHuman(data.output);
             setShowHumanFeedback(true);
@@ -153,7 +172,18 @@ export const useWebSocket = (
         if (heartbeatInterval.current) {
           clearInterval(heartbeatInterval.current);
         }
+        if (connectionTimeout.current) {
+          clearTimeout(connectionTimeout.current);
+        }
         setSocket(null);
+        if (event.code !== 1000 && event.code !== 1001 && event.code !== 4401) {
+          setLoading(false);
+          setOrderedData((prevOrder) => [...prevOrder, {
+            type: 'logs',
+            content: 'error',
+            output: event.reason || 'Research connection closed unexpectedly.',
+          } as Data]);
+        }
         // 4401 = backend rejected the handshake token (expired or JWT_SECRET
         // rotated). The stored session is stale - clear it and go to /login,
         // otherwise the research page spins forever with no feedback.
@@ -168,6 +198,7 @@ export const useWebSocket = (
         if (heartbeatInterval.current) {
           clearInterval(heartbeatInterval.current);
         }
+        setLoading(false);
       };
     }
   }, [socket, setOrderedData, setAnswer, setLoading, setShowHumanFeedback, setQuestionForHuman]);

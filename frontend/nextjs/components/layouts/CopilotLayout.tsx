@@ -16,6 +16,7 @@ interface CopilotLayoutProps {
   mainContentRef?: React.RefObject<HTMLDivElement>;
   toastOptions?: Record<string, any>;
   toggleSidebar?: () => void;
+  sidebarOpen?: boolean;
 }
 
 export default function CopilotLayout({
@@ -29,7 +30,8 @@ export default function CopilotLayout({
   setChatBoxSettings,
   mainContentRef,
   toastOptions = {},
-  toggleSidebar
+  toggleSidebar,
+  sidebarOpen = true
 }: CopilotLayoutProps) {
   const defaultRef = useRef<HTMLDivElement>(null);
   const contentRef = mainContentRef || defaultRef;
@@ -45,6 +47,7 @@ export default function CopilotLayout({
         loading={loading}
         isStopped={isStopped}
         showResult={showResult}
+        sidebarOpen={sidebarOpen}
         onStop={onStop || (() => {})}
         onNewResearch={onNewResearch}
         isCopilotMode={true}
@@ -54,7 +57,7 @@ export default function CopilotLayout({
       
       <div 
         ref={contentRef}
-        className={`flex-1 flex flex-col ${showResult ? 'pt-[72px] lg:pl-[276px]' : 'pt-[72px]'}`}
+        className={`flex-1 flex flex-col ${showResult ? `pt-[72px] ${sidebarOpen ? 'lg:pl-[276px]' : 'lg:pl-[56px]'}` : 'pt-[72px]'}`}
       >
         {children}
       </div>

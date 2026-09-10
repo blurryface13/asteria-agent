@@ -9,6 +9,7 @@ type HeroProps = {
   promptValue: string;
   setPromptValue: React.Dispatch<React.SetStateAction<string>>;
   handleDisplayResult: (query: string) => void;
+  onEnterWorkspace?: () => void;
   history?: ResearchHistoryItem[];
   chatBoxSettings?: ChatBoxSettings;
   setChatBoxSettings?: React.Dispatch<React.SetStateAction<ChatBoxSettings>>;
@@ -18,6 +19,7 @@ const Hero: FC<HeroProps> = ({
   promptValue,
   setPromptValue,
   handleDisplayResult,
+  onEnterWorkspace,
   history = [],
 }) => {
   const recentHistory = history.slice(0, 4);
@@ -47,7 +49,8 @@ const Hero: FC<HeroProps> = ({
           <InputArea
             promptValue={promptValue}
             setPromptValue={setPromptValue}
-            handleSubmit={handleDisplayResult}
+            handleSubmit={onEnterWorkspace ? (query) => query ? handleDisplayResult(query) : onEnterWorkspace() : handleDisplayResult}
+            allowEmptySubmit={Boolean(onEnterWorkspace)}
           />
           <p className="mt-4 text-center text-sm text-slate-500">
             Enter any research topic or specific question

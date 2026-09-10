@@ -10,6 +10,7 @@ interface HeaderProps {
   loading?: boolean;
   isStopped?: boolean;
   showResult?: boolean;
+  sidebarOpen?: boolean;
   onStop?: () => void;
   onNewResearch?: () => void;
   isCopilotMode?: boolean;
@@ -21,6 +22,7 @@ const Header = ({
   loading,
   isStopped,
   showResult = false,
+  sidebarOpen = true,
   onStop,
   onNewResearch,
   isCopilotMode,
@@ -31,7 +33,7 @@ const Header = ({
   const iconButton = "flex h-10 w-10 items-center justify-center rounded-full border border-slate-200/70 bg-white/75 text-slate-500 shadow-[0_4px_14px_rgba(15,23,42,0.04)] backdrop-blur-xl transition hover:border-sky-200 hover:bg-white hover:text-sky-700";
 
   return (
-    <header className={`fixed inset-x-0 top-0 z-30 transition-[left] duration-200 ${showResult ? "lg:left-[276px]" : ""}`}>
+    <header className={`fixed inset-x-0 top-0 z-30 transition-[left] duration-200 ${showResult ? (sidebarOpen ? "lg:left-[276px]" : "lg:left-[56px]") : ""}`}>
       <div className={`flex h-[72px] items-center justify-between border-b px-5 backdrop-blur-xl sm:px-8 lg:px-10 ${showResult ? "border-slate-200/70 bg-white/75" : "border-slate-200/80 bg-white/90"}`}>
         {showResult ? (
           <div className="flex items-center gap-2 text-sm font-medium text-slate-600">

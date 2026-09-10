@@ -324,6 +324,18 @@ export default function Home() {
     }
   };
 
+  const handleEnterWorkspace = () => {
+    setShowResult(true);
+    setSidebarOpen(true);
+    setLoading(false);
+    setIsStopped(false);
+    setIsInChatMode(false);
+    setQuestion("");
+    setAnswer("");
+    setOrderedData([]);
+    setCurrentResearchId(null);
+  };
+
   const handleDisplayResult = async (newQuestion: string) => {
     // Exit chat mode when starting a new research
     setIsInChatMode(false);
@@ -909,6 +921,7 @@ export default function Home() {
           setChatBoxSettings,
           mainContentRef,
           toggleSidebar,
+          sidebarOpen,
           isProcessingChat,
           children: renderMobileContent()
         })
@@ -925,11 +938,13 @@ export default function Home() {
           mainContentRef,
           showScrollButton,
           onScrollToBottom: scrollToBottom,
+          sidebarOpen,
           children: (
             <Hero
                 promptValue={promptValue}
                 setPromptValue={setPromptValue}
                 handleDisplayResult={handleDisplayResult}
+                onEnterWorkspace={handleEnterWorkspace}
                 history={history}
                 chatBoxSettings={chatBoxSettings}
                 setChatBoxSettings={setChatBoxSettings}
@@ -947,6 +962,7 @@ export default function Home() {
           chatBoxSettings,
           setChatBoxSettings,
           mainContentRef,
+          sidebarOpen,
           children: (
             <div className="relative">
               <ResearchSidebar

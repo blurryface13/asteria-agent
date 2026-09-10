@@ -128,7 +128,13 @@ async def handle_start_command(websocket, data: str, manager):
     ) = extract_command_data(json_data)
 
     if not task or not report_type:
-        print("Error: Missing task or report_type")
+        error_message = "Missing task or report_type"
+        logger.error(error_message)
+        await websocket.send_json({
+            "type": "error",
+            "content": "error",
+            "output": error_message,
+        })
         return
 
     # Create logs handler with websocket and task
@@ -326,9 +332,9 @@ async def handle_websocket_communication(websocket, manager):
                 logger.error(f"Error running task: {e}\n{traceback.format_exc()}")
                 await websocket.send_json(
                     {
-                        "type": "logs",
+                        "type": "error",
                         "content": "error",
-                        "output": f"Error: {e}",
+                        "output": f"Research task failed: {type(e).__name__}: {e}",
                     }
                 )
 

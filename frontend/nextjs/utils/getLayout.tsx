@@ -19,6 +19,7 @@ interface LayoutProps {
   toastOptions?: Record<string, any>;
   toggleSidebar?: () => void;
   isProcessingChat?: boolean;
+  sidebarOpen?: boolean;
 }
 
 export const getAppropriateLayout = ({
@@ -35,7 +36,8 @@ export const getAppropriateLayout = ({
   onScrollToBottom,
   toastOptions = {},
   toggleSidebar,
-  isProcessingChat = false
+  isProcessingChat = false,
+  sidebarOpen = true
 }: LayoutProps) => {
   const [isMobile, setIsMobile] = useState(false);
   
@@ -89,6 +91,7 @@ export const getAppropriateLayout = ({
         mainContentRef={mainContentRef}
         toastOptions={toastOptions}
         toggleSidebar={toggleSidebar}
+        sidebarOpen={sidebarOpen}
       >
         {children}
       </CopilotLayout>
@@ -109,8 +112,9 @@ export const getAppropriateLayout = ({
       showScrollButton={showScrollButton}
       onScrollToBottom={onScrollToBottom}
       toastOptions={toastOptions}
+      sidebarOpen={sidebarOpen}
     >
       {children}
     </ResearchPageLayout>
   );
-}; 
+};

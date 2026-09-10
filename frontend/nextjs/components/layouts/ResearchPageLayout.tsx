@@ -17,6 +17,7 @@ interface ResearchPageLayoutProps {
   showScrollButton?: boolean;
   onScrollToBottom?: () => void;
   toastOptions?: object;
+  sidebarOpen?: boolean;
 }
 
 export default function ResearchPageLayout({
@@ -31,7 +32,8 @@ export default function ResearchPageLayout({
   mainContentRef,
   showScrollButton = false,
   onScrollToBottom,
-  toastOptions = {}
+  toastOptions = {},
+  sidebarOpen = true
 }: ResearchPageLayoutProps) {
   const defaultRef = useRef<HTMLDivElement>(null);
   const contentRef = mainContentRef || defaultRef;
@@ -47,6 +49,7 @@ export default function ResearchPageLayout({
         loading={loading}
         isStopped={isStopped}
         showResult={showResult}
+        sidebarOpen={sidebarOpen}
         onStop={onStop || (() => {})}
         onNewResearch={onNewResearch}
         chatBoxSettings={chatBoxSettings}
@@ -55,7 +58,7 @@ export default function ResearchPageLayout({
       
       <div 
         ref={contentRef}
-        className={`min-h-[100vh] pt-[72px] ${showResult ? 'lg:pl-[276px]' : ''}`}
+        className={`min-h-[100vh] pt-[72px] ${showResult ? (sidebarOpen ? 'lg:pl-[276px]' : 'lg:pl-[56px]') : ''}`}
       >
         {children}
       </div>

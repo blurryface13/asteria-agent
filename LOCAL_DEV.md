@@ -13,6 +13,7 @@ cd /path/to/asteria-agent
 source /Users/dora/miniconda3/bin/activate dora
 export ASTERIA_DEV_AUTH_BYPASS=1
 export ASTERIA_DEV_AUTH_EMAIL="local@asteria.dev"
+export ASTERIA_LLM_MAX_ATTEMPTS=3
 uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
@@ -52,6 +53,8 @@ pkill -f "langgraph dev"
 
 ## 说明
 - 后端本地启动固定使用 dora 环境；改 Python 代码后重新运行启动命令
+- 本地 LLM 请求默认最多重试 3 次；代理或外部服务不可用时会明确结束任务并在前端展示错误，不会无限重试
+- 启动脚本会先对 `.env` 中的 Ollama embedding 模型执行真实 `/api/embed` 自检；macOS 26 上的 Ollama 版本低于 0.23.3 会直接停止并提示更新，不会启动一个必然在检索中途失败的后端
 - 前端固定使用 Node 22；`WATCHPACK_POLLING=true` 用于规避 macOS 低 watcher 配额导致的 `EMFILE` 启动异常，改 `.ts`/`.tsx` 仍会自动热更新
 - 设置弹窗使用浏览器 Portal 和 Framer Motion，已通过 `next/dynamic({ ssr: false })` 延迟到 hydration 后加载；避免 Next.js 开发态服务端渲染阻塞首页响应，同时保留完整设置功能
 - `.env` 放本地模型、搜索源、邮箱和鉴权配置；不要提交真实密钥
