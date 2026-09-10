@@ -81,7 +81,7 @@ const ChatInput: FC<TChatInputProps> = ({
       />
       
       <form
-        className="mx-auto flex pt-2 pb-2 w-full items-center justify-between rounded-lg border border-gray-200/50 bg-white/90 backdrop-blur-sm px-3 shadow-md relative overflow-hidden z-10"
+        className="relative z-10 mx-auto flex w-full items-center justify-between overflow-hidden rounded-xl border border-white/[0.10] bg-white/[0.06] px-3 pb-2 pt-2 shadow-[0_12px_34px_rgba(2,6,23,0.18)] backdrop-blur-xl"
         onSubmit={(e) => {
           e.preventDefault();
           if (!disabled && promptValue.trim()) {
@@ -98,7 +98,7 @@ const ChatInput: FC<TChatInputProps> = ({
           placeholder={placeholder}
           ref={textareaRef}
           className="focus-visible::outline-0 my-1 w-full pl-5 font-light not-italic leading-[normal] 
-          text-gray-600 placeholder-gray-400 outline-none focus-visible:ring-0 focus-visible:ring-offset-0 
+          text-white/80 placeholder-white/30 outline-none focus-visible:ring-0 focus-visible:ring-offset-0
           sm:text-base min-h-[4em] resize-none relative z-10 bg-transparent"
           disabled={disabled}
           value={promptValue}

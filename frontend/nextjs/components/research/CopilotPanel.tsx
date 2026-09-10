@@ -76,7 +76,7 @@ const CopilotPanel: React.FC<CopilotPanelProps> = ({
   return (
     <>
       {/* Panel Header */}
-      <div className="flex items-center justify-between border-b border-slate-200/70 bg-white/55 px-4 py-3 backdrop-blur-xl">
+      <div className="flex items-center justify-between border-b border-white/[0.08] bg-white/[0.035] px-4 py-3 backdrop-blur-xl">
         {/* Left side */}
         <div className="flex items-center">
           <a href="/" className="mr-3">
@@ -88,7 +88,7 @@ const CopilotPanel: React.FC<CopilotPanelProps> = ({
               className="rounded-md"
             />
           </a>
-          <h2 className="text-base font-semibold tracking-[-0.02em] text-slate-700">
+          <h2 className="text-base font-semibold tracking-[-0.02em] text-white/80">
             Report chat
           </h2>
         </div>
@@ -98,7 +98,7 @@ const CopilotPanel: React.FC<CopilotPanelProps> = ({
           {/* Connection status indicator */}
           <div className="flex items-center">
             <div className={`w-1.5 h-1.5 rounded-full ${loading || isProcessingChat ? 'bg-amber-500 animate-pulse' : 'bg-teal-500'} mr-2`}></div>
-            <span className="text-xs text-gray-500">{loading ? 'researching' : isProcessingChat ? 'thinking' : 'active'}</span>
+            <span className="text-xs text-white/35">{loading ? 'researching' : isProcessingChat ? 'thinking' : 'active'}</span>
           </div>
           
           {/* Toggle button */}
@@ -122,18 +122,18 @@ const CopilotPanel: React.FC<CopilotPanelProps> = ({
       {/* Chat Messages - Scrollable */}
       <div 
         ref={chatContainerRef} 
-        className="flex-1 overflow-y-auto bg-white/30 px-3 py-3 custom-scrollbar"
+        className="flex-1 overflow-y-auto bg-transparent px-3 py-3 custom-scrollbar"
       >
         {/* Status message - conditional on research state */}
         <div className="mb-4">
-          <div className="rounded-xl border border-slate-200/70 bg-white/65 p-3 shadow-[0_4px_18px_rgba(15,23,42,0.04)]">
+          <div className="rounded-xl border border-white/[0.08] bg-white/[0.04] p-3">
             <div className="flex items-start gap-3">
-              <div className="w-7 h-7 rounded-md bg-gray-50 flex items-center justify-center flex-shrink-0 text-gray-600 border border-gray-200/50">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-white/[0.08] bg-white/[0.06] text-white/55">
                 <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
                 </svg>
               </div>
-              <div className="text-gray-600 text-sm">
+              <div className="text-sm text-white/55">
                 {loading ? (
                   <p>Working on the report. Questions become available after the report is complete.</p>
                 ) : (
@@ -178,7 +178,7 @@ const CopilotPanel: React.FC<CopilotPanelProps> = ({
       </div>
 
       {/* Chat Input */}
-      <div className="border-t border-slate-200/70 bg-white/55 px-3 py-3 backdrop-blur-xl">
+      <div className="border-t border-white/[0.08] bg-white/[0.035] px-3 py-3 backdrop-blur-xl">
         {!isStopped && (
           <ChatInput
             promptValue={chatPromptValue}

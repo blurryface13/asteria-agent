@@ -41,7 +41,7 @@ const ResearchPanel: React.FC<ResearchPanelProps> = ({
   return (
     <>
       {/* Panel Header */}
-      <div className="flex items-center justify-between border-b border-slate-200/70 bg-white/55 px-4 py-3 backdrop-blur-xl">
+      <div className="flex items-center justify-between border-b border-white/[0.08] bg-white/[0.035] px-4 py-3 backdrop-blur-xl">
         {/* Left side - Empty div to maintain flex layout */}
         <div className="flex items-center">
         </div>
@@ -52,7 +52,7 @@ const ResearchPanel: React.FC<ResearchPanelProps> = ({
           {onNewResearch && (
             <button 
               onClick={onNewResearch}
-              className="flex items-center gap-1.5 rounded-full border border-sky-200/70 bg-sky-50/80 px-3 py-1.5 text-sm font-medium text-sky-700 transition-colors hover:bg-sky-100"
+              className="flex items-center gap-1.5 rounded-xl border border-white/[0.10] bg-white/[0.06] px-3 py-1.5 text-sm font-medium text-white/70 transition-colors hover:bg-white/[0.11] hover:text-white"
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 <line x1="12" y1="5" x2="12" y2="19"></line>
@@ -66,7 +66,7 @@ const ResearchPanel: React.FC<ResearchPanelProps> = ({
           {onShareClick && currentResearchId && (
             <button 
               onClick={onShareClick}
-              className="flex items-center gap-1.5 rounded-full border border-sky-600/20 bg-sky-600 px-3 py-1.5 text-sm text-white shadow-sm transition-colors hover:bg-sky-700"
+              className="flex items-center gap-1.5 rounded-xl border border-sky-300/20 bg-sky-300/90 px-3 py-1.5 text-sm text-[oklch(15%_0.02_255)] shadow-sm transition-colors hover:bg-sky-200"
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"></path>
@@ -81,7 +81,7 @@ const ResearchPanel: React.FC<ResearchPanelProps> = ({
           {!isCopilotVisible && setIsCopilotVisible && researchComplete && !loading && (
             <button 
               onClick={() => setIsCopilotVisible(true)}
-              className={`flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-700 px-3 py-1.5 text-sm text-white transition-colors hover:bg-slate-800 ${researchComplete ? 'animate-chat-button-pulse' : ''}`}
+              className={`flex items-center gap-1.5 rounded-xl border border-white/[0.10] bg-white/[0.10] px-3 py-1.5 text-sm text-white/85 transition-colors hover:bg-white/[0.16] ${researchComplete ? 'animate-chat-button-pulse' : ''}`}
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
@@ -92,7 +92,7 @@ const ResearchPanel: React.FC<ResearchPanelProps> = ({
         </div>
       </div>
       
-      <div className="flex-1 overflow-y-auto bg-white/30 p-3 custom-scrollbar">
+      <div className="flex-1 overflow-y-auto bg-transparent p-3 custom-scrollbar">
         {/* Filter out chat messages so they only show in the chat panel */}
         <div className="space-y-4 relative">          
           <ResearchResults
