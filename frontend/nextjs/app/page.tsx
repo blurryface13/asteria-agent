@@ -128,17 +128,20 @@ export default function Home() {
   };
 
   const handleChat = async (message: string) => {
-    if (!currentResearchId && !answer) {
-      // On mobile, if there's no research yet, treat this as a new research request
-      if (isMobile) {
-        // Show immediate feedback for better UX
-        setShowResult(true);
-        setPromptValue(message); // Keep the message visible
-        
-        // Start the research with the chat message
-        handleDisplayResult(message);
-        return;
-      }
+    const normalizedMessage = message.trim();
+    if (!normalizedMessage) return;
+
+    // Chat is a continuation of an existing report. Research creation has a
+    // separate composer and must never be reached from this handler, including
+    // on mobile. Previously the mobile branch forwarded an empty-context chat
+    // to handleDisplayResult(), which made the Chat entry unexpectedly start a
+    // new research task.
+    if (!answer.trim()) {
+      toast.error("请先完成一份研究报告；文献知识库问答请从知识库入口进入。", {
+        duration: 3500,
+        position: "bottom-center",
+      });
+      return;
     }
     
     setShowResult(true);
@@ -148,12 +151,12 @@ export default function Home() {
     // Create a user message
     const userMessage: ChatMessage = {
       role: 'user',
-      content: message,
+      content: normalizedMessage,
       timestamp: Date.now()
     };
     
     // Add question to display in research results immediately
-    const questionData: QuestionData = { type: 'question', content: message };
+    const questionData: QuestionData = { type: 'question', content: normalizedMessage };
     setOrderedData(prevOrder => [...prevOrder, questionData]);
     
     // Add user message to history asynchronously

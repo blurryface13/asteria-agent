@@ -7,6 +7,7 @@ type TChatInputProps = {
   setPromptValue: React.Dispatch<React.SetStateAction<string>>;
   handleSubmit: (query: string) => void;
   disabled?: boolean;
+  placeholder?: string;
 };
 
 // Debounce function to limit the rate at which a function can fire
@@ -27,10 +28,10 @@ const ChatInput: FC<TChatInputProps> = ({
   setPromptValue,
   handleSubmit,
   disabled,
+  placeholder = "Any questions about this report?",
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [isFocused, setIsFocused] = useState(false);
-  const placeholder = "Any questions about this report?";
 
   const resetHeight = () => {
     if (textareaRef.current) {
@@ -147,4 +148,4 @@ const ChatInput: FC<TChatInputProps> = ({
   );
 };
 
-export default ChatInput; 
+export default ChatInput;

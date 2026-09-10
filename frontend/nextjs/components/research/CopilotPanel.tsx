@@ -89,7 +89,7 @@ const CopilotPanel: React.FC<CopilotPanelProps> = ({
             />
           </a>
           <h2 className="text-base font-semibold tracking-[-0.02em] text-slate-700">
-            Bunny Research
+            Report chat
           </h2>
         </div>
         
@@ -135,9 +135,9 @@ const CopilotPanel: React.FC<CopilotPanelProps> = ({
               </div>
               <div className="text-gray-600 text-sm">
                 {loading ? (
-                  <p>Working on your research... I&apos;ll analyze the results once they&apos;re complete.</p>
+                  <p>Working on the report. Questions become available after the report is complete.</p>
                 ) : (
-                  <p>I&apos;ve analyzed all the research results and can answer any questions about it. How can I help?</p>
+                  <p>I can answer questions about this report and its cited findings.</p>
                 )}
               </div>
             </div>
@@ -185,6 +185,7 @@ const CopilotPanel: React.FC<CopilotPanelProps> = ({
             setPromptValue={setChatPromptValue}
             handleSubmit={handleChat}
             disabled={loading || isProcessingChat}
+            placeholder="Ask about this report..."
           />
         )}
         {isStopped && (

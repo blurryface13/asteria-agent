@@ -33,7 +33,8 @@ const ResearchPanel: React.FC<ResearchPanelProps> = ({
   loading,
   toggleSidebar
 }) => {
-  // Determine if research is complete (has answer) and copilot should be highlighted
+  // Chat is a report continuation, not an alternative way to start research.
+  // Keep the entry unavailable until there is a report context to answer from.
   const researchComplete = Boolean(answer && answer.length > 0);
   const [isNotificationDismissed, setIsNotificationDismissed] = useState(false);
   
@@ -77,7 +78,7 @@ const ResearchPanel: React.FC<ResearchPanelProps> = ({
           )}
           
           {/* Show Copilot button - only visible when copilot is hidden */}
-          {!isCopilotVisible && setIsCopilotVisible && (
+          {!isCopilotVisible && setIsCopilotVisible && researchComplete && !loading && (
             <button 
               onClick={() => setIsCopilotVisible(true)}
               className={`flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-700 px-3 py-1.5 text-sm text-white transition-colors hover:bg-slate-800 ${researchComplete ? 'animate-chat-button-pulse' : ''}`}
@@ -85,7 +86,7 @@ const ResearchPanel: React.FC<ResearchPanelProps> = ({
               <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
               </svg>
-              Chat
+              Ask report
             </button>
           )}
         </div>
