@@ -1,139 +1,39 @@
-import React from 'react';
-import Modal from './Settings/Modal';
-import { ChatBoxSettings } from '@/types/data';
+import React from "react";
+import dynamic from "next/dynamic";
+import { ChatBoxSettings } from "@/types/data";
+
+// The preferences dialog uses a browser portal and Framer Motion. Loading it
+// only after hydration keeps the server-rendered workbench response reliable
+// while preserving the full settings experience in the browser.
+const PreferencesModal = dynamic(() => import("./Settings/Modal"), { ssr: false });
 
 interface HeaderProps {
-  loading?: boolean;      // Indicates if research is currently in progress
-  isStopped?: boolean;    // Indicates if research was manually stopped
-  showResult?: boolean;   // Controls if research results are being displayed
-  onStop?: () => void;    // Handler for stopping ongoing research
-  onNewResearch?: () => void;  // Handler for starting fresh research
-  isCopilotMode?: boolean; // Indicates if we are in copilot mode
+  loading?: boolean;
+  isStopped?: boolean;
+  showResult?: boolean;
+  onStop?: () => void;
+  onNewResearch?: () => void;
+  isCopilotMode?: boolean;
   chatBoxSettings?: ChatBoxSettings;
   setChatBoxSettings?: React.Dispatch<React.SetStateAction<ChatBoxSettings>>;
 }
 
-const Header = ({
-  loading,
-  isStopped,
-  showResult,
-  onStop,
-  onNewResearch,
-  isCopilotMode,
-  chatBoxSettings,
-  setChatBoxSettings
-}: HeaderProps) => {
+const Header = ({ loading, isStopped, showResult, onStop, onNewResearch, isCopilotMode, chatBoxSettings, setChatBoxSettings }: HeaderProps) => {
   const jagentUrl = process.env.NEXT_PUBLIC_JAGENT_URL?.trim();
-
-  return (
-    <div className="fixed top-0 left-0 right-0 z-50">
-      {/* Pure transparent blur background */}
-      <div className="absolute inset-0 backdrop-blur-sm bg-transparent"></div>
-      
-      {/* Header container */}
-      <div className="container relative h-[60px] px-4 lg:h-[80px] lg:px-0 pt-4 pb-4">
-        {/* Workspace entries - top right */}
-        <div className="absolute right-4 top-4 flex items-center gap-2 xl:right-0">
-          <div className="hidden h-9 items-center gap-2 rounded-full border border-gray-200 bg-white/70 px-3 text-xs font-medium text-gray-500 shadow-sm backdrop-blur-sm 2xl:flex">
-            <span className="h-1.5 w-1.5 rounded-full bg-teal-500"></span>
-            <span>Research workspace</span>
-          </div>
-          <a
-            href="/knowledge"
-            className="flex h-9 items-center gap-1.5 rounded-full border border-gray-200 bg-white/85 px-3 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:border-teal-200 hover:bg-white hover:text-teal-700"
-            title="文献知识库问答"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
-              <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
-            </svg>
-            <span className="hidden sm:inline">知识库</span>
-          </a>
-          <a
-            href="/rag-workspace"
-            className="hidden h-9 items-center gap-1.5 rounded-full border border-gray-200 bg-white/85 px-3 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:border-teal-200 hover:bg-white hover:text-teal-700 lg:flex"
-            title="RAG workflow, trace, and evaluation"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M3 3v18h18"></path>
-              <path d="m7 14 3-3 3 2 5-6"></path>
-            </svg>
-            <span>RAG Lab</span>
-          </a>
-          {jagentUrl ? (
-            <a
-              href={jagentUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="hidden h-9 items-center gap-1.5 rounded-full border border-gray-200 bg-white/85 px-3 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:border-teal-200 hover:bg-white hover:text-teal-700 md:flex"
-              title="Open personal homepage"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M7 17 17 7"></path>
-                <path d="M7 7h10v10"></path>
-              </svg>
-              <span>Personal Home</span>
-            </a>
-          ) : (
-            <button
-              type="button"
-              disabled
-              className="hidden h-9 cursor-not-allowed items-center gap-1.5 rounded-full border border-gray-200 bg-white/60 px-3 text-sm font-medium text-gray-400 shadow-sm md:flex"
-              title="配置 NEXT_PUBLIC_JAGENT_URL 后启用"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M7 17 17 7"></path>
-                <path d="M7 7h10v10"></path>
-              </svg>
-              <span>Personal Home</span>
-            </button>
-          )}
-          {chatBoxSettings && setChatBoxSettings && (
-            <Modal
-              chatBoxSettings={chatBoxSettings}
-              setChatBoxSettings={setChatBoxSettings}
-              variant="compact"
-            />
-          )}
-        </div>
-
-        <div className="flex flex-col items-center">
-          {/* Logo/Home link */}
-          <a href="/">
-            <img
-              src="/img/asteria-logo.png?v=bunny1"
-              alt="logo"
-              width={60}
-              height={60}
-              className="lg:h-16 lg:w-16"
-            />
-          </a>
-          
-          {/* Action buttons container */}
-          <div className="flex gap-2 mt-2 transition-all duration-300 ease-in-out">
-            {/* Stop button - shown only during active research */}
-            {loading && !isStopped && (
-              <button
-                onClick={onStop}
-                className="flex items-center justify-center px-4 sm:px-6 h-9 sm:h-10 text-sm text-gray-900 bg-red-500 rounded-full hover:bg-red-600 transform hover:scale-105 transition-all duration-200 shadow-lg whitespace-nowrap min-w-[80px]"
-              >
-                Stop
-              </button>
-            )}
-            {/* New Research button - shown after stopping or completing research - but not in copilot mode */}
-            {(isStopped || !loading) && showResult && !isCopilotMode && (
-              <button
-                onClick={onNewResearch}
-                className="flex items-center justify-center px-4 sm:px-6 h-9 sm:h-10 text-sm text-white bg-teal-500 rounded-full hover:bg-teal-600 transform hover:scale-105 transition-all duration-200 shadow-lg whitespace-nowrap min-w-[120px]"
-              >
-                New Research
-              </button>
-            )}
-          </div>
-        </div>
+  return <header className="fixed inset-x-0 top-0 z-30 md:left-[276px]">
+    <div className="flex h-[72px] items-center justify-between border-b border-slate-200/80 bg-white/90 px-4 backdrop-blur-md sm:px-8 lg:px-10">
+      <a href="/" className="flex items-center gap-2 md:hidden"><span className="flex h-7 w-7 items-center justify-center rounded-md bg-slate-900 text-xs font-semibold text-white">A</span><span className="text-sm font-semibold text-slate-800">Asteria Research</span></a>
+      <div className="hidden items-center gap-2 text-xs text-slate-400 md:flex"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />本地工作区</div>
+      <div className="ml-auto flex items-center gap-2">
+        <a href="/knowledge" className="hidden rounded-md px-3 py-2 text-sm text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 sm:block">知识库</a>
+        <a href="/rag-workspace" className="hidden rounded-md px-3 py-2 text-sm text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 lg:block">RAG 工作区</a>
+        {jagentUrl ? <a href={jagentUrl} target="_blank" rel="noreferrer" className="hidden rounded-md px-3 py-2 text-sm text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 xl:block">个人主页</a> : null}
+        {chatBoxSettings && setChatBoxSettings && <PreferencesModal chatBoxSettings={chatBoxSettings} setChatBoxSettings={setChatBoxSettings} variant="compact" />}
+        {loading && !isStopped && <button type="button" onClick={onStop} className="rounded-md bg-red-50 px-3 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-100">停止</button>}
+        {showResult && !loading && !isCopilotMode && <button type="button" onClick={onNewResearch} className="rounded-md bg-teal-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-teal-700">新建研究</button>}
       </div>
     </div>
-  );
+  </header>;
 };
 
 export default Header;

@@ -36,7 +36,7 @@ export default function CopilotLayout({
   const contentRef = mainContentRef || defaultRef;
   
   return (
-    <main className="flex flex-col min-h-screen">
+    <main className="flex min-h-screen flex-col bg-[#f8fafc]">
       <Toaster 
         position="bottom-center" 
         toastOptions={toastOptions}
@@ -58,7 +58,7 @@ export default function CopilotLayout({
       
       <div 
         ref={contentRef}
-        className={`flex-1 flex flex-col ${!showResult ? 'pt-[120px]' : ''}`}
+        className={`flex-1 flex flex-col md:pl-[276px] ${!showResult ? 'pt-[88px]' : ''}`}
       >
         {children}
       </div>

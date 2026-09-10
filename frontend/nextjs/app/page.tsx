@@ -74,7 +74,7 @@ export default function Home() {
   const [allLogs, setAllLogs] = useState<any[]>([]);
   const [isStopped, setIsStopped] = useState(false);
   const mainContentRef = useRef<HTMLDivElement>(null);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [currentResearchId, setCurrentResearchId] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(false);
   const [isProcessingChat, setIsProcessingChat] = useState(false);

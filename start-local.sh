@@ -28,6 +28,11 @@ export PATH="$PYTHON_ENV_DIR/bin:$PATH"
 # weasyprint(PDF生成)需要 homebrew 的 pango 等原生库
 export DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib
 export PYDANTIC_DISABLE_PLUGINS=1
+# Local-only development mode: keep the real login flow available, but allow
+# this machine's smoke tests to exercise the research path without email OTP.
+# Do not enable this flag in a shared or production environment.
+export ASTERIA_DEV_AUTH_BYPASS=1
+export ASTERIA_DEV_AUTH_EMAIL="local@asteria.dev"
 # 不用 --reload:它默认监听整个项目目录,前端 .next 编译产物持续变化会把后端
 # 拖进无限重载导致 :8000 不可用。本地用不需要热重载;改后端代码后重跑本脚本即可。
 nohup "$PYTHON_ENV_DIR/bin/python3" -m uvicorn main:app --host 0.0.0.0 --port 8000 > /tmp/asteria-backend.log 2>&1 &
@@ -50,6 +55,7 @@ export PATH="/opt/homebrew/opt/node@22/bin:$PATH"
 export NEXT_TELEMETRY_DISABLED=1
 export WATCHPACK_POLLING=true
 export WATCHPACK_POLL_INTERVAL=1000
+export NEXT_PUBLIC_ASTERIA_DEV_AUTH_BYPASS=1
 nohup ./node_modules/.bin/next dev -H 127.0.0.1 -p 3000 > /tmp/asteria-frontend.log 2>&1 &
 echo "  frontend PID: $!  日志: /tmp/asteria-frontend.log  (node $(node -v))"
 

@@ -6,12 +6,12 @@ import AuthGuard from "@/components/AuthGuard";
 import "./globals.css";
 import Script from 'next/script';
 
-let title = "Bunny Research";
+let title = "Asteria Research";
 let description =
   "LLM based autonomous agent that conducts local and web research on any topic and generates a comprehensive report with citations.";
 let url = "https://github.com/blurryface13";
 let ogimage = "/favicon.ico?v=bunny1";
-let sitename = "Bunny Research";
+let sitename = "Asteria Research";
 
 export const metadata: Metadata = {
   metadataBase: new URL(url),
