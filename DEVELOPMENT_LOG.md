@@ -49,6 +49,14 @@
 
 计划按两个层级维护：第一层是大方向，第二层是可以独立实现、测试和提交的功能任务。
 
+### 2026-09-11：持久化与项目/对话层级（第一笔实现）
+
+- 现状确认：报告已经有 PostgreSQL 存储，但项目草稿和对话消息仍主要依赖浏览器 `localStorage`；刷新页面会丢失未同步的项目层级和会话关系。
+- 参考 JAgent 后确定边界：PostgreSQL 保存项目、对话、消息和报告索引等长期事实；Redis 只保留验证码、短期状态等易失数据；向量库继续服务 RAG，不承担会话主数据。
+- 已实现：新增 `workspace_projects`、`workspace_conversations`、`workspace_messages` 表及幂等启动建表；新增按用户隔离的项目、对话、消息 CRUD API。
+- 当前提交：`backend/auth/workspace_*` 与 `backend/auth/schema_bootstrap.py`；现有报告 API 暂保持兼容，尚未把前端从 localStorage 切换到 Workspace API。
+- 下一笔实现：前端服务端优先加载项目/对话，localStorage 只保留草稿输入；创建研究任务时建立 conversation，并把报告与 conversation/project 建立关联。
+
 ### 大方向一：运行稳定性与可观测性
 
 1. **运行记录对象统一**

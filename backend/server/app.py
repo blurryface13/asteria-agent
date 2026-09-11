@@ -33,6 +33,8 @@ from server.websocket_manager import run_agent
 from backend.auth.report_store_pg import PgReportStore
 
 from backend.auth.routes import router as auth_router
+from backend.auth.schema_bootstrap import initialize_database
+from backend.auth.workspace_routes import router as workspace_router
 from backend.knowledge.routes import router as knowledge_router
 from backend.auth.dependencies import get_current_user_email, get_current_user_email_from_query
 
@@ -88,7 +90,8 @@ async def lifespan(app: FastAPI):
     else:
         logger.warning(f"Frontend directory not found: {frontend_path}")
     
-    logger.info("Asteria Researcher API ready - local mode (no database persistence)")
+    await initialize_database()
+    logger.info("Asteria Researcher API ready - PostgreSQL persistence enabled")
     yield
     # Shutdown
     logger.info("Research API shutting down")
@@ -125,6 +128,7 @@ app.add_middleware(
 
 # Auth routes (login/verify-code) - deliberately unprotected, everything else is behind a token
 app.include_router(auth_router)
+app.include_router(workspace_router)
 app.include_router(knowledge_router)
 from backend.doc_agent.routes import router as doc_agent_router
 app.include_router(doc_agent_router)
