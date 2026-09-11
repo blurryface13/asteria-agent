@@ -42,6 +42,57 @@ class Action(BaseModel):
     outcome: Literal["completed", "incomplete"] = "completed"
 
 
+def _normalize_plan_ids(payload):
+    """Repair only duplicate/invalid planner identifiers, preserving plan semantics."""
+    try:
+        data = json.loads(payload)
+    except (TypeError, json.JSONDecodeError):
+        return payload
+    if not isinstance(data, dict):
+        return payload
+
+    used_goal_ids = set()
+    used_process_ids = set()
+    next_goal_id = 1
+    next_process_id = 1
+
+    def goal_id(value):
+        nonlocal next_goal_id
+        if isinstance(value, str) and re.fullmatch(r"g[1-9][0-9]*", value) and value not in used_goal_ids:
+            used_goal_ids.add(value)
+            return value
+        while f"g{next_goal_id}" in used_goal_ids:
+            next_goal_id += 1
+        value = f"g{next_goal_id}"
+        used_goal_ids.add(value)
+        next_goal_id += 1
+        return value
+
+    def process_id(value):
+        nonlocal next_process_id
+        if isinstance(value, str) and re.fullmatch(r"p[1-9][0-9]*", value) and value not in used_process_ids:
+            used_process_ids.add(value)
+            return value
+        while f"p{next_process_id}" in used_process_ids:
+            next_process_id += 1
+        value = f"p{next_process_id}"
+        used_process_ids.add(value)
+        next_process_id += 1
+        return value
+
+    for goal in data.get("required_goals", []):
+        if isinstance(goal, dict):
+            goal["id"] = goal_id(goal.get("id"))
+    for requirement in data.get("process_requirements", []):
+        if not isinstance(requirement, dict):
+            continue
+        requirement["id"] = process_id(requirement.get("id"))
+        for goal in requirement.get("related_goals", []):
+            if isinstance(goal, dict):
+                goal["id"] = goal_id(goal.get("id"))
+    return json.dumps(data, ensure_ascii=False)
+
+
 class AutonomousReview:
     def __init__(self, model, embeddings, emit, approve, root=Path("outputs"), *, max_actions=None, online_rag=True):
         if type(online_rag) is not bool:
@@ -151,6 +202,10 @@ class AutonomousReview:
                 {"task": self.query, "scope": scope, "candidate_plan": raw,
                  "validation_error": str(error)})
             try:
+                # The model may acknowledge the repair request but return the same
+                # duplicate IDs. Renumbering is a structural, deterministic fix;
+                # semantic fields and user quotes remain untouched.
+                repaired = _normalize_plan_ids(repaired)
                 plan = ReviewPlan.model_validate_json(repaired)
                 validate_contract(plan, scope)
             except (ValueError, TypeError) as repair_error:
@@ -158,7 +213,7 @@ class AutonomousReview:
                                  phase=phase, error=str(repair_error), severity="fatal")
                 raise ValueError("规划契约修复失败：" + str(repair_error)) from repair_error
             await self.event("lead", "plan_repair", "completed", "规划契约修复通过，继续研究",
-                             phase=phase)
+                             phase=phase, strategy="llm_then_deterministic_id_normalization")
             return plan
 
     async def research(self):

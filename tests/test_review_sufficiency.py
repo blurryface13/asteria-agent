@@ -92,6 +92,29 @@ def test_planner_contract_gets_one_explicit_repair_turn(tmp_path):
     assert len(calls) == 2
 
 
+def test_planner_contract_repairs_duplicate_ids_when_model_repeats_candidate(tmp_path):
+    task = "请比较注入方法并总结实验结论"
+    invalid = {"scope": task, "perspectives": [{"name": "方法", "query": "方法"}],
+               "required_goals": [
+                   {"id": "g1", "description": "比较注入方法", "user_quote": "比较注入方法"},
+                   {"id": "g1", "description": "总结实验结论", "user_quote": "总结实验结论"}],
+               "process_requirements": [], "delivery_constraints": [], "optional_extensions": []}
+    calls = []
+
+    async def model(system, payload):
+        calls.append(payload)
+        return json.dumps(invalid, ensure_ascii=False)
+
+    async def emit(*args, **kwargs):
+        pass
+
+    review = AutonomousReview(model, None, emit, None, tmp_path, online_rag=False)
+    review.query = task
+    plan = asyncio.run(review.plan_with_contract("plan", {"task": task}, task, "initial"))
+    assert [goal.id for goal in plan.required_goals] == ["g1", "g2"]
+    assert len(calls) == 2
+
+
 def test_server_attaches_exact_source_text_for_selected_evidence_id():
     catalog = evidence_catalog(EVIDENCE, {URL})
     data = finding(catalog)
