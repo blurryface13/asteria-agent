@@ -156,9 +156,26 @@ export const useResearchHistory = () => {
   
   // Save new research
   const saveResearch = async (question: string, answer: string, orderedData: Data[]) => {
+    let workspaceConversationCreated = false;
+    const id = uuidv4();
     try {
-      // Generate a unique ID
-      const id = uuidv4();
+      // Keep the report and conversation addressable by one stable ID. The
+      // report API remains compatible, while the workspace API owns the
+      // project/conversation hierarchy.
+      const conversationResponse = await authFetch('/api/workspace/conversations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id,
+          title: question.trim().slice(0, 255) || '新任务',
+          mode: 'research',
+          metadata: { source: 'research-history' },
+        }),
+      });
+      if (!conversationResponse.ok) {
+        throw new Error(`workspace conversation API error: ${conversationResponse.status}`);
+      }
+      workspaceConversationCreated = true;
       
       // Save to backend
       const response = await authFetch('/api/reports', {
@@ -205,6 +222,13 @@ export const useResearchHistory = () => {
       }
     } catch (error) {
       console.error('Error saving research:', error);
+      if (workspaceConversationCreated) {
+        try {
+          await authFetch(`/api/workspace/conversations/${id}`, { method: 'DELETE' });
+        } catch (cleanupError) {
+          console.error('Error cleaning up workspace conversation:', cleanupError);
+        }
+      }
       toast.error('Failed to save research to server. Saved locally only.');
       
       // Fallback: save to localStorage only
@@ -501,4 +525,4 @@ export const useResearchHistory = () => {
     getChatMessages,
     clearHistory
   };
-}; 
+};

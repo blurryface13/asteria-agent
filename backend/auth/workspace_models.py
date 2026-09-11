@@ -16,6 +16,7 @@ class ProjectUpdateRequest(BaseModel):
 
 
 class ConversationCreateRequest(BaseModel):
+    id: str | None = Field(default=None, min_length=1, max_length=100)
     title: str = Field(default="新任务", min_length=1, max_length=255)
     mode: str = Field(default="research", min_length=1, max_length=64)
     metadata: dict[str, Any] = Field(default_factory=dict)

@@ -7,6 +7,7 @@ import { markdownToHtml } from "@/helpers/markdownHelper";
 import Icon from "./Icon";
 import s from "./harness.module.css";
 import LatexPreview from "./LatexPreview";
+import { useWorkspace } from "@/hooks/useWorkspace";
 
 interface Props {
   history: ResearchHistoryItem[];
@@ -199,8 +200,8 @@ export default function ResearchHarness(p: Props) {
   const [mode, setMode] = useState<"research" | "chat">("research");
   const [username, setUsername] = useState("bunny"),
     [search, setSearch] = useState("");
-  const [projects, setProjects] = useState<string[]>([]),
-    [projectName, setProjectName] = useState("");
+  const [projectName, setProjectName] = useState("");
+  const { projects, conversations, loading: workspaceLoading, error: workspaceError, createProject } = useWorkspace();
   const [notice, setNotice] = useState(""),
     [sourceView, setSourceView] = useState(false);
   const dialog = useRef<HTMLDialogElement>(null),
@@ -208,13 +209,6 @@ export default function ResearchHarness(p: Props) {
   useEffect(() => {
     setRail(window.innerWidth >= 900);
     setUsername(localStorage.getItem("asteria.displayName") || "bunny");
-    try {
-      const saved = JSON.parse(
-        localStorage.getItem("asteria.projectDrafts") || "[]",
-      );
-      if (Array.isArray(saved))
-        setProjects(saved.filter((v) => typeof v === "string"));
-    } catch {}
   }, []);
   useEffect(() => {
     if (modal) {
@@ -329,18 +323,18 @@ export default function ResearchHarness(p: Props) {
               项目 <Icon name="down" size={14} />
             </summary>
             {nav("新建项目", "folder", () => open("新建项目"))}
-            {projects.map((name) => (
+            {projects.map((project) => (
               <button
                 className={s.project}
-                key={name}
+                key={project.id}
                 onClick={() => {
                   open("项目");
-                  setProjectName(name);
+                  setProjectName(project.name);
                 }}
               >
                 <Icon name="folder" size={17} />
-                {name}
-                <small>草稿</small>
+                {project.name}
+                <small>已保存</small>
               </button>
             ))}
           </details>
@@ -912,7 +906,9 @@ export default function ResearchHarness(p: Props) {
               </>
             ) : modal === "新建项目" ? (
               <>
-                <p>创建本地项目草稿。工作目录绑定与任务归属待后端接入。</p>
+                <p>创建可持久化项目。后续研究任务和工作目录可以归属到这里。</p>
+                {workspaceError && <div className={s.pendingBadge}>项目服务不可用：{workspaceError}</div>}
+                {workspaceLoading && <div className={s.pendingBadge}>正在加载项目…</div>}
                 <label>
                   项目名称
                   <input
@@ -924,26 +920,23 @@ export default function ResearchHarness(p: Props) {
                 <button
                   className={s.primary}
                   disabled={!projectName.trim()}
-                  onClick={() => {
-                    const next = Array.from(
-                      new Set([...projects, projectName.trim()]),
-                    );
-                    setProjects(next);
-                    localStorage.setItem(
-                      "asteria.projectDrafts",
-                      JSON.stringify(next),
-                    );
-                    setProjectName("");
-                    setModal("");
+                  onClick={async () => {
+                    try {
+                      await createProject(projectName.trim());
+                      setProjectName("");
+                      setModal("");
+                    } catch (cause) {
+                      setNotice(cause instanceof Error ? cause.message : "项目创建失败");
+                    }
                   }}
                 >
-                  创建草稿
+                  创建项目
                 </button>
               </>
             ) : modal === "项目" ? (
               <>
                 <h3>{projectName}</h3>
-                <p>本地草稿。目录绑定、成员和任务关联尚未接入。</p>
+                <p>服务端项目已保存。目录绑定、成员和任务关联将继续接入。</p>
               </>
             ) : modal === "案例" ? (
               <div className={s.exampleList}>

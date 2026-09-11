@@ -4,7 +4,7 @@
 -- can be used before an email has completed the login flow.
 
 CREATE TABLE IF NOT EXISTS workspace_projects (
-    id VARCHAR(36) PRIMARY KEY,
+    id VARCHAR(100) PRIMARY KEY,
     user_email VARCHAR(255) NOT NULL,
     name VARCHAR(120) NOT NULL,
     workspace_path TEXT,
@@ -17,9 +17,9 @@ CREATE INDEX IF NOT EXISTS idx_workspace_projects_user_updated
     ON workspace_projects(user_email, updated_at DESC);
 
 CREATE TABLE IF NOT EXISTS workspace_conversations (
-    id VARCHAR(36) PRIMARY KEY,
+    id VARCHAR(100) PRIMARY KEY,
     user_email VARCHAR(255) NOT NULL,
-    project_id VARCHAR(36),
+    project_id VARCHAR(100),
     title VARCHAR(255) NOT NULL,
     mode VARCHAR(64) NOT NULL DEFAULT 'research',
     status VARCHAR(32) NOT NULL DEFAULT 'active',
@@ -37,8 +37,8 @@ CREATE INDEX IF NOT EXISTS idx_workspace_conversations_project_updated
     ON workspace_conversations(project_id, updated_at DESC);
 
 CREATE TABLE IF NOT EXISTS workspace_messages (
-    id VARCHAR(36) PRIMARY KEY,
-    conversation_id VARCHAR(36) NOT NULL,
+    id VARCHAR(100) PRIMARY KEY,
+    conversation_id VARCHAR(100) NOT NULL,
     role VARCHAR(32) NOT NULL,
     content TEXT NOT NULL,
     metadata JSONB NOT NULL DEFAULT '{}',
@@ -50,3 +50,11 @@ CREATE TABLE IF NOT EXISTS workspace_messages (
 
 CREATE INDEX IF NOT EXISTS idx_workspace_messages_conversation_sequence
     ON workspace_messages(conversation_id, sequence_no);
+
+-- Existing local databases may have been created during the first draft with
+-- VARCHAR(36) identifiers. Widen them without dropping any user data.
+ALTER TABLE workspace_projects ALTER COLUMN id TYPE VARCHAR(100);
+ALTER TABLE workspace_conversations ALTER COLUMN id TYPE VARCHAR(100);
+ALTER TABLE workspace_conversations ALTER COLUMN project_id TYPE VARCHAR(100);
+ALTER TABLE workspace_messages ALTER COLUMN id TYPE VARCHAR(100);
+ALTER TABLE workspace_messages ALTER COLUMN conversation_id TYPE VARCHAR(100);

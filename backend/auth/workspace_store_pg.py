@@ -190,10 +190,11 @@ class PgWorkspaceStore:
         mode: str,
         metadata: dict[str, Any],
         project_id: str | None = None,
+        conversation_id: str | None = None,
     ) -> dict[str, Any]:
         if project_id is not None:
             await self.get_project(project_id, user_email)
-        conversation_id = str(uuid4())
+        conversation_id = conversation_id or str(uuid4())
         now = datetime.now(timezone.utc)
         pool = await get_pool()
         async with pool.acquire() as conn:

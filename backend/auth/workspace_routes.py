@@ -81,6 +81,7 @@ async def create_conversation(
             request.mode,
             request.metadata,
             project_id,
+            request.id,
         )
     except WorkspaceNotFound as exc:
         raise _not_found(exc) from exc
