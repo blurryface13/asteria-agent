@@ -27,32 +27,33 @@ export const useResearchHistory = () => {
           setHistory(localHistory);
         }
         
-        // Then try to fetch from server, but only for items we have locally
+        // The database is the source of truth for saved reports. Local
+        // storage is only an immediate cache and a place for legacy drafts;
+        // do not skip the server request just because this browser has no
+        // local history.
+        const response = await authFetch('/api/reports');
+        if (!response.ok) {
+          console.warn('Failed to load history from server, status:', response.status);
+          return;
+        }
+
+        const data = await response.json();
+        if (!data.reports || !Array.isArray(data.reports)) {
+          console.warn('Server response did not contain reports array', data);
+          return;
+        }
+
+        console.log('Loaded research history from server:', data.reports.length, 'items');
         if (localHistory && localHistory.length > 0) {
-          // Extract IDs from local history to filter server results
-          const localIds = localHistory.map((item: ResearchHistoryItem) => item.id).join(',');
-          console.log(`Sending ${localHistory.length} local IDs to server for filtering`);
-          
-          const response = await authFetch(`/api/reports?report_ids=${localIds}`);
-          if (response.ok) {
-            const data = await response.json();
-            
-            // Check if the response has the expected structure
-            if (data.reports && Array.isArray(data.reports)) {
-              console.log('Loaded research history from server:', data.reports.length, 'items');
-              
-              // Merge local and server history
-              await syncLocalHistoryWithServer(localHistory, data.reports);
-            } else {
-              console.warn('Server response did not contain reports array', data);
-              // Keep using the local history we already loaded
-            }
-          } else {
-            console.warn('Failed to load history from server, status:', response.status);
-            // We're already using local history from above
-          }
+          // Upload legacy local-only reports, then prefer the server copy for
+          // every report that already has a durable record.
+          await syncLocalHistoryWithServer(localHistory, data.reports);
         } else {
-          console.log('No local history found, skipping server fetch');
+          const sortedHistory = [...data.reports].sort((a, b) =>
+            (b.timestamp || 0) - (a.timestamp || 0),
+          );
+          setHistory(sortedHistory);
+          localStorage.setItem('researchHistory', JSON.stringify(sortedHistory));
         }
       } catch (error) {
         console.error('Error fetching research history:', error);
@@ -210,6 +211,9 @@ export const useResearchHistory = () => {
           if (!messageResponse.ok) {
             console.error(`Failed to persist workspace ${role} message:`, messageResponse.status);
           }
+        }
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new Event('asteria:workspace-changed'));
         }
         const newId = data.id;
         
@@ -382,6 +386,9 @@ export const useResearchHistory = () => {
       if (!conversationResponse.ok && conversationResponse.status !== 404) {
         throw new Error(`workspace API error: ${conversationResponse.status}`);
       }
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('asteria:workspace-changed'));
+      }
       
       // Update local state
       setHistory(prev => prev.filter(item => item.id !== id));
@@ -435,6 +442,9 @@ export const useResearchHistory = () => {
       });
       if (!workspaceResponse.ok) {
         console.error('Failed to persist workspace message:', workspaceResponse.status);
+      }
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('asteria:workspace-changed'));
       }
       
       // Update local state

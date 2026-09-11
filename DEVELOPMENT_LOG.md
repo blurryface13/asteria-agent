@@ -58,7 +58,11 @@
 - 下一笔实现：前端服务端优先加载项目/对话，localStorage 只保留草稿输入；创建研究任务时建立 conversation，并把报告与 conversation/project 建立关联。
 - 提交 `0ba8d1f0` 完成后端 Workspace 持久化基础；提交 `4fc684f6` 接入前端项目读取、项目创建和 Workspace API 代理，并让新研究使用稳定的 report/conversation ID。
 - 真实验证：本机 PostgreSQL schema bootstrap、标识长度迁移、创建/写入/查询/删除会话闭环均通过；重载 dora 后端至 8018、Node 22 前端至 3023 后，后端接口、前端代理和首页均返回 HTTP 200。
-- 当前边界：项目创建已经服务端持久化；研究 conversation 暂未携带当前项目归属，报告与 conversation 的正式关联字段、消息逐条回写和刷新后从 conversation 恢复仍是下一笔功能实现，不把 localStorage 视为长期事实。
+- 提交 `44a9fbf6` 让新研究读取当前项目并绑定 conversation，补充项目删除和侧栏对话计数刷新；研究首条问答与后续 Chat 消息同时写入 Workspace 消息表。
+- 提交前端服务端优先恢复改动后，即使浏览器没有 `localStorage` 历史，也会从 PostgreSQL 加载报告；本地缓存只用于首屏展示和旧草稿迁移，不再因为本地没有 ID 而跳过服务端查询。
+- 真实验证：通过 3023 前端代理创建项目、创建带 `project_id` 的 conversation、写入并读取消息、按项目筛选，均返回预期结果；临时项目和 conversation 已删除，数据库恢复为空。
+- 启动复核发现：后端不是热更新模式，源码新增路由后必须重启既有 8018 进程；曾因此出现源码有 DELETE 路由但运行实例返回 405。后续每次后端功能提交后都要重启或确认 reload，并检查路由 HTTP 方法，不用递增端口掩盖旧进程。
+- 当前边界：报告与 conversation 仍通过相同稳定 ID 关联，正式外键/报告索引字段、从 conversation 直接恢复完整报告视图、项目内任务分组 UI 和服务端清空历史仍待后续独立实现。
 
 ### 大方向一：运行稳定性与可观测性
 

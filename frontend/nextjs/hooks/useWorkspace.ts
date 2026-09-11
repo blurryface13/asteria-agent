@@ -59,6 +59,9 @@ export function useWorkspace() {
 
   useEffect(() => {
     void refresh();
+    const onWorkspaceChanged = () => void refresh();
+    window.addEventListener("asteria:workspace-changed", onWorkspaceChanged);
+    return () => window.removeEventListener("asteria:workspace-changed", onWorkspaceChanged);
   }, [refresh]);
 
   const createProject = useCallback(
