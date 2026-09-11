@@ -74,6 +74,7 @@ Sub-Agent 不需要和 Tool 一一对应。工具少且逻辑简单时可直接�
 - MCP 已接入客户端管理、工具发现、工具选择、工具调用和结果归一化。
 - MCP 路径支持关闭、快速复用和逐子查询深入执行等策略。
 - 项目已有 WebSocket 流式日志、FastAPI 服务和 Next.js 前端。
+- PostgreSQL 已通过幂等启动初始化保存报告、项目、对话和消息；Workspace API 按用户隔离项目/对话层级，报告与 conversation 当前使用稳定 ID 对齐。
 - 已有初步评测模块：任务、Trace、Scorer、BadCase、SeedCase、GeneratedCase、Runner 和本地存储。
 - 已有独立的评测文档和示例 Trace，可作为后续 Agent 评测的基础。
 - 报告当前主要输出 Markdown、Word 和 PDF；尚未形成完整的 LaTeX 工作区和模板体系。
@@ -466,7 +467,7 @@ LaTeX Skill 需要支持：
 
 已接入：任务输入、原有调研与报告问答回调、历史报告读取、真实执行日志、检索策略设置、报告 Markdown 预览/源码/下载。历史列表点击后在当前工作台展示，原有直接报告链接保持兼容，独立报告路由的视觉迁移单独安排。
 
-仅浏览器本地：显示名称、项目草稿。项目草稿不代表已创建后端目录，也不改变任务权限或存储位置。
+已持久化：项目、conversation、消息和报告均由 PostgreSQL 保存；新研究创建时读取当前项目并建立同 ID 的 conversation，首条问答和后续报告问答写入 Workspace 消息表。`localStorage` 仅用于显示名称、当前项目选择、首屏缓存和旧草稿迁移，不作为已保存任务的唯一来源。
 
 界面占位：主机、目录浏览、SSH、人格、记忆、Skill 管理、任务附件、语音、团队订阅、轨迹导出及 LaTeX 编译。所有占位均明确标识待接入；不展示虚构工具耗时、Token 用量、子 Agent 状态或执行成功。现有断开按钮仍沿用原停止处理，不宣称服务端取消、暂停或可恢复。
 
@@ -483,6 +484,8 @@ LaTeX Skill 需要支持：
 | 任务过程与右侧面板 | RunEvent、ToolCall、Artifact | 流式事件带序号；断线后按序补齐，去重回放；展现决策摘要，不要求输出模型隐式思维链 |
 | 任务操作 | cancel、retry、resume、approve | 命令需服务端确认；客户端断开不等价于服务端任务终止 |
 | 报告预览 | ArtifactVersion、CompileJob | 同时保留 Markdown、结构化报告、引用、LaTeX/PDF 和编译日志，失败可定位 |
+
+当前已落地的 Workspace API：`/api/workspace/projects`、`/api/workspace/conversations` 和 `/api/workspace/conversations/{id}/messages`，支持项目/对话/消息的创建、查询、修改和删除；项目筛选使用 `project_id`，所有查询按当前用户邮箱隔离。正式的报告索引/外键、从 conversation 直接恢复完整报告视图和项目内任务分组仍按独立 commit 推进。
 
 事件建议字段：`event_id`、`run_id`、`sequence`、`parent_event_id`、`agent_id`、`kind`、`status`、`timestamp`、`payload`、`artifact_refs`。敏感参数进入日志前必须脱敏。状态区分 `queued/running/waiting_approval/completed/failed/cancelled`，重试创建新的 attempt，不覆写旧失败记录。
 

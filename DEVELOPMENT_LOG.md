@@ -51,11 +51,11 @@
 
 ### 2026-09-11：持久化与项目/对话层级（第一笔实现）
 
-- 现状确认：报告已经有 PostgreSQL 存储，但项目草稿和对话消息仍主要依赖浏览器 `localStorage`；刷新页面会丢失未同步的项目层级和会话关系。
+- 现状确认：报告、项目、对话和对话消息均已有 PostgreSQL 存储；浏览器 `localStorage` 只承担首屏缓存、显示名称、当前项目选择和旧草稿迁移，不再承担已保存任务的唯一事实来源。
 - 参考 JAgent 后确定边界：PostgreSQL 保存项目、对话、消息和报告索引等长期事实；Redis 只保留验证码、短期状态等易失数据；向量库继续服务 RAG，不承担会话主数据。
 - 已实现：新增 `workspace_projects`、`workspace_conversations`、`workspace_messages` 表及幂等启动建表；新增按用户隔离的项目、对话、消息 CRUD API。
-- 当前提交：`backend/auth/workspace_*` 与 `backend/auth/schema_bootstrap.py`；现有报告 API 暂保持兼容，尚未把前端从 localStorage 切换到 Workspace API。
-- 下一笔实现：前端服务端优先加载项目/对话，localStorage 只保留草稿输入；创建研究任务时建立 conversation，并把报告与 conversation/project 建立关联。
+- 当前提交：`backend/auth/workspace_*` 与 `backend/auth/schema_bootstrap.py`；现有报告 API 保持兼容，前端已通过 Workspace API 读取项目/对话并把新研究绑定到 conversation/project。
+- 下一笔实现：补正式的报告索引/外键关系、从 conversation 恢复完整报告视图、项目内任务分组和服务端批量清理接口。
 - 提交 `0ba8d1f0` 完成后端 Workspace 持久化基础；提交 `4fc684f6` 接入前端项目读取、项目创建和 Workspace API 代理，并让新研究使用稳定的 report/conversation ID。
 - 真实验证：本机 PostgreSQL schema bootstrap、标识长度迁移、创建/写入/查询/删除会话闭环均通过；重载 dora 后端至 8018、Node 22 前端至 3023 后，后端接口、前端代理和首页均返回 HTTP 200。
 - 提交 `44a9fbf6` 让新研究读取当前项目并绑定 conversation，补充项目删除和侧栏对话计数刷新；研究首条问答与后续 Chat 消息同时写入 Workspace 消息表。
