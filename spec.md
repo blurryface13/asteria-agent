@@ -1,6 +1,6 @@
 # Asteria Agent 开发规格
 
-> 本文档用于记录项目当前状态、设计决策和后续开发计划。实现过程中如果实际约束发生变化，先更新这里，再调整代码。
+> 本文档用于记录项目目标、架构约束、接口契约和设计决策。开发节点、真实运行记录、额度统计与可执行任务计划统一维护在 [`DEVELOPMENT_LOG.md`](DEVELOPMENT_LOG.md)；实现过程中如果实际约束发生变化，先更新对应文档，再调整代码。
 
 ## 1. 项目目标
 
@@ -867,6 +867,8 @@ arXiv 返回 HTTP 429 时读取 Retry-After（秒数或 HTTP 日期，缺省 60 
 额度口径需单独说明：用户自查本次 DS4 Flash 额度消耗约为 **2.41 元人民币**；`model_input_chars=4,676,495`、`model_output_chars=107,875` 是字符数，不是 token 数，也不是官方额度字段。当前 AgenticReview 的 `run.json` 未保存上游 API 返回的 usage/token 字段，因此 2.41 元属于本次用户侧账单观察值，本地记录无法独立复算。后续若要精确统计，应在模型适配层持久化 provider、model、input tokens、output tokens、cached/reasoning tokens（若上游提供）及请求级 usage，而不是用字符数估算。
 
 ### 19.15 后续开发计划（以 AgenticReview 为主线）
+
+本节保留历史计划摘要；当前可执行的两级计划已迁移至 [`DEVELOPMENT_LOG.md`](DEVELOPMENT_LOG.md)，后续以该文档为准。
 
 后续开发保持“一个能力增量对应一个可回归 commit”的节奏：先在 dora 环境完成针对性测试，再做真实浏览器或 WebSocket 复测，确认工作区干净后提交；不通过测试的改动不进入下一阶段。
 
