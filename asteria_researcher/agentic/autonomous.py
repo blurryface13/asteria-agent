@@ -131,6 +131,36 @@ class AutonomousReview:
             raise RuntimeError("全文 RAG 的 embedding 服务检查失败，请修复后重试：" + str(error)) from error
         await self.event("lead", "dependency_check", "completed", "Embedding 服务可用")
 
+    async def plan_with_contract(self, instruction, payload, scope, phase):
+        """Generate a plan, then give the planner one explicit contract-repair turn."""
+        schema = json.dumps(ReviewPlan.model_json_schema())
+        raw = await self.llm(instruction + " Return ONLY JSON " + schema, payload)
+        try:
+            plan = ReviewPlan.model_validate_json(raw)
+            validate_contract(plan, scope)
+            return plan
+        except (ValueError, TypeError) as error:
+            await self.event("lead", "plan_repair", "started", "规划契约校验失败，修复结构后重试",
+                             phase=phase, error=str(error))
+            repaired = await self.llm(
+                "Repair this research plan so it satisfies the supplied JSON schema and contract. "
+                "Preserve every goal's meaning and exact user_quote. Do not add, remove, merge or split "
+                "requirements. Only repair structural fields such as duplicate IDs, invalid IDs, or misplaced "
+                "quotes. required goal IDs must be unique g1, g2...; process IDs must be unique p1, p2.... "
+                "Return ONLY the repaired JSON.\n" + schema,
+                {"task": self.query, "scope": scope, "candidate_plan": raw,
+                 "validation_error": str(error)})
+            try:
+                plan = ReviewPlan.model_validate_json(repaired)
+                validate_contract(plan, scope)
+            except (ValueError, TypeError) as repair_error:
+                await self.event("lead", "plan_repair", "failed", "规划契约修复仍未通过",
+                                 phase=phase, error=str(repair_error), severity="fatal")
+                raise ValueError("规划契约修复失败：" + str(repair_error)) from repair_error
+            await self.event("lead", "plan_repair", "completed", "规划契约修复通过，继续研究",
+                             phase=phase)
+            return plan
+
     async def research(self):
         # User links are seeds, never silently truncated to the first three.
         for url in urls(self.query):
@@ -141,7 +171,7 @@ class AutonomousReview:
         self.library.save()
         await self.event("lead", "skill", "completed", "加载文献综述研究规范", skill="literature_review v3")
         user_scope = self.query
-        plan = ReviewPlan.model_validate_json(await self.llm(
+        plan = await self.plan_with_contract(
             "Define scope, time range, inclusion criteria and complementary research objectives. "
             "This is a revisable research plan, not a fixed workflow. Do not infer paper titles or identities "
             "from URL identifiers: unknown URL identities must be verified by tools during research. "
@@ -154,8 +184,8 @@ class AutonomousReview:
             + "Put explicit autonomous discovery/reference tracing in process_requirements with p1/p2 IDs and literal user quotes. "
             + "Put word count, output language, citation style, no incompatible score comparisons and artifact format in delivery_constraints. "
             + "Capture explicit requirements without adding stricter completeness criteria. Put extra ideas in optional_extensions. "
-            + json.dumps(ReviewPlan.model_json_schema()) + "\n" + self.skill,
-            {"task": self.query, "today": str(date.today())}))
+            + "\n" + self.skill,
+            {"task": self.query, "today": str(date.today())}, self.query, "initial")
         for revision in range(3):
             validate_contract(plan, user_scope)
             partition = ScopePartition.model_validate_json(await self.llm(
@@ -175,10 +205,10 @@ class AutonomousReview:
             if revision == 2:
                 raise ValueError("计划未获确认，已停止；未自动批准")
             user_scope += "\n" + feedback
-            plan = ReviewPlan.model_validate_json(await self.llm(
+            plan = await self.plan_with_contract(
                 "Revise scope with user feedback. Required goals are evidence questions, process_requirements are tool requirements, "
-                "delivery_constraints are writing/format rules. Required goals quote the task or feedback verbatim. Return JSON " + json.dumps(ReviewPlan.model_json_schema()),
-                {"plan": plan.model_dump(), "feedback": feedback, "task": self.query}))
+                "delivery_constraints are writing/format rules. Required goals quote the task or feedback verbatim. ",
+                {"plan": plan.model_dump(), "feedback": feedback, "task": self.query}, user_scope, "revision")
         self.plan = plan.model_dump()
         (self.folder / "plan.json").write_text(json.dumps(self.plan, ensure_ascii=False, indent=2))
         result = await self.loop("lead", self.query, lead=True, steps=18)

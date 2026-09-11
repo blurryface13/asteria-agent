@@ -67,6 +67,31 @@ def test_shared_process_check_preserves_each_relocated_requirement():
     assert not plan.process_requirements[0].related_goals
 
 
+def test_planner_contract_gets_one_explicit_repair_turn(tmp_path):
+    task = "请比较注入方法并总结实验结论"
+    invalid = {"scope": task, "perspectives": [{"name": "方法", "query": "方法"}],
+               "required_goals": [
+                   {"id": "g1", "description": "比较注入方法", "user_quote": "比较注入方法"},
+                   {"id": "g1", "description": "总结实验结论", "user_quote": "总结实验结论"}],
+               "process_requirements": [], "delivery_constraints": [], "optional_extensions": []}
+    repaired = {**invalid, "required_goals": [
+        invalid["required_goals"][0], {**invalid["required_goals"][1], "id": "g2"}]}
+    calls = []
+
+    async def model(system, payload):
+        calls.append(payload)
+        return json.dumps(invalid if len(calls) == 1 else repaired, ensure_ascii=False)
+
+    async def emit(*args, **kwargs):
+        pass
+
+    review = AutonomousReview(model, None, emit, None, tmp_path, online_rag=False)
+    review.query = task
+    plan = asyncio.run(review.plan_with_contract("plan", {"task": task}, task, "initial"))
+    assert [goal.id for goal in plan.required_goals] == ["g1", "g2"]
+    assert len(calls) == 2
+
+
 def test_server_attaches_exact_source_text_for_selected_evidence_id():
     catalog = evidence_catalog(EVIDENCE, {URL})
     data = finding(catalog)
