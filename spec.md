@@ -857,3 +857,11 @@ arXiv 返回 HTTP 429 时读取 Retry-After（秒数或 HTTP 日期，缺省 60 
 本轮在第二次模型修复结果进入 Pydantic 校验前增加确定性 ID 归一化：仅对 `required_goals`、`process_requirements` 及嵌套 `related_goals` 的重复/非法标识重新编号为唯一 `gN`/`pN`，不改动描述、用户原话、研究范围、过程要求或可选扩展。修复完成后仍执行完整 `validate_contract`，语义字段或用户引句不合规时继续明确失败，不以兜底文本替代研究。
 
 真实 WebSocket 复测事件为 `configuration → skill → plan_repair started → plan_repair completed → plan waiting → delegate`，随后 3 个研究 Agent 并行检索/读取原文并进入充分性审查；未再出现“研究目标 ID 重复”。本次冒烟在 90 秒主动测试时限到达后取消，记录为 `cancelled`，不作为完整报告交付依据。针对“LLM 原样返回重复候选仍可修复”新增回归，`tests/test_review_sufficiency.py` 共 18 项通过。
+
+### 19.14 Safari 真实运行记录（2026-09-11）
+
+用户在 Safari 发起的数字水印综述任务对应运行目录 `outputs/review_3ea4b134b7c44e7a9ef34ef307ba685e/`，使用 DS4 Flash（模型名称由用户确认；当前 `run.json` 尚未持久化模型标识）。任务于 19:20:18 开始，19:29:15 完成，运行器记录耗时 `536.14s`（约 8 分 56 秒），在线 RAG 开启，最终状态为 `completed`，无错误。
+
+本次运行的可观测统计为：70 次模型调用、46 次 Agent 操作、4 个子 Agent、读取 19 篇论文、87 次 embedding 调用/1050 条 embedding 文本、下载 100,044,410 bytes（约 95.4 MiB）；已生成 Markdown、LaTeX、PDF、引用图、证据、充分性审查和运行元数据等产物。
+
+额度口径需单独说明：`model_input_chars=4,676,495`、`model_output_chars=107,875` 是字符数，不是 token 数，也不是 DS4 Flash 的官方额度消耗；当前 AgenticReview 的 `run.json` 未保存上游 API 返回的 usage/token 字段，因此无法仅依据本次本地记录还原实际额度。后续若要精确统计，应在模型适配层持久化 provider、model、input tokens、output tokens、cached/reasoning tokens（若上游提供）及请求级 usage，而不是用字符数估算。
