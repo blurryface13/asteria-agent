@@ -15,6 +15,17 @@ class Embeddings:
         return [[1., float("watermark" in t.lower()), float(len(t) % 7)] for t in texts]
 
 
+def test_review_runtime_loads_imported_and_general_writing_skills(tmp_path):
+    async def emit(*args, **kwargs):
+        pass
+    async def approve(*args, **kwargs):
+        return None
+
+    runtime = AutonomousReview(None, Embeddings(), emit, approve, tmp_path)
+    assert "temporal order of ideas" in runtime.imported_review_skill.lower()
+    assert "Separate content from presentation" in runtime.format_skill
+
+
 def test_all_pages_are_available_to_reference_reader(tmp_path):
     import fitz
     path = tmp_path / "long.pdf"

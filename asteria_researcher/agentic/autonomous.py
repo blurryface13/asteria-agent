@@ -115,6 +115,9 @@ class AutonomousReview:
         self.successful_searches = 0
         self.skill = Path(__file__).with_name("skills").joinpath("literature_review.md").read_text()
         self.report_skill = Path(__file__).with_name("skills").joinpath("report_writing.md").read_text()
+        self.format_skill = Path(__file__).with_name("skills").joinpath("report_formatting.md").read_text()
+        self.imported_review_skill = (Path(__file__).with_name("skills") / "vendor" / "gallant"
+                                      / "review_article_skill.md").read_text()
         async def bibliography_model(system, payload):
             return await self.llm(system, json.loads(payload))
         self.library.model = bibliography_model
@@ -226,8 +229,9 @@ class AutonomousReview:
             except ValueError:
                 pass  # Unsupported user URLs remain in the original task.
         self.library.save()
-        await self.event("lead", "skill", "completed", "加载文献综述研究与报告写作规范",
-                         skills=["literature_review v3", "report_writing v1"])
+        await self.event("lead", "skill", "completed", "加载研究、写作、格式与引用规范",
+                         skills=["literature_review v3", "report_writing v1",
+                                 "report_formatting v1", "gallant_review_guidance"])
         user_scope = self.query
         plan = await self.plan_with_contract(
             "Define scope, time range, inclusion criteria and complementary research objectives. "
@@ -594,6 +598,8 @@ class AutonomousReview:
             "Preserve scope/date limits and material research gaps. Do not claim exhaustive coverage, "
             "verified experiments, or factual certainty based only on citation membership. "
             "Respect requested length.\n" + self.skill + "\n" + self.report_skill
+            + "\n\nImported review-writing guidance:\n" + self.imported_review_skill
+            + "\n\nGeneral report-formatting skill:\n" + self.format_skill
             + "\nOUTPUT CONTRACT: " + length_guidance, payload)
         for attempt in range(3):
             (self.folder / f"draft-{attempt + 1}.md").write_text(report)

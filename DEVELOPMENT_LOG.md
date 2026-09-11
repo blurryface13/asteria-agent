@@ -142,3 +142,13 @@
 - 代码改动必须同时补针对性测试；运行器/前端改动需要额外做真实启动或浏览器复测。
 - 运行成功、运行取消和运行失败分别记录，不能用单元测试替代真实任务结果。
 - 每次提交前检查 `git diff --check`、工作区状态和产物路径；远程同步以个人仓库和明确分支为目标。
+
+### 2026-09-11：复用外部综述 Skill 与通用格式 Skill（GPT-5）
+
+- 实际读取 Gallant Lab `literature-review-toolkit` 的公开 `PLAYBOOK.md`、`tools/search_prompt_template.md`、`tools/README.md` 与 `tools/review_paper.py`。其中 PLAYBOOK 以 MIT License 发布；AI-Researcher 的 `paper_agent/writing.py`、`section_composer.py`、`methodology_composing_using_template.py`、`tex_writer.py` 和模板目录用于结构参考，未复制其未声明许可证的代码。
+- 复制并最小适配 Gallant 的检索提示词模板和综述写作核心到 `asteria_researcher/agentic/skills/vendor/gallant/`，保留来源 commit `4c95c5be9fd4e28a95458a4055af0f8affb64020` 与 MIT 许可证。外部内容不替代本项目的 `literature_review.md`，而是作为 Writer 的补充指导。
+- 新增 `report_formatting.md` 通用格式 Skill，明确内容对象、格式 Profile、模板和 Renderer 的边界，允许未来企业背调、娱乐话题、数据分析在缺少领域 Skill 时复用通用写作规范。
+- `AutonomousReview` 的 Writer 实际加载：`literature_review`、`report_writing`、导入的 Gallant 综述指导和 `report_formatting`。本轮不改变 Planner、子 Agent、在线 RAG、停止条件或 LaTeX 转换器。
+- 新增 2 个 Tool 契约：`bibliography_resolver`、`citation_graph`。它们分别映射到已有的参考文献解析和引用图落盘能力；注册表从 6 个 Tool 增至 8 个，不宣称新增了外部服务或完整元数据验证器。
+- AI-Researcher 的关键启发：章节写作可以通过 section composer + writing template + renderer 分层；但其模板是论文领域/章节相关的写作示例，不等于通用 LaTeX 模板。下一步继续拆出 `ReviewDocument`、独立 `survey` format profile 和 BibTeX 生成，不把格式细节继续堆进提示词。
+- 待验证：dora 环境完整测试、`git diff --check`、外部 Skill 文件加载回归；通过后形成独立 commit。

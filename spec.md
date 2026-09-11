@@ -893,3 +893,15 @@ arXiv 返回 HTTP 429 时读取 Retry-After（秒数或 HTTP 日期，缺省 60 
 4. **复现实验能力**：在现有 Planner、工具协议和人工确认节点上增加实验任务类型的动态识别；设计受控服务器地址与工作区配置、实验指令模板、执行前审批、过程日志、结果文件和可复现实验 manifest。根据工具稳定性决定使用专用子 Agent、Skill 或 MCP，不预先把能力写死成固定工作流。
 5. **在线调研与离线知识库双支线**：保留在线检索/RAG 作为可选研究路径；允许用户选择已核验的论文、报告和实验结果入库，离线 RAG 问答只使用入库内容并显示来源，避免 Chat 入口再次误触发完整调研任务。
 6. **Agent 评测基准**：在上述能力稳定后建立可复现数据集和评测运行器，覆盖意图路由、计划修订、工具选择/参数正确性、论文发现与引用追踪、证据支持率、核心目标完成率、无效补研率、停止决策、端到端延迟和费用；把线上 BadCase 回放、定向修复和回归对比纳入同一条评测链路。
+
+### 19.16 外部 Skill 复用与报告格式边界（2026-09-11，GPT-5）
+
+本轮实际阅读并引入了 Gallant Lab `literature-review-toolkit` 的可复用核心：检索子 Agent 提示词模板，以及“来源验证完成后再写作、写作与机械渲染分离、起源性论断按时间优先引用、引用必须来自已验证来源表”的综述写作指导。上游仓库为 MIT License，来源 commit 与许可证保存在 `asteria_researcher/agentic/skills/vendor/gallant/`；外部文件不是运行器自动信任的内容，仍需经过本项目的证据来源和 LaTeX 安全边界。
+
+AI-Researcher 的 `paper_agent` 只作为实现参考，没有直接复制其未声明许可证的代码：它把章节 Composer、`writing_templates` 和 `tex_writer` 分层，但提示词与代码耦合较紧，适合作为后续结构化论文写作的参考。PaperMentor 的专家 Skill/格式审阅思路同样只作参考，不把 Overleaf 源码作为本项目依赖。
+
+当前 Skill 注入分为四层：研究 Skill 约束检索和证据；导入的综述指导补充来源台账和时间优先原则；报告写作 Skill 约束内容结构和引用表达；通用报告格式 Skill 约束内容对象与版式渲染边界。`AutonomousReview` 的 Writer 现在实际加载这四类规则，Writer 仍只输出中文 Markdown，后端负责安全 LaTeX/PDF 转换。
+
+本轮新增 **2 个 Tool 契约**，均对应现有实现能力而非虚构的新服务：`bibliography_resolver` 对应 `PaperLibrary.references` 的书目解析与精确标题匹配，`citation_graph` 对应任务内已验证论文节点、引用边和未解析书目的落盘快照。默认注册表工具总数由 6 个变为 8 个。`report_formatting` 是通用 Skill，不是 Tool，也不是某个领域专属 LaTeX 模板。
+
+设计结论：通用写作 Skill 可以服务企业背调、娱乐话题和数据分析等没有专属 Skill 的任务；LaTeX 模板不应塞进写作 Skill，而应作为可替换的 `format_profile/template`。后续将先把 `ReviewDocument` 和独立 `survey` 模板落地，再补 BibTeX、表格/公式/图表和编译诊断；在此之前不把当前内置 `scientific_default` 宣称为完整综述模板。

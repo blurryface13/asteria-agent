@@ -137,13 +137,37 @@ def build_default_registry() -> CapabilityRegistry:
         timeout_seconds=120,
     ))
 
+    registry.register_tool(ToolSpec(
+        id="bibliography_resolver",
+        name="Bibliography Resolver",
+        description="Extract literal bibliography entries and resolve exact title matches before creating citation edges.",
+        transport="in_process",
+        permission="network",
+        input_schema={"type": "object", "required": ["paper_id", "question"],
+                      "properties": {"paper_id": {"type": "string"},
+                                     "question": {"type": "string"}}},
+        output_schema={"type": "object", "required": ["resolved", "unresolved"]},
+        timeout_seconds=300,
+    ))
+    registry.register_tool(ToolSpec(
+        id="citation_graph",
+        name="Citation Graph",
+        description="Persist verified paper nodes, citation edges and unresolved bibliography candidates for a task.",
+        transport="in_process",
+        permission="write",
+        input_schema={"type": "object", "required": ["nodes", "edges"],
+                      "properties": {"nodes": {"type": "array"}, "edges": {"type": "array"}}},
+        output_schema={"type": "object", "required": ["nodes", "edges", "unresolved_references"]},
+        timeout_seconds=60,
+    ))
+
     registry.register_agent(AgentProfile(
         id="editor",
         name="Research Editor",
         role="planner",
         implementation="multi_agents.agents.editor.EditorAgent",
         description="Plan report sections and coordinate section research.",
-        allowed_tools=["web_search", "mcp_research"],
+        allowed_tools=["web_search", "mcp_research", "bibliography_resolver", "citation_graph"],
         allowed_skills=["literature_search", "survey_writing"],
         can_delegate=True,
         status="active",
@@ -154,7 +178,7 @@ def build_default_registry() -> CapabilityRegistry:
         role="evidence_collector",
         implementation="multi_agents.agents.researcher.ResearchAgent",
         description="Search, read, and organize evidence for a research section.",
-        allowed_tools=["web_search", "mcp_research", "workspace_artifact"],
+        allowed_tools=["web_search", "mcp_research", "bibliography_resolver", "citation_graph", "workspace_artifact"],
         allowed_skills=["literature_search", "evidence_extraction"],
         can_delegate=False,
         status="active",
@@ -188,7 +212,7 @@ def build_default_registry() -> CapabilityRegistry:
         intents=[TaskIntent.ACADEMIC_RESEARCH.value],
         capabilities=["task_planning", "parallel_research", "report_writing"],
         allowed_agents=["editor", "researcher", "writer", "evidence_checker"],
-        allowed_tools=["web_search", "mcp_research", "workspace_artifact"],
+        allowed_tools=["web_search", "mcp_research", "bibliography_resolver", "citation_graph", "workspace_artifact"],
         validators=["outline_check", "citation_check"],
         status="active",
     ))
@@ -200,7 +224,7 @@ def build_default_registry() -> CapabilityRegistry:
         intents=[TaskIntent.ACADEMIC_RESEARCH.value],
         capabilities=["query_decomposition", "source_retrieval", "mcp_routing"],
         allowed_agents=["editor", "researcher"],
-        allowed_tools=["web_search", "mcp_research"],
+        allowed_tools=["web_search", "mcp_research", "bibliography_resolver", "citation_graph"],
         status="partial",
     ))
     registry.register_skill(SkillManifest(
@@ -247,6 +271,30 @@ def build_default_registry() -> CapabilityRegistry:
         allowed_agents=["writer", "evidence_checker"],
         allowed_tools=["workspace_artifact", "report_structure_check", "citation_audit", "latex_compile"],
         validators=["report_structure_check", "citation_audit", "latex_compile"],
+        status="active",
+    ))
+    registry.register_skill(SkillManifest(
+        id="report_formatting",
+        name="General Report Formatting",
+        description="Apply a domain-neutral content/presentation boundary and route structured content to a named renderer.",
+        implementation="asteria_researcher.agentic.skills.report_formatting.md",
+        intents=[intent.value for intent in TaskIntent],
+        capabilities=["content_presentation_separation", "template_routing", "renderer_boundary"],
+        allowed_agents=["writer"],
+        allowed_tools=["workspace_artifact", "report_structure_check", "latex_compile"],
+        validators=["report_structure_check"],
+        status="active",
+    ))
+    registry.register_skill(SkillManifest(
+        id="gallant_review_guidance",
+        name="Imported Review Guidance",
+        description="Vendored review-writing guidance for source provenance, temporal priority and mechanical rendering.",
+        implementation="asteria_researcher.agentic.skills.vendor.gallant.review_article_skill.md",
+        intents=[TaskIntent.ACADEMIC_RESEARCH.value],
+        capabilities=["temporal_priority_audit", "source_table_rendering", "review_composition"],
+        allowed_agents=["editor", "writer", "evidence_checker"],
+        allowed_tools=["bibliography_resolver", "citation_graph", "citation_audit", "latex_compile"],
+        validators=["citation_audit", "latex_compile"],
         status="active",
     ))
 
