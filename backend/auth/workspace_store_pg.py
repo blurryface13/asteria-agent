@@ -137,6 +137,16 @@ class PgWorkspaceStore:
             raise WorkspaceNotFound("project not found")
         return _project(row)
 
+    async def delete_project(self, project_id: str, user_email: str) -> None:
+        await self.get_project(project_id, user_email)
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            await conn.execute(
+                "DELETE FROM workspace_projects WHERE id = $1 AND user_email = $2",
+                project_id,
+                user_email,
+            )
+
     async def list_conversations(
         self, user_email: str, project_id: str | None = None
     ) -> list[dict[str, Any]]:

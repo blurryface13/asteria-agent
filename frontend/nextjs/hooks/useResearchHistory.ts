@@ -162,7 +162,13 @@ export const useResearchHistory = () => {
       // Keep the report and conversation addressable by one stable ID. The
       // report API remains compatible, while the workspace API owns the
       // project/conversation hierarchy.
-      const conversationResponse = await authFetch('/api/workspace/conversations', {
+      const activeProjectId = typeof window !== 'undefined'
+        ? window.localStorage.getItem('asteria.activeProjectId')
+        : null;
+      const conversationEndpoint = activeProjectId
+        ? `/api/workspace/conversations?project_id=${encodeURIComponent(activeProjectId)}`
+        : '/api/workspace/conversations';
+      const conversationResponse = await authFetch(conversationEndpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -194,6 +200,17 @@ export const useResearchHistory = () => {
       
       if (response.ok) {
         const data = await response.json();
+        for (const [role, content] of [['user', question], ['assistant', answer]] as const) {
+          if (!content.trim()) continue;
+          const messageResponse = await authFetch(`/api/workspace/conversations/${id}/messages`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ role, content, metadata: { source: 'research-history' } }),
+          });
+          if (!messageResponse.ok) {
+            console.error(`Failed to persist workspace ${role} message:`, messageResponse.status);
+          }
+        }
         const newId = data.id;
         
         // Update local state
@@ -358,6 +375,13 @@ export const useResearchHistory = () => {
       if (!response.ok && response.status !== 404) {
         throw new Error(`API error: ${response.status}`);
       }
+
+      const conversationResponse = await authFetch(`/api/workspace/conversations/${id}`, {
+        method: 'DELETE',
+      });
+      if (!conversationResponse.ok && conversationResponse.status !== 404) {
+        throw new Error(`workspace API error: ${conversationResponse.status}`);
+      }
       
       // Update local state
       setHistory(prev => prev.filter(item => item.id !== id));
@@ -402,6 +426,15 @@ export const useResearchHistory = () => {
       
       if (!response.ok) {
         throw new Error(`API error: ${response.status}`);
+      }
+
+      const workspaceResponse = await authFetch(`/api/workspace/conversations/${id}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(message),
+      });
+      if (!workspaceResponse.ok) {
+        console.error('Failed to persist workspace message:', workspaceResponse.status);
       }
       
       // Update local state

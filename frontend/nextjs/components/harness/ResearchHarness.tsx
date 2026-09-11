@@ -200,7 +200,8 @@ export default function ResearchHarness(p: Props) {
   const [mode, setMode] = useState<"research" | "chat">("research");
   const [username, setUsername] = useState("bunny"),
     [search, setSearch] = useState("");
-  const [projectName, setProjectName] = useState("");
+  const [projectName, setProjectName] = useState(""),
+    [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const { projects, conversations, loading: workspaceLoading, error: workspaceError, createProject } = useWorkspace();
   const [notice, setNotice] = useState(""),
     [sourceView, setSourceView] = useState(false);
@@ -209,6 +210,7 @@ export default function ResearchHarness(p: Props) {
   useEffect(() => {
     setRail(window.innerWidth >= 900);
     setUsername(localStorage.getItem("asteria.displayName") || "bunny");
+    setActiveProjectId(localStorage.getItem("asteria.activeProjectId"));
   }, []);
   useEffect(() => {
     if (modal) {
@@ -328,13 +330,15 @@ export default function ResearchHarness(p: Props) {
                 className={s.project}
                 key={project.id}
                 onClick={() => {
+                  setActiveProjectId(project.id);
+                  localStorage.setItem("asteria.activeProjectId", project.id);
                   open("项目");
                   setProjectName(project.name);
                 }}
               >
                 <Icon name="folder" size={17} />
                 {project.name}
-                <small>已保存</small>
+                <small>{project.id === activeProjectId ? "当前 · " : ""}{conversations.filter((item) => item.project_id === project.id).length} 个对话</small>
               </button>
             ))}
           </details>
@@ -922,7 +926,9 @@ export default function ResearchHarness(p: Props) {
                   disabled={!projectName.trim()}
                   onClick={async () => {
                     try {
-                      await createProject(projectName.trim());
+                      const project = await createProject(projectName.trim());
+                      setActiveProjectId(project.id);
+                      localStorage.setItem("asteria.activeProjectId", project.id);
                       setProjectName("");
                       setModal("");
                     } catch (cause) {

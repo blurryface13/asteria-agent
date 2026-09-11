@@ -58,6 +58,14 @@ async def update_project(
         raise _not_found(exc) from exc
 
 
+@router.delete("/projects/{project_id}", status_code=204)
+async def delete_project(project_id: str, _email: str = Depends(get_current_user_email)):
+    try:
+        await workspace_store.delete_project(project_id, _email)
+    except WorkspaceNotFound as exc:
+        raise _not_found(exc) from exc
+
+
 @router.get("/conversations")
 async def list_conversations(
     project_id: str | None = Query(default=None),
