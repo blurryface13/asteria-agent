@@ -330,20 +330,36 @@ export default function ResearchHarness(p: Props) {
             </summary>
             {nav("新建项目", "folder", () => open("新建项目"))}
             {projects.map((project) => (
-              <button
+              <div
                 className={s.project}
                 key={project.id}
-                onClick={() => {
-                  setActiveProjectId(project.id);
-                  localStorage.setItem("asteria.activeProjectId", project.id);
-                  open("项目");
-                  setProjectName(project.name);
-                }}
               >
-                <Icon name="folder" size={17} />
-                {project.name}
-                <small>{project.id === activeProjectId ? "当前 · " : ""}{conversations.filter((item) => item.project_id === project.id).length} 个对话</small>
-              </button>
+                <button
+                  className={s.projectMain}
+                  onClick={() => {
+                    setActiveProjectId(project.id);
+                    localStorage.setItem("asteria.activeProjectId", project.id);
+                    open("项目");
+                    setProjectName(project.name);
+                  }}
+                >
+                  <Icon name="folder" size={17} />
+                  <span>{project.name}</span>
+                  <small>{project.id === activeProjectId ? "当前 · " : ""}{conversations.filter((item) => item.project_id === project.id).length} 个对话</small>
+                </button>
+                <button
+                  className={s.projectNew}
+                  aria-label={`在项目“${project.name}”中新建对话`}
+                  title="新建对话"
+                  onClick={() => {
+                    setActiveProjectId(project.id);
+                    localStorage.setItem("asteria.activeProjectId", project.id);
+                    start();
+                  }}
+                >
+                  <Icon name="plus" size={16} />
+                </button>
+              </div>
             ))}
           </details>
           <details open className={s.group}>

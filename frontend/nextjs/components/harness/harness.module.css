@@ -159,14 +159,42 @@
   align-items: center;
   gap: 8px;
   width: 100%;
-  padding: 7px 10px;
+  padding: 2px 4px 2px 10px;
   border-radius: 8px;
-  text-align: left;
 }
-.project small {
+.projectMain {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  padding: 5px 0;
+  text-align: left;
+  border-radius: 6px;
+}
+.projectMain > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.projectMain small {
   font-size: 10px;
   color: var(--muted);
   margin-left: auto;
+  white-space: nowrap;
+}
+.projectNew {
+  display: grid;
+  place-items: center;
+  width: 27px;
+  height: 27px;
+  flex: 0 0 27px;
+  padding: 0;
+  border-radius: 7px;
+  color: var(--muted);
+}
+.projectNew:hover:not(:disabled) {
+  color: var(--text);
 }
 .task {
   display: flex;
