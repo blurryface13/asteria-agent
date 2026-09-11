@@ -56,6 +56,9 @@
 - 已实现：新增 `workspace_projects`、`workspace_conversations`、`workspace_messages` 表及幂等启动建表；新增按用户隔离的项目、对话、消息 CRUD API。
 - 当前提交：`backend/auth/workspace_*` 与 `backend/auth/schema_bootstrap.py`；现有报告 API 暂保持兼容，尚未把前端从 localStorage 切换到 Workspace API。
 - 下一笔实现：前端服务端优先加载项目/对话，localStorage 只保留草稿输入；创建研究任务时建立 conversation，并把报告与 conversation/project 建立关联。
+- 提交 `0ba8d1f0` 完成后端 Workspace 持久化基础；提交 `4fc684f6` 接入前端项目读取、项目创建和 Workspace API 代理，并让新研究使用稳定的 report/conversation ID。
+- 真实验证：本机 PostgreSQL schema bootstrap、标识长度迁移、创建/写入/查询/删除会话闭环均通过；重载 dora 后端至 8018、Node 22 前端至 3023 后，后端接口、前端代理和首页均返回 HTTP 200。
+- 当前边界：项目创建已经服务端持久化；研究 conversation 暂未携带当前项目归属，报告与 conversation 的正式关联字段、消息逐条回写和刷新后从 conversation 恢复仍是下一笔功能实现，不把 localStorage 视为长期事实。
 
 ### 大方向一：运行稳定性与可观测性
 
