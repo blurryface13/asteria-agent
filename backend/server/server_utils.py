@@ -124,6 +124,10 @@ def sanitize_filename(filename: str) -> str:
 
 async def handle_start_command(websocket, data: str, manager, feedback_queue=None):
     json_data = json.loads(data[6:])
+    online_rag = json_data.get("online_rag", True)
+    if type(online_rag) is not bool:
+        await websocket.send_json({"type": "error", "content": "error", "output": "online_rag must be a boolean"})
+        return
     (
         task,
         report_type,
@@ -151,6 +155,7 @@ async def handle_start_command(websocket, data: str, manager, feedback_queue=Non
 
     # Create logs handler with websocket and task
     logs_handler = CustomLogsHandler(websocket, task, feedback_queue)
+    logs_handler.online_rag = online_rag
     if feedback_queue is not None:
         feedback_queue.handler = logs_handler
     # Initialize log content with query

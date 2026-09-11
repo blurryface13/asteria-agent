@@ -8,6 +8,7 @@ import LogsSection from "./ResearchBlocks/LogsSection";
 import AccessReport from "./ResearchBlocks/AccessReport";
 import { preprocessOrderedData } from "../utils/dataProcessing";
 import { Data } from "../types/data";
+import ResearchActivity from "./harness/ResearchActivity";
 
 interface ResearchResultsProps {
   orderedData: Data[];
@@ -19,6 +20,7 @@ interface ResearchResultsProps {
   isProcessingChat?: boolean;
   onShareClick?: () => void;
   compact?: boolean;
+  isResearchRunning?: boolean;
 }
 
 export const ResearchResults: React.FC<ResearchResultsProps> = ({
@@ -31,6 +33,7 @@ export const ResearchResults: React.FC<ResearchResultsProps> = ({
   isProcessingChat = false,
   onShareClick,
   compact = false,
+  isResearchRunning = false,
 }) => {
   const groupedData = preprocessOrderedData(orderedData);
   const pathData = groupedData.find((data) => data.type === "path");
@@ -81,19 +84,7 @@ export const ResearchResults: React.FC<ResearchResultsProps> = ({
       )}
       {orderedData.length > 0 &&
         (compact ? (
-          <details className="research-execution" open={!answer}>
-            <summary>执行过程 · {allLogs.length} 条记录</summary>
-            {allLogs.map((log, index) => (
-              <details key={log.key || index}>
-                <summary>{log.header || "执行记录"}</summary>
-                <pre>
-                  {typeof log.text === "string"
-                    ? log.text
-                    : JSON.stringify(log.text, null, 2)}
-                </pre>
-              </details>
-            ))}
-          </details>
+          <ResearchActivity logs={allLogs} done={Boolean(pathData) && !isResearchRunning} active={isResearchRunning} />
         ) : (
           <LogsSection logs={allLogs} />
         ))}

@@ -890,7 +890,7 @@ export default function Home() {
       settings={chatBoxSettings} setSettings={setChatBoxSettings} logCount={allLogs.length}
       artifactPaths={preprocessOrderedData(orderedData).filter((item: any) => item.type === 'path').at(-1)?.output}
     >
-      <ResearchResults compact orderedData={orderedData} answer={answer} allLogs={allLogs}
+      <ResearchResults compact isResearchRunning={loading} orderedData={orderedData} answer={answer} allLogs={allLogs}
         chatBoxSettings={chatBoxSettings} handleClickSuggestion={handleClickSuggestion}
         currentResearchId={currentResearchId || undefined} isProcessingChat={isProcessingChat}
         onShareClick={currentResearchId ? handleCopyUrl : undefined}/>

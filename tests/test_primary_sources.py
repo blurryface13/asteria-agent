@@ -34,7 +34,7 @@ def test_search_returns_real_records(monkeypatch):
 
     def respond(request):
         assert request.url.params["search_query"] == 'ti:"Attention Is All You Need"'
-        assert request.url.params["max_results"] == "5"
+        assert request.url.params["max_results"] == "15"
         return httpx.Response(200, content=b'''<feed xmlns="http://www.w3.org/2005/Atom">
           <entry><title>Attention Is All You Need</title>
           <id>http://arxiv.org/abs/1706.03762v7</id><summary>Original abstract.</summary></entry>
@@ -44,4 +44,5 @@ def test_search_returns_real_records(monkeypatch):
                         original_client(transport=httpx.MockTransport(respond)))
     records = asyncio.run(primary_sources.search_papers('ti:"Attention Is All You Need"'))
     assert records == [{"title": "Attention Is All You Need",
-                        "url": "https://arxiv.org/abs/1706.03762v7", "abstract": "Original abstract."}]
+                        "url": "https://arxiv.org/abs/1706.03762v7", "abstract": "Original abstract.",
+                        "published": "", "updated": ""}]

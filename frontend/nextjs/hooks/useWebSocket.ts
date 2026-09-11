@@ -105,6 +105,7 @@ export const useWebSocket = (
               retrievers: selectedRetrievers,
             },
             search_strategy: search_strategy || "general",
+            online_rag: chatBoxSettings.online_rag !== false,
             query_domains: domains,
             mcp_enabled: mcp_enabled || false,
             mcp_strategy: mcp_strategy || "fast",

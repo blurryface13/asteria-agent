@@ -1,0 +1,23 @@
+.activity { color: #c5c7cb; font-size: 13px; margin: 20px 0 30px; }
+.current { display: flex; align-items: center; gap: 10px; padding: 12px 0; line-height: 1.6; }
+.dot, .done { flex: 0 0 7px; height: 7px; border-radius: 50%; background: #a4aec0; }
+.done { background: #8cbbac; }
+.failedDot { flex: 0 0 7px; height: 7px; border-radius: 50%; background: oklch(72% .13 25); }
+.fatal { color: oklch(78% .10 25); font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
+.activity summary { cursor: pointer; padding: 10px 0; line-height: 1.6; }
+.activity small { color: #9ca0a8; font-size: 11px; margin-left: auto; white-space: nowrap; }
+.agent { margin: 8px 0; border-top: 1px solid #3b3d42; }
+.agent > summary { font-weight: 500; }
+.agent > summary small { margin-left: 12px; }
+.action { padding-left: 12px; }
+.action > summary { display: flex; gap: 12px; align-items: baseline; }
+.purpose { color: #a9adb5; flex: 1; }
+.activity pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 350px; overflow: auto; font: 11px/1.7 ui-monospace, monospace; padding: 12px; background: #202125; border-radius: 8px; }
+.activity [data-error=true], .warning { color: #e2b393; }
+.debug, .note { color: #9ca0a8; font-size: 12px; }
+.graph { margin-top: 16px; border-top: 1px solid #3b3d42; }
+.graph select { max-width: 100%; width: 100%; padding: 9px; border: 1px solid #464950; border-radius: 8px; background: #25262a; color: inherit; }
+.graph svg { width: 100%; max-height: 400px; }
+.activity a { color: #adc2e0; }
+.edges { max-height: 320px; overflow: auto; }
+@media (max-width: 640px) { .action > summary { flex-wrap: wrap; gap: 4px 10px; } .purpose { flex-basis: 75%; } }

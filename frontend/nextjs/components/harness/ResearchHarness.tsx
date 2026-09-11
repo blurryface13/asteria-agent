@@ -861,9 +861,20 @@ export default function ResearchHarness(p: Props) {
               </>
             ) : modal === "调研设置" ? (
               <>
-                <p>使用现有后端的调研配置，不变更模型服务。</p>
                 <label>
-                  检索策略
+                  文献综述 · 在线 RAG
+                  <select
+                    value={p.settings.online_rag === false ? "off" : "on"}
+                    onChange={(e) => p.setSettings((v) => ({ ...v, online_rag: e.target.value === "on" }))}
+                  >
+                    <option value="on">开启：全文混合检索</option>
+                    <option value="off">关闭：Agent 自主阅读原文页段</option>
+                  </select>
+                </label>
+                <p>对下一次文献综述生效；两种模式均可联网发现论文与追踪引用。运行中不自动切换。</p>
+                <p>以下仅用于通用调研引擎，不控制自主综述的工具选择。</p>
+                <label>
+                  通用引擎检索策略
                   <select
                     value={p.settings.search_strategy}
                     onChange={(e) =>
@@ -880,7 +891,7 @@ export default function ResearchHarness(p: Props) {
                   </select>
                 </label>
                 <label>
-                  报告类型
+                  通用引擎报告类型
                   <select
                     value={p.settings.report_type}
                     onChange={(e) =>

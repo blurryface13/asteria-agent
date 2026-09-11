@@ -11,6 +11,7 @@ async def run(args):
         await socket.send("start " + json.dumps({
             "task": args.task, "report_type": "research_report", "report_source": "web",
             "tone": "Objective", "headers": {}, "mcp_enabled": False, "max_search_results": 2,
+            "online_rag": not args.no_online_rag,
         }))
         async def receive():
             while True:
@@ -30,6 +31,7 @@ async def run(args):
                     print("PASS", json.dumps(paths), flush=True)
                     return
                 elif kind == "logs" and event.get("content") in {
+                    "agent_action", "citation_graph",
                     "skill_loaded", "tool_started", "tool_completed", "revision_requested",
                     "evidence_audit", "delivery_validated", "publishing", "error",
                 }:
@@ -43,4 +45,5 @@ if __name__ == "__main__":
     parser.add_argument("--url", default="ws://127.0.0.1:8018/ws")
     parser.add_argument("--timeout", type=int, default=600)
     parser.add_argument("--approve-plan", action="store_true")
+    parser.add_argument("--no-online-rag", action="store_true", help="Direct page reading, without embeddings")
     asyncio.run(run(parser.parse_args()))

@@ -30,6 +30,8 @@ def configured_model(config_path=None):
 
 
 async def run_agentic_task(query, capability, logs_handler, research_kwargs):
+    if capability == "literature_review":
+        return await run_autonomous_review(query, logs_handler, research_kwargs)
     from backend.report_type import BasicReport
 
     model = configured_model(research_kwargs.get("config_path"))
@@ -121,5 +123,33 @@ async def run_agentic_task(query, capability, logs_handler, research_kwargs):
     from asteria_researcher.agentic.latex import publish
     await emit("publishing", "生成受控 LaTeX 源码并编译 PDF")
     logs_handler.artifact_paths = await publish(report, Path("outputs"))
+    await logs_handler.send_json({"type": "report", "output": report})
+    return report
+
+
+async def run_autonomous_review(query, logs_handler, research_kwargs):
+    from pathlib import Path
+    from asteria_researcher.agentic.autonomous import AutonomousReview
+    from asteria_researcher.agentic.latex import publish
+    from asteria_researcher.config.config import Config
+    from asteria_researcher.memory.embeddings import Memory
+    cfg = Config(research_kwargs.get("config_path") or None)
+    online_rag = getattr(logs_handler, "online_rag", True)
+    async def emit(kind, payload):
+        await logs_handler.send_json({"type": "logs", "content": kind, "output": payload})
+    runtime = AutonomousReview(configured_model(research_kwargs.get("config_path")),
+        Memory(cfg.embedding_provider, cfg.embedding_model, **cfg.embedding_kwargs).get_embeddings() if online_rag else None,
+        emit, logs_handler.request_feedback, online_rag=online_rag)
+    report = await runtime.run(query)
+    await runtime.event("lead", "publish", "started", "编译 LaTeX 与 PDF")
+    artifacts = await publish(report, Path("outputs"))
+    artifacts.update({"citation_graph": str(runtime.folder / "citations.json"),
+                      "events": str(runtime.folder / "events.jsonl"),
+                      "evidence": str(runtime.folder / "evidence.json"),
+                      "run_metadata": str(runtime.folder / "run.json"),
+                      "review_plan": str(runtime.folder / "plan.json"),
+                      "sufficiency": str(runtime.folder / "sufficiency.json")})
+    logs_handler.artifact_paths = artifacts
+    await runtime.event("lead", "publish", "completed", "源码、PDF、引用图与研究轨迹已保存")
     await logs_handler.send_json({"type": "report", "output": report})
     return report
