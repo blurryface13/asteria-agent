@@ -962,16 +962,6 @@ export default function ResearchHarness(p: Props) {
             ) : modal === "项目" ? (
               <>
                 <h3>{projectName}</h3>
-                <p>项目已保存。新研究会作为子任务归档到这里。</p>
-                <button
-                  className={s.primary}
-                  onClick={() => {
-                    setModal("");
-                    start();
-                  }}
-                >
-                  在此项目中新建任务
-                </button>
                 <div className={s.searchResults}>
                   <strong>项目任务 · {selectedProjectConversations.length}</strong>
                   {selectedProjectConversations.length === 0 ? (
