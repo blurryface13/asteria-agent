@@ -14,6 +14,7 @@ from uuid import uuid4
 from pydantic import BaseModel, ConfigDict, Field
 
 from .library import PaperLibrary, canonical
+from .report_tools import validate_report_draft
 from .runtime import urls
 from .sufficiency import (ASSESSOR_PROMPT, ReviewPlan, SufficiencyReport, evidence_catalog,
                           process_checks, validate_contract, validate_report, ScopePartition, partition_contract)
@@ -113,6 +114,7 @@ class AutonomousReview:
         self.last_assessment_action, self.stalled_checks = -3, 0
         self.successful_searches = 0
         self.skill = Path(__file__).with_name("skills").joinpath("literature_review.md").read_text()
+        self.report_skill = Path(__file__).with_name("skills").joinpath("report_writing.md").read_text()
         async def bibliography_model(system, payload):
             return await self.llm(system, json.loads(payload))
         self.library.model = bibliography_model
@@ -224,7 +226,8 @@ class AutonomousReview:
             except ValueError:
                 pass  # Unsupported user URLs remain in the original task.
         self.library.save()
-        await self.event("lead", "skill", "completed", "加载文献综述研究规范", skill="literature_review v3")
+        await self.event("lead", "skill", "completed", "加载文献综述研究与报告写作规范",
+                         skills=["literature_review v3", "report_writing v1"])
         user_scope = self.query
         plan = await self.plan_with_contract(
             "Define scope, time range, inclusion criteria and complementary research objectives. "
@@ -590,30 +593,30 @@ class AutonomousReview:
             "evidence. Cite only read_sources, using Markdown links near factual claims. "
             "Preserve scope/date limits and material research gaps. Do not claim exhaustive coverage, "
             "verified experiments, or factual certainty based only on citation membership. "
-            "Respect requested length.\n" + self.skill + "\nOUTPUT CONTRACT: " + length_guidance, payload)
+            "Respect requested length.\n" + self.skill + "\n" + self.report_skill
+            + "\nOUTPUT CONTRACT: " + length_guidance, payload)
         for attempt in range(3):
             (self.folder / f"draft-{attempt + 1}.md").write_text(report)
-            cited = urls(report)
-            unknown = []
-            for url in cited:
-                try:
-                    if canonical(url) not in self.library.papers:
-                        unknown.append(url)
-                except ValueError:
-                    unknown.append(url)
-            actual_chars = len(re.findall(r"[\u4e00-\u9fff]", report))
-            over_length = bool(target_chars and actual_chars > target_chars * 1.4)
-            await self.event("lead", "report_check", "completed" if cited and not unknown and not over_length else "failed",
+            validation = validate_report_draft(report, self.library.papers,
+                                               target_chars=target_chars)
+            cited = validation["citation_urls"]
+            unknown = validation["invalid_urls"]
+            actual_chars = validation["chinese_chars"]
+            over_length = any("篇幅" in issue for issue in validation["issues"])
+            await self.event("lead", "report_check", "completed" if validation["ok"] else "failed",
                              "核对报告篇幅与引用来源", attempt=attempt + 1, chinese_chars=actual_chars,
-                             target_chars=target_chars, invalid_urls=unknown, citation_count=len(cited))
-            if cited and not unknown and report.strip() and not over_length:
+                             target_chars=target_chars, invalid_urls=unknown, citation_count=len(cited),
+                             issues=validation["issues"], headings=validation["headings"])
+            if validation["ok"]:
                 break
             if attempt == 2:
                 raise ValueError("最终报告未通过引用来源/篇幅校验")
             report = await self.llm("Repair the report. Only cite supplied read_sources, remove unsupported claims. "
-                                    "Return full Chinese Markdown, not JSON. " + length_guidance,
+                                    "Return full Chinese Markdown, not JSON. Preserve thematic synthesis and the "
+                                    "LaTeX-compatible writing rules from the report-writing skill. " + length_guidance,
                                     {"task": self.query, "report": report, "invalid_urls": unknown,
                                      "length_issue": f"当前 {actual_chars} 汉字，请压缩至 {target_chars} 汉字以内，不新增事实" if over_length else None,
+                                     "validation_issues": validation["issues"],
                                      "read_sources": list(self.library.papers), "evidence": evidence})
         (self.folder / "evidence.json").write_text(json.dumps(self.evidence, ensure_ascii=False))
         self.library.save()

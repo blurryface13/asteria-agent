@@ -56,8 +56,10 @@ def test_default_registry_resolves_fine_grained_academic_skills():
     skills = registry.resolve_skills(TaskIntent.ACADEMIC_RESEARCH.value)
     skill_ids = {skill.id for skill in skills}
 
-    assert {"academic_research", "literature_search", "survey_writing"}.issubset(skill_ids)
+    assert {"academic_research", "literature_search", "survey_writing", "report_writing"}.issubset(skill_ids)
     assert "experiment_execution" not in skill_ids
+
+    assert {"report_structure_check", "citation_audit", "latex_compile"}.issubset(registry.tools)
 
 
 def test_registry_rejects_duplicate_capability_ids():

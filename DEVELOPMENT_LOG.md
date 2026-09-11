@@ -127,6 +127,15 @@
    - 功能实现：评测意图路由、计划契约、工具选择/参数正确性、论文发现召回、引用关系准确性、claim-source 支持率、核心目标完成率、无效补研率、停止决策、延迟和费用。
    - 功能实现：将线上失败轨迹转为可复现 BadCase，支持定向修复、回放、指标对比和回归门禁。
 
+### 2026-09-11：综述报告写作 Skill 第一笔增量
+
+- 现状盘点：已有 `literature_review.md` 主要约束研究范围、证据、补研与停止条件；已有 `latex.py` 负责安全 Markdown→TeX→PDF，但报告写作规范和 LaTeX 兼容性约束尚未独立建模。
+- 本轮实现：新增 `agentic/skills/report_writing.md`，将综述结构、证据/引用纪律、比较条件和 LaTeX 兼容写作规范从研究 Skill 中分离；现有 `AutonomousReview` 的 writer 同时加载研究 Skill 与写作 Skill，不改变 Planner、子 Agent、补研和停止逻辑。
+- 本轮实现：新增 `agentic/report_tools.py`，抽取确定性的引用来源、篇幅和标题检查；报告检查事件额外保存问题列表与标题摘要，修订请求携带机器校验结果。
+- 本轮实现：能力注册表补充 `report_structure_check`、`citation_audit`、`latex_compile` 三类工具契约，并注册 `report_writing` Skill。当前工具仍在进程内复用，属于能力边界声明和可测试校验，不宣称已经实现完整 BibTeX 或复杂排版。
+- 设计来源：参考 UC Berkeley Gallant Lab 的证据台账/引用核验/前置文献追溯思路，以及 PaperMentor 的细粒度写作 Skill 思路；只借鉴机制，不直接复制外部代码。
+- 待验证：使用 dora 环境运行新增单测和现有 Agentic 回归；随后再决定是否引入综述 LaTeX 模板、BibTeX 和结构化报告中间层。
+
 ## Commit 规则
 
 - 一个 commit 只解决一个清晰的能力或问题。

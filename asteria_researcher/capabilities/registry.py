@@ -100,6 +100,42 @@ def build_default_registry() -> CapabilityRegistry:
         permission="write",
         timeout_seconds=60,
     ))
+    registry.register_tool(ToolSpec(
+        id="report_structure_check",
+        name="Report Structure Check",
+        description="Check report headings and language-facing delivery structure.",
+        transport="in_process",
+        permission="read",
+        input_schema={"type": "object", "required": ["markdown"],
+                      "properties": {"markdown": {"type": "string"},
+                                     "target_chars": {"type": ["integer", "null"]}}},
+        output_schema={"type": "object", "required": ["ok", "issues", "headings"]},
+        timeout_seconds=30,
+    ))
+    registry.register_tool(ToolSpec(
+        id="citation_audit",
+        name="Citation Audit",
+        description="Match report citations to sources actually read in the current task.",
+        transport="in_process",
+        permission="read",
+        input_schema={"type": "object", "required": ["markdown", "allowed_urls"],
+                      "properties": {"markdown": {"type": "string"},
+                                     "allowed_urls": {"type": "array", "items": {"type": "string"}}}},
+        output_schema={"type": "object", "required": ["ok", "citation_urls", "invalid_urls"]},
+        timeout_seconds=60,
+    ))
+    registry.register_tool(ToolSpec(
+        id="latex_compile",
+        name="LaTeX Compile",
+        description="Render a task-scoped report with the fixed safe template and archive compiler output.",
+        transport="in_process",
+        permission="write",
+        input_schema={"type": "object", "required": ["markdown"],
+                      "properties": {"markdown": {"type": "string"},
+                                     "template": {"type": "string", "enum": ["scientific_default"]}}},
+        output_schema={"type": "object", "required": ["tex", "latex_pdf", "compile_log", "md"]},
+        timeout_seconds=120,
+    ))
 
     registry.register_agent(AgentProfile(
         id="editor",
@@ -197,8 +233,20 @@ def build_default_registry() -> CapabilityRegistry:
         intents=[TaskIntent.ACADEMIC_RESEARCH.value],
         capabilities=["outline_generation", "report_writing"],
         allowed_agents=["writer"],
-        allowed_tools=["workspace_artifact"],
-        validators=["outline_check"],
+        allowed_tools=["workspace_artifact", "report_structure_check", "citation_audit", "latex_compile"],
+        validators=["outline_check", "citation_audit", "latex_compile"],
+        status="active",
+    ))
+    registry.register_skill(SkillManifest(
+        id="report_writing",
+        name="Academic Report Writing",
+        description="Turn an evidence ledger into a structured, citation-audited and LaTeX-compatible report.",
+        implementation="asteria_researcher.agentic.skills.report_writing.md",
+        intents=[TaskIntent.ACADEMIC_RESEARCH.value],
+        capabilities=["evidence_synthesis", "citation_audit", "latex_compatible_writing"],
+        allowed_agents=["writer", "evidence_checker"],
+        allowed_tools=["workspace_artifact", "report_structure_check", "citation_audit", "latex_compile"],
+        validators=["report_structure_check", "citation_audit", "latex_compile"],
         status="active",
     ))
 
