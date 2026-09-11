@@ -67,6 +67,7 @@ export default function Home() {
   const mainContentRef = useRef<HTMLDivElement>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [currentResearchId, setCurrentResearchId] = useState<string | null>(null);
+  const pendingWorkspaceConversationId = useRef<string | null>(null);
   const [isMobile, setIsMobile] = useState(false);
   const [isProcessingChat, setIsProcessingChat] = useState(false);
 
@@ -329,7 +330,43 @@ export default function Home() {
     setCurrentResearchId(null);
   };
 
+  const prepareWorkspaceConversation = async (task: string) => {
+    const id = uuidv4();
+    const activeProjectId = typeof window !== 'undefined'
+      ? window.localStorage.getItem('asteria.activeProjectId')
+      : null;
+    const endpoint = activeProjectId
+      ? `/api/workspace/conversations?project_id=${encodeURIComponent(activeProjectId)}`
+      : '/api/workspace/conversations';
+    const response = await authFetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id,
+        title: task.trim().slice(0, 255) || '新任务',
+        mode: 'research',
+        metadata: { source: 'research-start' },
+      }),
+    });
+    if (!response.ok) {
+      throw new Error(`workspace conversation API error: ${response.status}`);
+    }
+    pendingWorkspaceConversationId.current = id;
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('asteria:workspace-changed'));
+    }
+    return id;
+  };
+
   const handleDisplayResult = async (newQuestion: string) => {
+    let workspaceConversationId: string;
+    try {
+      workspaceConversationId = await prepareWorkspaceConversation(newQuestion);
+    } catch (error) {
+      console.error('Error creating workspace conversation:', error);
+      toast.error('无法创建项目子任务，请检查工作区服务后重试。');
+      return;
+    }
     // Exit chat mode when starting a new research
     setIsInChatMode(false);
     setSidebarOpen(true);
@@ -344,15 +381,13 @@ export default function Home() {
     // For mobile, use a simplified approach without websockets
     if (isMobile) {
       try {
-        // Create a new unique ID for this research
-        const newResearchId = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-        
         // First save the initial question to history - with proper parameters
         const initialOrderedData: Data[] = [{ type: 'question', content: newQuestion } as QuestionData];
         await saveResearch(
           newQuestion,  // question
           '',           // empty answer initially
-          initialOrderedData  // ordered data
+          initialOrderedData, // ordered data
+          workspaceConversationId,
         );
         
         // Make direct API call to get response
@@ -394,13 +429,13 @@ export default function Home() {
           
           // Save the completed research with proper parameters
           await updateResearch(
-            newResearchId,    // id
+            workspaceConversationId, // id
             chatAnswer,       // answer
             updatedOrderedData // ordered data
           );
           
           // Set current research ID so we can continue the conversation
-          setCurrentResearchId(newResearchId);
+          setCurrentResearchId(workspaceConversationId);
         } else {
           // Handle error
           setOrderedData(prevOrder => [...prevOrder, { 
@@ -463,6 +498,14 @@ export default function Home() {
 
   // Mobile-specific implementation for research
   const handleMobileDisplayResult = async (newQuestion: string) => {
+    let workspaceConversationId: string;
+    try {
+      workspaceConversationId = await prepareWorkspaceConversation(newQuestion);
+    } catch (error) {
+      console.error('Error creating workspace conversation:', error);
+      toast.error('无法创建项目子任务，请检查工作区服务后重试。');
+      return;
+    }
     // Update UI state
     setIsInChatMode(false);
     setShowResult(true);
@@ -476,9 +519,6 @@ export default function Home() {
     setOrderedData([{ type: 'question', content: newQuestion } as QuestionData]);
     
     try {
-      // Generate unique ID for this research
-      const mobileResearchId = `mobile-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-      
       // Save initial research with just the question
       const initialOrderedData: Data[] = [{ type: 'question', content: newQuestion } as QuestionData];
       
@@ -486,7 +526,8 @@ export default function Home() {
       await saveResearch(
         newQuestion,  // question
         '',           // empty answer initially
-        initialOrderedData  // ordered data
+        initialOrderedData, // ordered data
+        workspaceConversationId,
       );
       
       // Make direct API call instead of using websockets
@@ -537,13 +578,14 @@ export default function Home() {
         
         // Update research history with the answer
         await updateResearch(
-          mobileResearchId,
+          workspaceConversationId,
           responseContent,
           updatedOrderedData
         );
         
         // Set current research ID for future interactions
-        setCurrentResearchId(mobileResearchId);
+        pendingWorkspaceConversationId.current = null;
+        setCurrentResearchId(workspaceConversationId);
       } else {
         // Handle error in response
         setOrderedData(prevData => [
@@ -782,7 +824,13 @@ export default function Home() {
           if (isNewResearch) {
             isUpdatingRef.current = true;
             try {
-              const newId = await saveResearch(question, answer, orderedData);
+              const newId = await saveResearch(
+                question,
+                answer,
+                orderedData,
+                pendingWorkspaceConversationId.current,
+              );
+              pendingWorkspaceConversationId.current = null;
               setCurrentResearchId(newId);
               
               // Don't navigate to the research page URL anymore

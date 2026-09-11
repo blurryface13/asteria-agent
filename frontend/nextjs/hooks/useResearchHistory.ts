@@ -156,31 +156,38 @@ export const useResearchHistory = () => {
   }, []); // Empty dependency array - only run once on mount
   
   // Save new research
-  const saveResearch = async (question: string, answer: string, orderedData: Data[]) => {
+  const saveResearch = async (
+    question: string,
+    answer: string,
+    orderedData: Data[],
+    existingConversationId?: string | null,
+  ) => {
     let workspaceConversationCreated = false;
-    const id = uuidv4();
+    const id = existingConversationId || uuidv4();
     try {
       // Keep the report and conversation addressable by one stable ID. The
       // report API remains compatible, while the workspace API owns the
       // project/conversation hierarchy.
-      const activeProjectId = typeof window !== 'undefined'
-        ? window.localStorage.getItem('asteria.activeProjectId')
-        : null;
-      const conversationEndpoint = activeProjectId
-        ? `/api/workspace/conversations?project_id=${encodeURIComponent(activeProjectId)}`
-        : '/api/workspace/conversations';
-      const conversationResponse = await authFetch(conversationEndpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id,
-          title: question.trim().slice(0, 255) || '新任务',
-          mode: 'research',
-          metadata: { source: 'research-history' },
-        }),
-      });
-      if (!conversationResponse.ok) {
-        throw new Error(`workspace conversation API error: ${conversationResponse.status}`);
+      if (!existingConversationId) {
+        const activeProjectId = typeof window !== 'undefined'
+          ? window.localStorage.getItem('asteria.activeProjectId')
+          : null;
+        const conversationEndpoint = activeProjectId
+          ? `/api/workspace/conversations?project_id=${encodeURIComponent(activeProjectId)}`
+          : '/api/workspace/conversations';
+        const conversationResponse = await authFetch(conversationEndpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id,
+            title: question.trim().slice(0, 255) || '新任务',
+            mode: 'research',
+            metadata: { source: 'research-history' },
+          }),
+        });
+        if (!conversationResponse.ok) {
+          throw new Error(`workspace conversation API error: ${conversationResponse.status}`);
+        }
       }
       workspaceConversationCreated = true;
       

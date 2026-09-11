@@ -296,6 +296,10 @@ export default function ResearchHarness(p: Props) {
       <span>{label}</span>
     </button>
   );
+  const selectedProject = projects.find((project) => project.id === activeProjectId);
+  const selectedProjectConversations = selectedProject
+    ? conversations.filter((conversation) => conversation.project_id === selectedProject.id)
+    : [];
   return (
     <div className={s.shell} data-sidebar={rail ? "open" : "closed"}>
       {rail && (
@@ -942,7 +946,34 @@ export default function ResearchHarness(p: Props) {
             ) : modal === "项目" ? (
               <>
                 <h3>{projectName}</h3>
-                <p>服务端项目已保存。目录绑定、成员和任务关联将继续接入。</p>
+                <p>项目已保存。新研究会作为子任务归档到这里。</p>
+                <button
+                  className={s.primary}
+                  onClick={() => {
+                    setModal("");
+                    start();
+                  }}
+                >
+                  在此项目中新建任务
+                </button>
+                <div className={s.searchResults}>
+                  <strong>项目任务 · {selectedProjectConversations.length}</strong>
+                  {selectedProjectConversations.length === 0 ? (
+                    <p>还没有子任务，从上方开始创建。</p>
+                  ) : selectedProjectConversations.map((conversation) => {
+                    const completed = p.history.some((item) => item.id === conversation.id);
+                    return completed ? (
+                      <button key={conversation.id} onClick={() => select(conversation.id)}>
+                        <Icon name="file" />
+                        {conversation.title}
+                      </button>
+                    ) : (
+                      <div key={conversation.id} className={s.pendingBadge}>
+                        {conversation.title} · {conversation.status === "active" ? "进行中" : conversation.status}
+                      </div>
+                    );
+                  })}
+                </div>
               </>
             ) : modal === "案例" ? (
               <div className={s.exampleList}>
