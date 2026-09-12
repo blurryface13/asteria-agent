@@ -1041,6 +1041,8 @@ E1 交付预览另发现出版缺陷：Markdown 数学式未渲染，LaTeX 转�
 
 最终服务健康检查曾发现 3023 首页 SSR 500，最初维护被权限审查拒绝。后续用户授权后定位为 macOS dataless 云端占位依赖读取失败，已恢复/按锁文件完整性修复涉及的消毒依赖；终端与后台启动增加有超时的实际依赖导入检查。不清缓存、不更换端口或视觉设计，详见最新开发记录。2026-09-12 由 GPT-5 复核：首页、报告深链接与报告 API 均 HTTP 200，三项用户级服务退出状态为 0。
 
+2026-09-12 再次复现并确认：`Documents` 云同步范围内的 `node_modules` 曾出现 `compressed,dataless` 文件和不完整的 SWC/jsdom 依赖链；按 `package-lock.json` 执行 Node 22 `npm ci --ignore-scripts --prefer-online` 后恢复 870 个锁定依赖，启动前 Next/SWC 与 SSR 消毒依赖检查通过。首次冷编译较慢但最终首页、研究深链接均 HTTP 200。用户级 launchd 直接执行 Documents 内 bash 脚本会被 macOS 拒绝，当前常驻实例改为由 launchd 直接启动 Node 并先切换到前端目录；保留 `WATCHPACK_POLLING=false`，不关闭安全消毒、不删除 `.next`、不换端口。无浏览器鉴权令牌时前端代理返回 401 属于既有鉴权行为，不与 SSR 500 混同。长期应避免将 `node_modules`、`.next` 和大缓存作为云同步对象，源码同步与依赖/构建产物分离。
+
 #### 审查增量：证据类型与有界打回
 
 保留主 Agent、并行研究员、初审和一次独立语义复核。审查增加 direct / synthesis / inference / unknown 答案类型；综合/推断必须说明证据到答案的推理，推断必须标明限定，未知不能通过。用户要求明确实测值或作者自述时，推断不能替代。Writer 接收逐目标答案与类型，保持主题综合与论断组引用，不把引用密度当作质量。

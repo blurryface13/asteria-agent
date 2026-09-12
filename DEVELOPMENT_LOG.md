@@ -15,6 +15,15 @@
 
 ## 开发节点
 
+### 2026-09-12：云端 Documents 依赖复现与前端恢复（GPT-5）
+
+- 复现了 3023 前端首页 SSR 500，而 8018 后端健康与报告接口仍为 HTTP 200 的分层故障。前端日志先后出现缺失 `@swc/helpers/_/_interop_require_wildcard`、`jsdom` 读取迟滞以及 macOS `Unknown system error -11`；这不是研究 Agent 或后端接口逻辑报错。
+- 根因确认：项目位于 macOS `Documents` 云同步范围内，`node_modules` 中部分文件曾处于 `compressed,dataless` 或云端按需读取状态。手工读取会触发恢复，Node/Next 首次编译则可能在依赖链上等待或看到不完整模块，因此表现为偶发 SSR 500、卡住或启动后无响应。
+- 按 `package-lock.json` 使用 Node 22 重新执行 `npm ci --ignore-scripts --prefer-online`，共恢复 870 个锁定版本依赖；未升级 `package.json`、未改写 lockfile、未执行 `npm audit fix`。精确依赖恢复后，`scripts/check-frontend-files.cjs` 的 Next/SWC、jsdom、DOMPurify 导入检查通过。
+- 启动器复核发现，用户级 launchd 直接执行 Documents 内 bash 脚本会被 macOS 返回 `Operation not permitted`（退出码 126），而直接由 launchd 拉起 Node、先切换到 `frontend/nextjs` 再加载 Next 可以正常运行。当前常驻实例采用后者，保留 `WATCHPACK_POLLING=false`、Node 22、3023 和既有环境变量，不修改系统隐私设置。
+- 首次冷编译首页约 68.5 秒、研究深链接约 18.9 秒；编译完成后根页面与研究页面均 HTTP 200，8018 `/api/reports` HTTP 200。未认证的 3023 `/api/reports` 返回 401 属于现有鉴权契约，不是 SSR 500；浏览器应沿用已有本地登录/鉴权状态。
+- 长期约束：源码可继续放在 Documents，但应避免把 `node_modules`、`.next` 和大缓存作为云同步对象；在不改变系统存储设置的前提下，后续可将依赖/构建目录迁出云同步范围。启动前检查只负责失败快报，不用关闭消毒器、删除缓存或切换端口掩盖问题。
+
 ### 2026-09-12：审查证据标准、打回上限与 SSR 读取修复（Codex）
 
 - 审查答案新增 direct / synthesis / inference / unknown 分类，保存 answer、reasoning、qualification。综合与推断必须附原始证据、推理链；推断须有限定，未知不能判为 supported。原文未实测的数字不能由推断代替。初审与一次语义复核使用同一证据原则，不新增研究编排或改变子 Agent 并行机制。
