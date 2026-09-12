@@ -8,7 +8,7 @@ from backend.auth.workspace_models import (
     ProjectCreateRequest,
     ProjectUpdateRequest,
 )
-from backend.auth.workspace_store_pg import WorkspaceNotFound, workspace_store
+from backend.auth.workspace_store_pg import WorkspaceNotFound, WorkspaceBusy, workspace_store
 
 router = APIRouter(prefix="/api/workspace", tags=["workspace"])
 
@@ -142,6 +142,8 @@ async def delete_conversation(
 ):
     try:
         await workspace_store.delete_conversation(conversation_id, _email)
+    except WorkspaceBusy as exc:
+        raise HTTPException(409, str(exc)) from exc
     except WorkspaceNotFound as exc:
         raise _not_found(exc) from exc
 

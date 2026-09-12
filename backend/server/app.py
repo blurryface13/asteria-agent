@@ -35,6 +35,7 @@ from backend.auth.report_store_pg import PgReportStore
 from backend.auth.routes import router as auth_router
 from backend.auth.schema_bootstrap import initialize_database
 from backend.auth.workspace_routes import router as workspace_router
+from backend.runs.routes import router as runs_router
 from backend.knowledge.routes import router as knowledge_router
 from backend.auth.dependencies import get_current_user_email, get_current_user_email_from_query
 
@@ -98,6 +99,7 @@ async def lifespan(app: FastAPI):
 
 # App initialization
 app = FastAPI(lifespan=lifespan)
+app.include_router(runs_router)
 
 # Configure allowed origins for CORS
 allowed_origins_env = os.getenv("CORS_ALLOW_ORIGINS")

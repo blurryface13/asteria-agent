@@ -318,6 +318,13 @@ export default function ResearchHarness(p: Props) {
     input.current?.focus();
   };
   const projectTaskIds = new Set(conversations.filter((item) => item.project_id).map((item) => item.id));
+  const reportIds = new Set(p.history.map((item) => item.id));
+  const standaloneTasks = [
+    ...conversations.filter((item) => !item.project_id && !reportIds.has(item.id)).map((item) => ({
+      id: item.id, question: item.title, timestamp: new Date(item.updated_at).getTime(),
+    })),
+    ...p.history.filter((item) => !projectTaskIds.has(item.id)),
+  ].sort((a, b) => b.timestamp - a.timestamp);
   const selectedProjectConversations = selectedProject
     ? conversations.filter((conversation) => conversation.project_id === selectedProject.id)
     : [];
@@ -396,7 +403,7 @@ export default function ResearchHarness(p: Props) {
             <summary>
               任务 <Icon name="down" size={14} />
             </summary>
-            {p.history.filter((item) => !projectTaskIds.has(item.id)).map((item) => (
+            {standaloneTasks.map((item) => (
               <button
                 key={item.id}
                 className={`${s.task} ${p.selectedId === item.id ? s.selected : ""}`}
@@ -531,7 +538,7 @@ export default function ResearchHarness(p: Props) {
                       {p.loading
                         ? "运行中"
                         : p.stopped
-                          ? "已断开"
+                          ? "已停止"
                           : p.answer
                             ? "已生成报告"
                             : ""}
@@ -662,7 +669,7 @@ export default function ResearchHarness(p: Props) {
                       <button
                         className={s.send}
                         onClick={p.onStop}
-                        aria-label="断开当前任务连接"
+                        aria-label="停止当前任务"
                       >
                         <span className={s.stop} />
                       </button>
@@ -726,7 +733,7 @@ export default function ResearchHarness(p: Props) {
                       {p.loading
                         ? "正在运行"
                         : p.stopped
-                          ? "连接已断开"
+                          ? "已停止"
                           : p.answer
                             ? "报告已生成"
                             : "尚未开始"}

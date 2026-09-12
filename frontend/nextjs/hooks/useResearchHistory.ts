@@ -8,6 +8,21 @@ export const useResearchHistory = () => {
   const [history, setHistory] = useState<ResearchHistoryItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const dataLoadedRef = useRef(false); // Track if data has been loaded
+  useEffect(() => {
+    const refresh = async () => {
+      const response = await authFetch('/api/reports');
+      if (!response.ok) return;
+      const data = await response.json();
+      if (Array.isArray(data.reports)) {
+        const reports = [...data.reports].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+        setHistory(reports);
+        localStorage.setItem('researchHistory', JSON.stringify(reports));
+      }
+    };
+    const listener = () => { void refresh().catch(console.error); };
+    window.addEventListener('asteria:reports-changed', listener);
+    return () => window.removeEventListener('asteria:reports-changed', listener);
+  }, []);
   
   // Fetch all research history on mount
   useEffect(() => {
@@ -393,6 +408,13 @@ export const useResearchHistory = () => {
   // Delete research
   const deleteResearch = async (id: string) => {
     try {
+      const conversationResponse = await authFetch(`/api/workspace/conversations/${id}`, {
+        method: 'DELETE',
+      });
+      if (!conversationResponse.ok && conversationResponse.status !== 404) {
+        const data = await conversationResponse.json();
+        throw new Error(data.detail || `workspace API error: ${conversationResponse.status}`);
+      }
       const response = await authFetch(`/api/reports/${id}`, {
         method: 'DELETE',
       });
@@ -401,12 +423,6 @@ export const useResearchHistory = () => {
         throw new Error(`API error: ${response.status}`);
       }
 
-      const conversationResponse = await authFetch(`/api/workspace/conversations/${id}`, {
-        method: 'DELETE',
-      });
-      if (!conversationResponse.ok && conversationResponse.status !== 404) {
-        throw new Error(`workspace API error: ${conversationResponse.status}`);
-      }
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new Event('asteria:workspace-changed'));
       }
@@ -426,17 +442,7 @@ export const useResearchHistory = () => {
     } catch (error) {
       console.error('Error deleting research:', error);
       
-      // Update local state anyway
-      setHistory(prev => prev.filter(item => item.id !== id));
-      
-      // Update localStorage
-      const localHistory = localStorage.getItem('researchHistory');
-      if (localHistory) {
-        const parsedHistory = JSON.parse(localHistory);
-        const filteredHistory = parsedHistory.filter((item: any) => item.id !== id);
-        localStorage.setItem('researchHistory', JSON.stringify(filteredHistory));
-      }
-      
+      toast.error(error instanceof Error ? error.message : '删除失败');
       return false;
     }
   };

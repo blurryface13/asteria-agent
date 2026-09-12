@@ -126,6 +126,8 @@ async def create_chat_completion(
                 messages, stream, websocket, **kwargs
             )
         except Exception as exc:
+            from .usage_context import record_usage
+            await record_usage(model, llm_provider, attempt, None, type(exc).__name__)
             last_exception = exc
             logging.getLogger(__name__).warning(
                 f"LLM request failed (attempt {attempt}/{max_attempts}): {exc}"
@@ -135,6 +137,8 @@ async def create_chat_completion(
                 continue
             break
 
+        from .usage_context import record_usage
+        await record_usage(model, llm_provider, attempt, getattr(provider, 'last_usage_metadata', None))
         if not response:
             last_exception = RuntimeError("Empty response from LLM provider")
             logging.getLogger(__name__).warning(

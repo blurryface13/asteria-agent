@@ -2,7 +2,7 @@
 
 import { useRef, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useWebSocket } from '@/hooks/useWebSocket';
+import { useDurableResearch } from '@/hooks/useDurableResearch';
 import { useResearchHistoryContext } from '@/hooks/ResearchHistoryContext';
 import { useScrollHandler } from '@/hooks/useScrollHandler';
 import { startLanggraphResearch } from '../components/Langgraph/Langgraph';
@@ -70,6 +70,10 @@ export default function Home() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [currentResearchId, setCurrentResearchId] = useState<string | null>(null);
   const pendingWorkspaceConversationId = useRef<string | null>(null);
+  const durableConversation = useRef<string | null>(null);
+  const selectionGeneration = useRef(0);
+  const selectionRetry = useRef<ReturnType<typeof setTimeout>>();
+  useEffect(() => () => { selectionGeneration.current++; clearTimeout(selectionRetry.current); }, []);
   const [isMobile, setIsMobile] = useState(false);
   const [isProcessingChat, setIsProcessingChat] = useState(false);
 
@@ -102,22 +106,19 @@ export default function Home() {
     getChatMessages
   } = useResearchHistoryContext();
 
-  // Only initialize the WebSocket hook reference, don't connect automatically
-  const { socket, initializeWebSocket } = useWebSocket(
+  // Observe durable runs without starting work until an explicit submission.
+  const durableResearch = useDurableResearch(
     setOrderedData,
     setAnswer,
     setLoading,
     setShowHumanFeedback,
-    setQuestionForHuman
+    setQuestionForHuman,
+    setIsStopped
   );
 
-  const handleFeedbackSubmit = (feedback: string | null) => {
-    if (!socket || socket.readyState !== WebSocket.OPEN) {
-      toast.error('任务连接已断开，无法提交计划确认。');
-      return;
-    }
-    socket.send(JSON.stringify({ type: 'human_feedback', content: feedback }));
-    setShowHumanFeedback(false);
+  const handleFeedbackSubmit = async (feedback: string | null) => {
+    try { await durableResearch.feedback(feedback); }
+    catch (error) { toast.error(error instanceof Error ? error.message : '计划确认未保存'); }
   };
 
   const handleChat = async (message: string) => {
@@ -361,6 +362,8 @@ export default function Home() {
   };
 
   const handleDisplayResult = async (newQuestion: string) => {
+    selectionGeneration.current++;
+    clearTimeout(selectionRetry.current);
     let workspaceConversationId: string;
     try {
       workspaceConversationId = await prepareWorkspaceConversation(newQuestion);
@@ -494,7 +497,16 @@ export default function Home() {
         previousChunk = chunk;
       }
     } else {
-      initializeWebSocket(newQuestion, chatBoxSettings);
+      setCurrentResearchId(workspaceConversationId);
+      window.history.replaceState(null, '', `/?conversation=${encodeURIComponent(workspaceConversationId)}`);
+      linkedConversation.current = workspaceConversationId;
+      durableConversation.current = workspaceConversationId;
+      try {
+        await durableResearch.start(newQuestion, chatBoxSettings, workspaceConversationId);
+      } catch (error) {
+        setLoading(false);
+        setOrderedData(prev => [...prev, {type: 'logs', content: 'error', output: error instanceof Error ? error.message : '任务提交失败'} as Data]);
+      }
     }
   };
 
@@ -714,6 +726,8 @@ export default function Home() {
   };
 
   const reset = () => {
+    selectionGeneration.current++;
+    clearTimeout(selectionRetry.current);
     // Reset UI states
     setShowResult(false);
     setPromptValue("");
@@ -733,9 +747,9 @@ export default function Home() {
     setQuestionForHuman(false);
     
     // Clean up connections
-    if (socket) {
-      socket.close();
-    }
+    durableResearch.detach();
+    durableConversation.current = null;
+    window.history.replaceState(null, '', '/');
     setLoading(false);
   };
 
@@ -749,21 +763,16 @@ export default function Home() {
 
   /**
    * Handles stopping the current research
-   * - Closes WebSocket connection
-   * - Stops loading state
-   * - Marks research as stopped
-   * - Preserves current results
-   * - Reloads the page to fully reset the connection
+   * Sends an explicit cancellation; only the worker's terminal event marks
+   * research stopped. Closing or refreshing this view is not cancellation.
    */
-  const handleStopResearch = () => {
-    if (socket) {
-      socket.close();
+  const handleStopResearch = async () => {
+    try {
+      await durableResearch.cancel();
+      toast.success('已请求停止，等待后台确认');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '停止请求失败');
     }
-    setLoading(false);
-    setIsStopped(true);
-    
-    // Reload the page to completely reset the socket connection
-    window.location.reload();
   };
 
   /**
@@ -800,6 +809,8 @@ export default function Home() {
     const saveOrUpdateResearch = async () => {
       // Prevent infinite loops by checking if we're already updating
       if (isUpdatingRef.current) return;
+      // The worker owns report persistence; never overwrite it with partial replay.
+      if (durableConversation.current && !isInChatMode) return;
       
       if (showResult && !loading && answer && question && orderedData.length > 0) {
         if (isInChatMode && currentResearchId) {
@@ -858,8 +869,31 @@ export default function Home() {
 
   // Handle selecting a research from history
   const handleSelectResearch = async (id: string) => {
+    const selection = ++selectionGeneration.current;
+    clearTimeout(selectionRetry.current);
+    let retryObservation = true;
     try {
+      durableResearch.detach();
+      pendingWorkspaceConversationId.current = id;
+      setCurrentResearchId(id);
+      setShowResult(true);
+      linkedConversation.current = id;
+      window.history.replaceState(null, '', `/?conversation=${encodeURIComponent(id)}`);
+      const latest = await authFetch(`/api/workspace/runs/latest?conversation_id=${encodeURIComponent(id)}`);
+      retryObservation = latest.status >= 500;
+      if (!latest.ok) throw new Error('无法读取后台任务状态');
+      const snapshot = await latest.json();
+      if (selection !== selectionGeneration.current) return;
+      if (snapshot.run && snapshot.run.status !== 'completed') {
+        durableConversation.current = id;
+        setQuestion(snapshot.run.request.task);
+        setIsInChatMode(false);
+        await durableResearch.restore(id);
+        return;
+      }
+      durableConversation.current = snapshot.run ? id : null;
       const research = await getResearchById(id);
+      if (selection !== selectionGeneration.current) return;
       if (research) {
         setCurrentResearchId(id);
         setQuestion(research.question);
@@ -871,6 +905,15 @@ export default function Home() {
         setIsInChatMode(false);
       }
     } catch (error) {
+      if (selection !== selectionGeneration.current) return;
+      if (retryObservation) {
+        setLoading(true);
+        setOrderedData([{ type: 'logs', content: 'connection_warning', output: '正在重新连接后台任务，恢复后继续显示进度；不会重新提交。' } as Data]);
+        selectionRetry.current = setTimeout(() => {
+          if (selection === selectionGeneration.current) void handleSelectResearch(id);
+        }, 3000);
+        return;
+      }
       console.error('Error selecting research:', error);
       toast.error('Could not load the selected research');
     }
@@ -884,9 +927,12 @@ export default function Home() {
     if (!id || linkedConversation.current === id) return;
     linkedConversation.current = id;
     void handleSelectResearch(id);
-  // The ref prevents repeated restores when the history context refreshes.
+    // React StrictMode replays effects in development. Reset the guard so the
+    // second setup can restore after cleanup invalidates the first request.
+    return () => { linkedConversation.current = null; };
+  // Deep-link restoration runs on mount, not on every history refresh.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [getResearchById]);
+  }, []);
 
   // Toggle sidebar
   const toggleSidebar = () => {
@@ -961,7 +1007,7 @@ export default function Home() {
         currentResearchId={currentResearchId || undefined} isProcessingChat={isProcessingChat}
         onShareClick={currentResearchId ? handleCopyUrl : undefined}/>
       {showHumanFeedback && <HumanFeedback questionForHuman={questionForHuman}
-        websocket={socket} onFeedbackSubmit={handleFeedbackSubmit}/>}
+        websocket={null} onFeedbackSubmit={handleFeedbackSubmit}/>}
     </ResearchHarness>
   );
 }

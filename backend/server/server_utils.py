@@ -41,6 +41,8 @@ class CustomLogsHandler:
             }, f, indent=2)
 
     async def request_feedback(self, question):
+        if hasattr(self.websocket, 'request_feedback'):
+            return await self.websocket.request_feedback(question)
         if self.feedback_queue is None:
             raise RuntimeError("Human feedback transport is unavailable")
         self.awaiting_feedback = True

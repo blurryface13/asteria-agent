@@ -22,9 +22,12 @@ async def initialize_database() -> None:
             schema_dir / "schema.sql",
             schema_dir / "reports_schema.sql",
             schema_dir / "workspace_schema.sql",
+            schema_dir.parent / "runs" / "schema.sql",
         )
         pool = await get_pool()
-        async with pool.acquire() as conn:
+        async with pool.acquire() as conn, conn.transaction():
+            # API and worker may boot concurrently against the same database.
+            await conn.execute("SELECT pg_advisory_xact_lock(hashtextextended('asteria-schema-bootstrap', 0))")
             for schema_file in schema_files:
                 await conn.execute(schema_file.read_text(encoding="utf-8"))
         _initialized = True

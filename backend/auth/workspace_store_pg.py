@@ -11,6 +11,10 @@ class WorkspaceNotFound(Exception):
     pass
 
 
+class WorkspaceBusy(Exception):
+    pass
+
+
 def _project(row) -> dict[str, Any]:
     return {
         "id": row["id"],
@@ -246,9 +250,20 @@ class PgWorkspaceStore:
         return _conversation(row)
 
     async def delete_conversation(self, conversation_id: str, user_email: str) -> None:
-        await self.get_conversation(conversation_id, user_email)
         pool = await get_pool()
-        async with pool.acquire() as conn:
+        async with pool.acquire() as conn, conn.transaction():
+            row = await conn.fetchrow('SELECT id FROM workspace_conversations WHERE id=$1 AND user_email=$2 FOR UPDATE', conversation_id, user_email)
+            if row is None:
+                raise WorkspaceNotFound('conversation not found')
+            runs = await conn.fetch('SELECT id,status FROM research_runs WHERE conversation_id=$1 FOR UPDATE', conversation_id)
+            if any(r['status'] not in {'completed', 'failed', 'cancelled', 'interrupted'} for r in runs):
+                raise WorkspaceBusy('请先停止正在运行的任务，再删除对话')
+            # User-requested deletion removes terminal DB history atomically.
+            # Output files are retained; never recursively remove a workspace.
+            for table in ('research_artifacts', 'research_approvals', 'research_events', 'research_jobs'):
+                await conn.execute(f'DELETE FROM {table} WHERE run_id IN (SELECT id FROM research_runs WHERE conversation_id=$1)', conversation_id)
+            await conn.execute('DELETE FROM research_runs WHERE conversation_id=$1', conversation_id)
+            await conn.execute('DELETE FROM reports WHERE id=$1 AND user_email=$2', conversation_id, user_email)
             await conn.execute(
                 "DELETE FROM workspace_conversations WHERE id = $1 AND user_email = $2",
                 conversation_id,
