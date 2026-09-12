@@ -308,3 +308,12 @@
 - 发现后续路由缺口：`websocket_manager.py` 将 `general_research` 折叠为 `capability=None`，随后回退旧 `BasicReport` 通用研究器，实际触发网页检索和来源抓取。该请求不应创建研究 Run。
 - 真实运行：Run `4c7e80a3ccff42c3afaee0802ecfc3af`，最终由用户取消；3 次模型调用、1,321 tokens、22.49 秒、无产物。取消前没有报告写作，但已产生不必要的研究成本。
 - 本次只记录 BadCase，不修改代码、不重启服务。后续应新增与研究协议分离的直接回答分支，并验证同一请求不会产生 research/tool/report 事件；不改变文献综述和实验设计的自主规划链路。
+
+### 2026-09-12：Coordinator 第一阶段与普通 Chat 闭环（GPT-5）
+
+- 新增 `general_chat` 意图，与 `literature_review`、`experiment_design`、`general_research` 分开；自包含问答/改写不再被当作需要研究的请求。
+- 新增 `/api/coordinator/route` 统一路由：普通 Chat 直接调用无检索工具的模型，研究任务才返回能力并创建 durable Run；研究请求复用已识别的能力，worker 不重复识别。
+- Chat 结果使用 `mode=chat` 的工作区对话持久化；消息落库只发送后端契约允许的字段，修复前端 `timestamp` 导致用户消息 422 的问题。刷新和深链接可恢复 Chat 消息。
+- 真实网页验证请求：`请把“测试用例设计”这句话改得更自然一些，只给出一句改写结果。`；会话 `69baad11-b0f9-40df-bc53-e93a3543e0fa`，返回“设计测试用例”，页面显示 `Asteria Chat`，刷新后恢复正常。
+- 后端日志确认该请求只有 Coordinator 意图调用、直接回答调用和两条工作区消息写入，没有 research run、Planner、网页检索、工具或报告生成事件；旧 Run `4c7e80a3ccff42c3afaee0802ecfc3af` 继续保留为修复前 BadCase。
+- 验证：dora 针对性测试 `7 passed, 1 skipped`，前端 TypeScript 检查通过，`git diff --check` 通过；重载 8018 API/worker 后，前端 3023 和后端技能 API 均 HTTP 200。研究综述与实验设计链路未改动。

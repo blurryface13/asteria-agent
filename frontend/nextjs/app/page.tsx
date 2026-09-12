@@ -333,7 +333,11 @@ export default function Home() {
     setCurrentResearchId(null);
   };
 
-  const prepareWorkspaceConversation = async (task: string) => {
+  const prepareWorkspaceConversation = async (
+    task: string,
+    mode: 'research' | 'chat' = 'research',
+    source = 'research-start',
+  ) => {
     const id = uuidv4();
     const activeProjectId = typeof window !== 'undefined'
       ? window.localStorage.getItem('asteria.activeProjectId')
@@ -347,8 +351,8 @@ export default function Home() {
       body: JSON.stringify({
         id,
         title: task.trim().slice(0, 255) || '新任务',
-        mode: 'research',
-        metadata: { source: 'research-start' },
+        mode,
+        metadata: { source },
       }),
     });
     if (!response.ok) {
@@ -361,9 +365,77 @@ export default function Home() {
     return id;
   };
 
+  const persistWorkspaceMessage = async (conversationId: string, message: ChatMessage) => {
+    const response = await authFetch(`/api/workspace/conversations/${conversationId}/messages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      // The workspace API owns persistence metadata; do not forward the
+      // browser-only timestamp field to its strict message contract.
+      body: JSON.stringify({
+        role: message.role,
+        content: message.content,
+        metadata: message.metadata || {},
+      }),
+    });
+    if (!response.ok) throw new Error(`workspace message API error: ${response.status}`);
+  };
+
+  const handleCoordinatorChat = async (task: string, response: any) => {
+    const workspaceConversationId = await prepareWorkspaceConversation(task, 'chat', 'coordinator-chat');
+    const userMessage: ChatMessage = { role: 'user', content: task, timestamp: Date.now() };
+    const assistantMessage: ChatMessage = {
+      role: 'assistant',
+      content: response.content,
+      timestamp: response.timestamp || Date.now(),
+      metadata: response.metadata,
+    };
+    await Promise.all([
+      persistWorkspaceMessage(workspaceConversationId, userMessage),
+      persistWorkspaceMessage(workspaceConversationId, assistantMessage),
+    ]);
+    pendingWorkspaceConversationId.current = null;
+    setCurrentResearchId(workspaceConversationId);
+    setIsInChatMode(true);
+    setSidebarOpen(true);
+    setShowResult(true);
+    setLoading(false);
+    setIsStopped(false);
+    setQuestion(task);
+    setAnswer('');
+    setPromptValue('');
+    setOrderedData([
+      { type: 'question', content: task },
+      { type: 'chat', content: response.content, metadata: response.metadata },
+    ]);
+    window.history.replaceState(null, '', `/?conversation=${encodeURIComponent(workspaceConversationId)}`);
+    window.dispatchEvent(new Event('asteria:workspace-changed'));
+  };
+
   const handleDisplayResult = async (newQuestion: string) => {
     selectionGeneration.current++;
     clearTimeout(selectionRetry.current);
+    let coordination: any;
+    try {
+      const response = await authFetch('/api/coordinator', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: newQuestion }),
+      });
+      coordination = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(coordination.detail || coordination.error || `Coordinator API error: ${response.status}`);
+      if (coordination.capability === 'general_chat') {
+        if (!coordination.response?.content) throw new Error('Coordinator returned an empty chat response');
+        await handleCoordinatorChat(newQuestion, coordination.response);
+        return;
+      }
+      if (!['literature_review', 'experiment_design', 'general_research'].includes(coordination.capability)) {
+        throw new Error('Coordinator returned an unsupported capability');
+      }
+    } catch (error) {
+      console.error('Coordinator routing failed:', error);
+      toast.error(error instanceof Error ? error.message : '无法完成任务意图识别，请重试。');
+      return;
+    }
     let workspaceConversationId: string;
     try {
       workspaceConversationId = await prepareWorkspaceConversation(newQuestion);
@@ -424,7 +496,7 @@ export default function Home() {
       linkedConversation.current = workspaceConversationId;
       durableConversation.current = workspaceConversationId;
       try {
-        await durableResearch.start(newQuestion, chatBoxSettings, workspaceConversationId);
+        await durableResearch.start(newQuestion, chatBoxSettings, workspaceConversationId, coordination.capability);
       } catch (error) {
         setLoading(false);
         setOrderedData(prev => [...prev, {type: 'logs', content: 'error', output: error instanceof Error ? error.message : '任务提交失败'} as Data]);
@@ -696,6 +768,29 @@ export default function Home() {
         await durableResearch.restore(id);
         return;
       }
+      const conversationResponse = await authFetch(`/api/workspace/conversations/${id}`);
+      if (conversationResponse.ok) {
+        const conversation = await conversationResponse.json();
+        if (conversation.mode === 'chat') {
+          const messagesResponse = await authFetch(`/api/workspace/conversations/${id}/messages`);
+          const messagesData = messagesResponse.ok ? await messagesResponse.json() : { messages: [] };
+          const messages = Array.isArray(messagesData.messages) ? messagesData.messages : [];
+          const firstUser = messages.find((message: any) => message.role === 'user');
+          setQuestion(firstUser?.content || conversation.title);
+          setAnswer('');
+          setOrderedData(messages.map((message: any) => (
+            message.role === 'user'
+              ? { type: 'question', content: message.content }
+              : { type: 'chat', content: message.content, metadata: message.metadata }
+          )));
+          setShowResult(true);
+          setLoading(false);
+          setIsStopped(false);
+          setIsInChatMode(true);
+          durableConversation.current = null;
+          return;
+        }
+      }
       durableConversation.current = snapshot.run ? id : null;
       const research = await getResearchById(id);
       if (selection !== selectionGeneration.current) return;
@@ -812,7 +907,7 @@ export default function Home() {
       <ResearchResults compact isResearchRunning={loading} orderedData={orderedData} answer={answer} allLogs={allLogs}
         chatBoxSettings={chatBoxSettings} handleClickSuggestion={handleClickSuggestion}
         currentResearchId={currentResearchId || undefined} isProcessingChat={isProcessingChat}
-        onShareClick={currentResearchId ? handleCopyUrl : undefined}/>
+        onShareClick={currentResearchId ? handleCopyUrl : undefined} showResearchActivity={!isInChatMode}/>
       {showHumanFeedback && <HumanFeedback questionForHuman={questionForHuman}
         websocket={null} onFeedbackSubmit={handleFeedbackSubmit}/>}
     </ResearchHarness>

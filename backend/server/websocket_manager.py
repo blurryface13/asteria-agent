@@ -92,7 +92,7 @@ class WebSocketManager:
             except Exception:
                 pass  # If this fails too, there's nothing more we can do
 
-    async def start_streaming(self, task, report_type, report_source, source_urls, document_urls, tone, websocket, headers=None, query_domains=[], mcp_enabled=False, mcp_strategy="fast", mcp_configs=[], max_search_results=None, logs_handler=None):
+    async def start_streaming(self, task, report_type, report_source, source_urls, document_urls, tone, websocket, headers=None, query_domains=[], mcp_enabled=False, mcp_strategy="fast", mcp_configs=[], max_search_results=None, logs_handler=None, coordinator_capability=None):
         """Start streaming the output."""
         from asteria_researcher.utils.enum import Tone
 
@@ -107,10 +107,11 @@ class WebSocketManager:
             mcp_enabled=mcp_enabled, mcp_strategy=mcp_strategy, mcp_configs=mcp_configs,
             max_search_results=max_search_results,
             logs_handler=logs_handler,
+            coordinator_capability=coordinator_capability,
         )
         return report
 
-async def run_agent(task, report_type, report_source, source_urls, document_urls, tone, websocket, stream_output=None, headers=None, query_domains=[], config_path="", return_researcher=False, mcp_enabled=False, mcp_strategy="fast", mcp_configs=[], max_search_results=None, logs_handler=None):
+async def run_agent(task, report_type, report_source, source_urls, document_urls, tone, websocket, stream_output=None, headers=None, query_domains=[], config_path="", return_researcher=False, mcp_enabled=False, mcp_strategy="fast", mcp_configs=[], max_search_results=None, logs_handler=None, coordinator_capability=None):
     """Run the agent."""    
     from asteria_researcher.utils.enum import ReportType
     from asteria_researcher.actions import stream_output as default_stream_output
@@ -139,13 +140,26 @@ async def run_agent(task, report_type, report_source, source_urls, document_urls
 
     # Explicit scientific deliverables opt into the coordinator only on the
     # interactive WebSocket path. REST/mobile contracts stay unchanged.
-    capability = None
-    if not return_researcher and getattr(logs_handler, "feedback_queue", None) is not None:
+    capability = coordinator_capability
+    if capability == "general_chat":
+        raise ValueError("general_chat 请求不得创建研究任务")
+    if coordinator_capability:
+        await logs_handler.send_json({
+            "type": "logs",
+            "content": "intent_resolved",
+            "output": json.dumps({"capability": coordinator_capability, "source": "coordinator"}, ensure_ascii=False),
+        })
+    if capability == "general_research":
+        capability = None
+    if not return_researcher and capability is None and getattr(logs_handler, "feedback_queue", None) is not None:
         from asteria_researcher.agentic.intent import analyze_intent
         from .agentic_runner import configured_model
         await logs_handler.send_json({"type": "logs", "content": "intent_analysis", "output": "分析目标与交付要求"})
         intent = await analyze_intent(task, configured_model(config_path))
-        capability = intent.capability if intent.capability != "general_research" else None
+        if intent.capability == "general_chat":
+            await logs_handler.send_json({"type": "logs", "content": "intent_resolved", "output": intent.model_dump()})
+            raise ValueError("general_chat 请求应通过 Coordinator 直接回答，不得创建研究任务")
+        capability = intent.capability if intent.capability not in {"general_research", "general_chat"} else None
         await logs_handler.send_json({"type": "logs", "content": "intent_resolved", "output": intent.model_dump()})
     options = getattr(logs_handler, "skill_options", None)
     if not capability and options and (options.skill_ids or options.format_profile):

@@ -321,7 +321,7 @@ export default function ResearchHarness(p: Props) {
   const reportIds = new Set(p.history.map((item) => item.id));
   const standaloneTasks = [
     ...conversations.filter((item) => !item.project_id && !reportIds.has(item.id)).map((item) => ({
-      id: item.id, question: item.title, timestamp: new Date(item.updated_at).getTime(),
+      id: item.id, question: item.title, mode: item.mode, timestamp: new Date(item.updated_at).getTime(),
     })),
     ...p.history.filter((item) => !projectTaskIds.has(item.id)),
   ].sort((a, b) => b.timestamp - a.timestamp);
@@ -419,7 +419,7 @@ export default function ResearchHarness(p: Props) {
                     {new Date(item.timestamp).toLocaleDateString("zh-CN")}
                     <span>
                       <Icon name="cloud" size={13} />
-                      调研
+                      {item.mode === "chat" ? "聊天" : "调研"}
                     </span>
                   </small>
                 </span>

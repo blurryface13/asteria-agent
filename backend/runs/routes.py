@@ -22,6 +22,9 @@ def validate_request(request):
         raise HTTPException(422, 'invalid research request')
     if type(request.get('online_rag', True)) is not bool:
         raise HTTPException(422, 'online_rag must be boolean')
+    capability = request.get('coordinator_capability')
+    if capability is not None and capability not in {'literature_review', 'experiment_design', 'general_research'}:
+        raise HTTPException(422, 'invalid coordinator capability')
     try:
         SkillOptions(skill_ids=request.get('skill_ids', []), format_profile=request.get('format_profile'))
     except ValueError as exc:
@@ -37,7 +40,7 @@ def validate_request(request):
         values = request.get(key, [])
         if not isinstance(values, list) or len(values) > 200 or any(not isinstance(v, str) for v in values):
             raise HTTPException(422, f'{key} must be a list of strings (at most 200)')
-    allowed = {'task','report_type','report_source','tone','headers','search_strategy','online_rag','skill_ids','format_profile','query_domains','mcp_enabled','mcp_strategy','mcp_configs','source_urls','document_urls','max_search_results'}
+    allowed = {'task','report_type','report_source','tone','headers','search_strategy','online_rag','skill_ids','format_profile','query_domains','mcp_enabled','mcp_strategy','mcp_configs','source_urls','document_urls','max_search_results','coordinator_capability'}
     if set(request) - allowed:
         raise HTTPException(422, 'unknown research request fields')
     return request

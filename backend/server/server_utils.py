@@ -150,6 +150,7 @@ async def handle_start_command(websocket, data: str, manager, feedback_queue=Non
         mcp_strategy,
         mcp_configs,
         max_search_results,
+        coordinator_capability,
     ) = extract_command_data(json_data)
 
     if not task or not report_type:
@@ -193,6 +194,7 @@ async def handle_start_command(websocket, data: str, manager, feedback_queue=Non
         mcp_configs,
         max_search_results,
         logs_handler=logs_handler,
+        coordinator_capability=coordinator_capability,
     )
     report = str(report)
     scientific_paths = getattr(logs_handler, "artifact_paths", {})
@@ -447,4 +449,5 @@ def extract_command_data(json_data: Dict) -> tuple:
         json_data.get("mcp_strategy", "fast"),
         json_data.get("mcp_configs", []),
         json_data.get("max_search_results"),
+        json_data.get("coordinator_capability"),
     )

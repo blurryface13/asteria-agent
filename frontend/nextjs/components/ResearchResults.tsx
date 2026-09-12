@@ -21,6 +21,7 @@ interface ResearchResultsProps {
   onShareClick?: () => void;
   compact?: boolean;
   isResearchRunning?: boolean;
+  showResearchActivity?: boolean;
 }
 
 export const ResearchResults: React.FC<ResearchResultsProps> = ({
@@ -34,6 +35,7 @@ export const ResearchResults: React.FC<ResearchResultsProps> = ({
   onShareClick,
   compact = false,
   isResearchRunning = false,
+  showResearchActivity = true,
 }) => {
   const groupedData = preprocessOrderedData(orderedData);
   const pathData = groupedData.find((data) => data.type === "path");
@@ -50,7 +52,7 @@ export const ResearchResults: React.FC<ResearchResultsProps> = ({
       if (data.type === "question") {
         return <Question key={`question-${index}`} question={data.content} />;
       } else {
-        return <Report key={`chat-${index}`} answer={data.content} />;
+        return <Report key={`chat-${index}`} answer={data.content} title="Asteria Chat" />;
       }
     });
 
@@ -82,7 +84,7 @@ export const ResearchResults: React.FC<ResearchResultsProps> = ({
       {!compact && initialQuestion && (
         <Question question={initialQuestion.content} />
       )}
-      {orderedData.length > 0 &&
+      {orderedData.length > 0 && showResearchActivity &&
         (compact ? (
           <ResearchActivity logs={allLogs} done={Boolean(pathData) && !isResearchRunning} active={isResearchRunning} />
         ) : (

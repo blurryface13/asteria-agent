@@ -15,7 +15,7 @@ from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse, HTMLResponse
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 # Add the parent directory to sys.path to make sure we can import from server
 sys.path.insert(0, os.path.abspath(os.path.dirname(os.path.dirname(__file__))))
@@ -69,6 +69,11 @@ class ChatRequest(BaseModel):
     
     report: str = ""
     messages: List[Dict[str, Any]]
+
+
+class CoordinatorRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=50000)
+    messages: List[Dict[str, Any]] = Field(default_factory=list)
 
 
 @asynccontextmanager
@@ -457,6 +462,36 @@ async def chat(chat_request: ChatRequest, _email: str = Depends(get_current_user
     except Exception as e:
         logger.error(f"Error processing chat request: {str(e)}", exc_info=True)
         return {"error": str(e)}
+
+
+@app.post("/api/coordinator/route")
+async def coordinator_route(request: CoordinatorRequest, _email: str = Depends(get_current_user_email)):
+    """Classify a request and directly answer ordinary chat requests.
+
+    Research capabilities are returned to the frontend so it creates a
+    durable research run only after the coordinator selects a research
+    execution protocol. General chat never enters the research planner.
+    """
+    from asteria_researcher.agentic.intent import analyze_intent
+    from server.agentic_runner import configured_model
+    from chat.chat import ChatAgentWithMemory
+
+    intent = await analyze_intent(request.message, configured_model("default"))
+    result = {"intent": intent.model_dump(), "capability": intent.capability}
+    if intent.capability != "general_chat":
+        return result
+
+    messages = request.messages or [{"role": "user", "content": request.message}]
+    if messages[-1].get("content") != request.message:
+        messages = [*messages, {"role": "user", "content": request.message}]
+    agent = ChatAgentWithMemory(report="", config_path="default", headers=None)
+    content, metadata = await agent.chat(messages, None, allow_tools=False)
+    result["response"] = {
+        "role": "assistant",
+        "content": content,
+        "metadata": {"tool_calls": metadata} if metadata else None,
+    }
+    return result
 
 @app.post("/api/reports/{research_id}/chat")
 async def research_report_chat(research_id: str, request: Request, _email: str = Depends(get_current_user_email)):

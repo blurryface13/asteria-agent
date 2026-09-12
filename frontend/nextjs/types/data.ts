@@ -83,6 +83,7 @@ export interface ChatMessage {
 
 export interface ResearchHistoryItem {
   id: string;
+  mode?: string;
   question: string;
   answer: string;
   timestamp: number;

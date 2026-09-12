@@ -150,8 +150,17 @@ class ChatAgentWithMemory:
             }
 
 
-    async def process_chat_completion(self, messages: List[Dict[str, str]]):
-        """Process chat completion using configured LLM provider with tool calling support"""
+    async def process_chat_completion(self, messages: List[Dict[str, str]], allow_tools: bool = True):
+        """Process a chat completion, optionally without retrieval tools."""
+        if not allow_tools:
+            response = await create_chat_completion(
+                messages=messages,
+                model=self.config.smart_llm_model,
+                llm_provider=self.config.smart_llm_provider,
+                llm_kwargs=self.config.llm_kwargs,
+            )
+            return response, []
+
         # Create a search tool using the utility function
         search_tool = create_search_tool(self.quick_search)
         
@@ -184,7 +193,7 @@ class ChatAgentWithMemory:
         return response, processed_metadata
 
 
-    async def chat(self, messages, websocket=None):
+    async def chat(self, messages, websocket=None, allow_tools: bool = True):
         """Chat with configured LLM provider (supports OpenAI, Google Gemini, Anthropic, etc.)
         
         Args:
@@ -196,26 +205,33 @@ class ChatAgentWithMemory:
         """
         try:
             
-            # Format system prompt with the report context
-            system_prompt = f"""
-            You are Bunny Research, an autonomous research assistant. If asked what model or API you run
-            on, answer honestly based on the underlying LLM provider configured for this deployment.
+            if allow_tools:
+                system_prompt = f"""
+                You are Bunny Research, an autonomous research assistant. If asked what model or API you run
+                on, answer honestly based on the underlying LLM provider configured for this deployment.
 
-            This is a chat about a research report that you created. Answer based on the given context and report.
-            You must include citations to your answer based on the report.
-            
-            You may use the quick_search tool when the user asks about information that might require current data 
-            not found in the report, such as recent events, updated statistics, or news. If there's no report available,
-            you can use the quick_search tool to find information online.
-            
-            You must respond in markdown format. You must make it readable with paragraphs, tables, etc when possible. 
-            Remember that you're answering in a chat not a report.
-            
-            Assume the current time is: {datetime.now()}.
-            
-            Report: {self.report}
-            
-            """
+                This is a chat about a research report that you created. Answer based on the given context and report.
+                You must include citations to your answer based on the report.
+
+                You may use the quick_search tool when the user asks about information that might require current data
+                not found in the report, such as recent events, updated statistics, or news. If there's no report available,
+                you can use the quick_search tool to find information online.
+
+                You must respond in markdown format. You must make it readable with paragraphs, tables, etc when possible.
+                Remember that you're answering in a chat not a report.
+
+                Assume the current time is: {datetime.now()}.
+
+                Report: {self.report}
+
+                """
+            else:
+                system_prompt = """
+                You are Asteria's direct chat assistant. Answer the user's request directly and concisely.
+                This is ordinary conversation, rewriting, explanation, translation, or brainstorming—not a research report.
+                Do not browse, retrieve sources, invent citations, create a research plan, or describe a report workflow.
+                Respond in clear markdown when useful.
+                """
             
             # Format message history for OpenAI input
             formatted_messages = []
@@ -237,7 +253,9 @@ class ChatAgentWithMemory:
                     logger.warning(f"Skipping message with missing role or content: {msg}")
             
             # Process the chat using configured LLM provider
-            ai_message, tool_calls_metadata = await self.process_chat_completion(formatted_messages)
+            ai_message, tool_calls_metadata = await self.process_chat_completion(
+                formatted_messages, allow_tools=allow_tools
+            )
             
             # Provide fallback response if message is empty
             if not ai_message:

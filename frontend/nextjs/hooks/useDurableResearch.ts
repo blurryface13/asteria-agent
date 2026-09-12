@@ -105,7 +105,12 @@ export function useDurableResearch(
     return true;
   }, [detach, observe]);
 
-  const start = useCallback(async (task: string, settings: ChatBoxSettings, conversationId: string) => {
+  const start = useCallback(async (
+    task: string,
+    settings: ChatBoxSettings,
+    conversationId: string,
+    coordinatorCapability?: string,
+  ) => {
     detach();
     const version = generation.current;
     const domains = JSON.parse(localStorage.getItem('domainFilters') || '[]').map((item: any) => item.value);
@@ -116,7 +121,8 @@ export function useDurableResearch(
         search_strategy: settings.search_strategy || 'general', online_rag: settings.online_rag !== false,
         skill_ids: settings.skill_ids || [], format_profile: settings.format_profile || null,
         query_domains: domains, mcp_enabled: settings.mcp_enabled || false,
-        mcp_strategy: settings.mcp_strategy || 'fast', mcp_configs: settings.mcp_configs || [] },
+        mcp_strategy: settings.mcp_strategy || 'fast', mcp_configs: settings.mcp_configs || [],
+        ...(coordinatorCapability ? { coordinator_capability: coordinatorCapability } : {}), },
     };
     // A request identity is created once; transport retry never creates a new job.
     let run;

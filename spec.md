@@ -1124,3 +1124,15 @@ commit 通常只写本地对象；除非 hook 另行联网，证书错误影响�
 但当前入口把 `general_research` 映射为空能力值，随后继续执行旧的 `BasicReport` 通用研究路径，产生 `starting_research`、`planning_research`、子查询和网页来源抓取事件。真实 Run `4c7e80a3ccff42c3afaee0802ecfc3af` 最终由用户取消，状态 `cancelled`，3 次模型调用、1,321 tokens、22.49 秒、无产物。取消前未进入报告写作，但普通改写请求已经错误地产生了研究检索成本。
 
 这次记录的是路由设计缺口，不是模型分类错误，也不是服务崩溃。下一步应增加与研究执行协议分离的 `general_chat`/直接回答分支：普通问答、改写和非报告请求不得创建研究 Run、调用网页检索或进入 Writer；如果暂不支持该能力，前端也应在创建研究 Run 前明确提示，而不是静默回落旧研究器。该分支要复用会话持久化和统一模型配置，但不改变 `literature_review` 与 `experiment_design` 的自主规划链路。修复后需重新用同一请求验证“意图事件 → 直接回答 → 无 research/tool/report 事件”，再补一个明确的综述请求作为正向对照。
+
+### 22.5 Coordinator 第一阶段：普通问答分流（2026-09-12，GPT-5）
+
+已完成上一节 BadCase 的最小闭环修复。意图模型新增 `general_chat`，提示词明确将自包含的问答、改写、解释、翻译和头脑风暴与需要联网调研的 `general_research` 分开。新增 `/api/coordinator/route` 作为统一路由入口：先分析意图；普通 Chat 直接调用无检索工具的模型，研究能力才返回给前端创建 durable research Run。
+
+研究请求会把 Coordinator 已选的 `literature_review`、`experiment_design` 或 `general_research` 传入 durable 请求，worker 不重复调用意图模型；直接 Chat 不创建 `research_runs`，不进入 Planner、网页检索、Skill 写作或报告发布。WebSocket 直发的 `general_chat` 也会被明确拒绝进入研究器，避免静默回退旧链路。
+
+工作区对话支持 `mode=chat`，普通 Chat 的用户消息和助手消息使用工作区严格字段落库，浏览器时间戳不再污染后端消息契约；刷新或通过对话链接打开时，按 Chat 模式恢复消息，不伪装成研究报告。研究任务的项目/对话层级、durable Run 和前端研究风格不变。
+
+真实浏览器复测同一请求：会话 `69baad11-b0f9-40df-bc53-e93a3543e0fa`，返回“设计测试用例”，页面显示 `Asteria Chat`；刷新后仍能恢复。后端日志只出现 Coordinator 路由、两次模型调用和两条 workspace message 写入，没有 research run、Planner、搜索、工具或报告事件。前一轮产生的旧错误会话保留为历史 BadCase，不覆盖为成功。
+
+验证：意图/工作区/持久化针对性测试 `7 passed, 1 skipped`，前端 TypeScript 检查通过，`git diff --check` 通过；必要地重载 8018 API 与 dora worker 后，3023 首页和 8018 Skill API 均 HTTP 200。下一轮再扩展标准问答的多轮上下文、知识库问答和实验设计能力，不在本轮改变实验 Agent 或科研综述自主链路。
