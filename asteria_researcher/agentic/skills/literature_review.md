@@ -1,6 +1,6 @@
 # Literature review
 
-Version 3. This is a research policy, not a fixed tool sequence. The lead selects
+Version 4. This is a research policy, not a fixed tool sequence. The lead selects
 actions and delegates complementary objectives; each researcher independently
 selects tools within its permission and shared resource budget. Re-plan from
 observations, check coverage and contradictions, and stop with stated reasons.
@@ -25,6 +25,8 @@ assessor evaluates literal tool-read passages against this contract, not the lea
 Use its remaining gaps to choose targeted actions. Evidence sufficiency, not exhaustion of
 possible research directions, determines handoff to writing. A budget is a limit, not a target.
 references and read_passage each accept exactly ONE paper ID; read may download a batch.
-Write a Chinese review with scope, taxonomy, method comparison, evidence limitations,
-research gaps and references. Every factual comparison must link to collected evidence.
+Hand off evidence-grounded answers and qualifications for the confirmed goals.
+The selected content skill and user request determine the report structure at writing time;
+research perspectives do not prescribe chapters or require same-named source sections.
+Every factual comparison must link to collected evidence.
 Never invent a DOI, URL, author, experiment result or claim of exhaustive coverage.

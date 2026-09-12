@@ -1,0 +1,4 @@
+{
+  "academic": {"description":"Academic report: A4, serif Chinese/Latin body, numbered sections, restrained blue headings.","template":"academic.tex"},
+  "brief": {"description":"General research brief: A4, compact sans-serif body, unnumbered headings, neutral black and gray.","template":"brief.tex"}
+}

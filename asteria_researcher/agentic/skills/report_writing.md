@@ -1,12 +1,12 @@
 # Academic report writing
 
-Version 1. This skill defines how to turn an evidence ledger into a readable
+Version 2. This skill defines how to turn an evidence ledger into a readable
 academic deliverable. It does not decide whether more research is needed and it
 does not authorize new sources or tools.
 
 ## Deliverable contract
 
-Write a Chinese Markdown report suitable for deterministic conversion to LaTeX.
+Write the report content in the user's requested language.
 Organize claims by research question and comparison axis rather than by the
 order in which papers were found. Every factual claim about a paper must be
 supported by a source actually read in the current task. Keep separate:
@@ -46,16 +46,8 @@ value was reported when the source did not provide it; use “未报告”.
   and mark the wording as a synthesis rather than attributing it to one paper.
 - End with a deduplicated reference list containing only cited and read sources.
 
-## LaTeX-compatible writing
+## Before delivery
 
-Use plain Markdown headings (`#`, `##`, `###`), paragraphs, simple bullet lists,
-and conservative tables. Keep equations and complex layout out of the first
-draft unless explicitly required. Avoid raw LaTeX commands, HTML, embedded
-scripts, local absolute paths and custom macros. Put figure intent in prose or
-a simple Markdown image reference; the publisher is responsible for escaping
-text and compiling the fixed template.
-
-Before delivery, check in this order: citation provenance, unsupported claims,
-section coverage, requested language and length, then Markdown/LaTeX compilation.
-If compilation fails, fix the smallest source-level incompatibility and rerun
-the compiler; never execute model-supplied macros or shell commands.
+Check citation provenance, unsupported claims, thematic coverage and requested
+length. Follow the separately injected output contract; fonts, layout and
+compiler instructions are not part of this content-writing skill.

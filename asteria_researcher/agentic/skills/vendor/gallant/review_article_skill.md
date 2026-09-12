@@ -1,9 +1,9 @@
-# Imported review-writing guidance
+# Archived adaptation — not injected at runtime
 
-This is the selected review-writing core of Gallant Lab's
-`literature-review-toolkit` PLAYBOOK, copied and minimally adapted from
+This historical local adaptation summarizes Gallant Lab's
+`literature-review-toolkit` PLAYBOOK; it is not a verbatim copy. It was based on
 upstream commit `4c95c5be9fd4e28a95458a4055af0f8affb64020` under the included
-MIT license. The Asteria compatibility adapter at the end is local code.
+MIT license. Runtime now uses source_priority.md (verbatim excerpt) plus a separate local adapter.
 
 ### Phase 7 — Write the review article (OPTIONAL)
 

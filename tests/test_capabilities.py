@@ -57,7 +57,7 @@ def test_default_registry_resolves_fine_grained_academic_skills():
     skill_ids = {skill.id for skill in skills}
 
     assert {"academic_research", "literature_search", "survey_writing", "report_writing",
-            "report_formatting", "gallant_review_guidance"}.issubset(skill_ids)
+            "report_formatting", "source_priority", "general_writing"}.issubset(skill_ids)
     assert "experiment_execution" not in skill_ids
 
     assert {"report_structure_check", "citation_audit", "latex_compile",

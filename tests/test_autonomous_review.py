@@ -15,15 +15,19 @@ class Embeddings:
         return [[1., float("watermark" in t.lower()), float(len(t) % 7)] for t in texts]
 
 
-def test_review_runtime_loads_imported_and_general_writing_skills(tmp_path):
+def test_review_runtime_loads_only_research_skills_initially(tmp_path):
     async def emit(*args, **kwargs):
         pass
     async def approve(*args, **kwargs):
         return None
 
     runtime = AutonomousReview(None, Embeddings(), emit, approve, tmp_path)
-    assert "temporal order of ideas" in runtime.imported_review_skill.lower()
-    assert "Separate content from presentation" in runtime.format_skill
+    assert list(runtime.research_skills.loaded) == ["literature_review"]
+    from asteria_researcher.agentic.skill_catalog import SkillSession
+    session = SkillSession("research")
+    assert "temporal order of ideas" in session.load("source_priority")["content"].lower()
+    with pytest.raises(ValueError):
+        session.load("report_formatting")
 
 
 def test_all_pages_are_available_to_reference_reader(tmp_path):
@@ -226,6 +230,8 @@ def test_child_is_told_local_budget_and_can_return_partial_result(tmp_path):
 def test_writer_repairs_length_and_keeps_audit_drafts(tmp_path):
     calls = []
     async def model(system, payload):
+        if system.startswith("Select exactly ONE content skill"):
+            return json.dumps({"skill_ids": ["report_writing"], "format_profile": "brief", "reason": "short review"})
         calls.append((system, json.loads(payload)))
         return ("水" * 500 if len(calls) == 1 else "水" * 250) + f" [source]({URL})"
     async def emit(*args): pass
@@ -236,4 +242,8 @@ def test_writer_repairs_length_and_keeps_audit_drafts(tmp_path):
     report = asyncio.run(runtime.write_report("summary"))
     assert report.count("水") == 250 and len(calls) == 2
     assert "500" in calls[1][1]["length_issue"]
+    assert "<skill id='report_writing'" in calls[0][0] and "<skill id='report_writing'" in calls[1][0]
+    assert runtime.format_profile == "brief"
+    assert "three compact paragraphs" not in calls[0][0]
+    assert "not a mandatory chapter outline" in calls[0][0]
     assert (runtime.folder / "draft-1.md").exists() and (runtime.folder / "draft-2.md").exists()

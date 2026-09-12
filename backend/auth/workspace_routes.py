@@ -17,6 +17,23 @@ def _not_found(exc: WorkspaceNotFound) -> HTTPException:
     return HTTPException(status_code=404, detail=str(exc))
 
 
+@router.get("/skills")
+async def list_skills(_email: str = Depends(get_current_user_email)):
+    from asteria_researcher.agentic.skill_catalog import catalog
+    from asteria_researcher.agentic.latex import format_profiles
+    return {"skills": [{k: v for k, v in e.items() if k != "files"} for e in catalog()],
+            "format_profiles": format_profiles()}
+
+
+@router.get("/skills/{skill_id}")
+async def get_skill(skill_id: str, _email: str = Depends(get_current_user_email)):
+    from asteria_researcher.agentic.skill_catalog import skill_detail
+    try:
+        return skill_detail(skill_id)
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail="Skill not found") from error
+
+
 @router.get("/projects")
 async def list_projects(_email: str = Depends(get_current_user_email)):
     return {"projects": await workspace_store.list_projects(_email)}

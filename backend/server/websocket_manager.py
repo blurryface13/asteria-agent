@@ -147,6 +147,9 @@ async def run_agent(task, report_type, report_source, source_urls, document_urls
         intent = await analyze_intent(task, configured_model(config_path))
         capability = intent.capability if intent.capability != "general_research" else None
         await logs_handler.send_json({"type": "logs", "content": "intent_resolved", "output": intent.model_dump()})
+    options = getattr(logs_handler, "skill_options", None)
+    if not capability and options and (options.skill_ids or options.format_profile):
+        raise ValueError("当前意图进入通用检索链路，尚不支持指定写作 Skill。请取消指定，或描述文献综述/复现实验交付需求。")
     if capability:
         from .agentic_runner import run_agentic_task
         return await run_agentic_task(task, capability, logs_handler, {

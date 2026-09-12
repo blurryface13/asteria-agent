@@ -117,12 +117,14 @@ async def run_agentic_task(query, capability, logs_handler, research_kwargs):
         await logs_handler.send_json({"type": "logs", "content": kind, "output": text})
 
     paper_cache = {}
-    report = await Coordinator(model=model, research=research, emit=emit,
-                               approve=logs_handler.request_feedback).run(query, capability)
+    runtime = Coordinator(model=model, research=research, emit=emit,
+                          approve=logs_handler.request_feedback,
+                          skill_options=getattr(logs_handler, "skill_options", None))
+    report = await runtime.run(query, capability)
     from pathlib import Path
     from asteria_researcher.agentic.latex import publish
     await emit("publishing", "生成受控 LaTeX 源码并编译 PDF")
-    logs_handler.artifact_paths = await publish(report, Path("outputs"))
+    logs_handler.artifact_paths = await publish(report, Path("outputs"), profile=runtime.format_profile)
     await logs_handler.send_json({"type": "report", "output": report})
     return report
 
@@ -139,10 +141,12 @@ async def run_autonomous_review(query, logs_handler, research_kwargs):
         await logs_handler.send_json({"type": "logs", "content": kind, "output": payload})
     runtime = AutonomousReview(configured_model(research_kwargs.get("config_path")),
         Memory(cfg.embedding_provider, cfg.embedding_model, **cfg.embedding_kwargs).get_embeddings() if online_rag else None,
-        emit, logs_handler.request_feedback, online_rag=online_rag)
+        emit, logs_handler.request_feedback, online_rag=online_rag,
+        skill_options=getattr(logs_handler, "skill_options", None))
     report = await runtime.run(query)
     await runtime.event("lead", "publish", "started", "编译 LaTeX 与 PDF")
-    artifacts = await publish(report, Path("outputs"))
+    artifacts = await publish(report, Path("outputs"), profile=runtime.format_profile)
+    artifacts["writing_selection"] = str(runtime.folder / "writing.json")
     artifacts.update({"citation_graph": str(runtime.folder / "citations.json"),
                       "events": str(runtime.folder / "events.jsonl"),
                       "evidence": str(runtime.folder / "evidence.json"),

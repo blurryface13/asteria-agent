@@ -152,3 +152,57 @@
 - 新增 2 个 Tool 契约：`bibliography_resolver`、`citation_graph`。它们分别映射到已有的参考文献解析和引用图落盘能力；注册表从 6 个 Tool 增至 8 个，不宣称新增了外部服务或完整元数据验证器。
 - AI-Researcher 的关键启发：章节写作可以通过 section composer + writing template + renderer 分层；但其模板是论文领域/章节相关的写作示例，不等于通用 LaTeX 模板。下一步继续拆出 `ReviewDocument`、独立 `survey` format profile 和 BibTeX 生成，不把格式细节继续堆进提示词。
 - 待验证：dora 环境完整测试、`git diff --check`、外部 Skill 文件加载回归；通过后形成独立 commit。
+
+### 2026-09-12：项目树与按需写作 Skill（Codex）
+
+- 项目侧栏改为可展开的项目 → 对话树，悬停/键盘聚焦显示详情与新建按钮；项目内新建直接聚焦输入区。独立任务列表排除已有项目归属的会话；当前项按 ID 高亮，全局新任务清除项目上下文。保留深色样式及既有响应式路由。
+- 对没有最终报告的会话，读取 workspace 会话和消息展示历史快照，不再把“暂无报告”当作不可打开。不会声称历史快照等于任务续跑。
+- Skill 由 skills/catalog.json 和 SkillSession 统一发现、校验、按需注入。研究阶段新增真实动作 load_skill，主/子 Agent 各自持有加载上下文。写作阶段由模型单独选择内容 Skill 和 format_profile；初稿、修订共用相同注入。版本和内容 SHA-256 可追溯。
+- 通用格式契约、内容指导、TeX 模板与发布工具分开。academic/brief 两套本地模板可交叉搭配内容 Skill；简单列表和表格确定性渲染，不执行模型宏。通用写作指导可复用，但未接此 Writer 的其他入口不因此自动获得新能力。
+- 上游复用纠正：旧 review_article_skill.md 是历史改写，不是原文复制，停止注入；新增固定 commit 的原文 source_priority.md 与独立适配，保留 MIT 许可。旧 bibliography_resolver/citation_graph 只是既有能力的说明性契约，不计为新增可执行动作。
+
+#### 验证与真实运行
+
+- Node 22 TypeScript 检查通过；dora 的针对性检查 22 项通过（含真实中文 XeLaTeX 编译、写作修订、加载边界和能力注册）；git diff --check 通过。未开展大规模测试。
+- 真实配置模型单独调用 select_writing 成功：选择 report_writing v2 + source_priority v2，版式 brief；注入 report_formatting v2，输出契约检查为 true。模型主动说明不选择 general_writing/experiment_design 的原因。这是写作选择验证，不等同于完整研究成功，也未证明本次研究循环实际选择了 load_skill。
+- 浏览器创建“科研写作 · Skill 联调”项目，项目内直接新建、子任务归属和折叠层级正常；前端 3023 返回 HTTP 200，后端 8018、PostgreSQL、Ollama 与模型请求均曾实际响应。服务维持原端口和 dora/Node 22。
+- 第一条真实任务 review_db1b21fa99cb45d0b568a2987558f489 在开发期间因 Next Fast Refresh 整页刷新而断开 WebSocket，运行器取消任务。运行任务期间不再修改页面或 hook 文件。
+- 第二条 review_d4c35ed5608a4caabf3c886a90f69f95 经人工修订计划进入研究，但对话中断后最终记录为 cancelled：195.88s、6 次模型调用、0 次工具操作、0 篇已读论文。未生成 writing.json 或最终报告，不计端到端通过。耗时含人工等待，不是推理延迟；无账单 token/费用结论。
+- 发现未解决问题：Planner 会将“无需检索/不追踪引用”错误归为正向 process_requirements；通过现有人工反馈可以纠正为 []。本轮不改停止条件，不掩盖该缺陷。下一轮应优先修正肯定/否定过程要求的语义分类，再进行一次完整浏览器交付。
+
+#### 下次接续
+
+1. 修复上述过程要求的极性分类，避免禁止行为反而成为完成门槛。
+2. 冻结前端改动后跑完短篇综述，检查 writing.json、实际 Skill 事件及 Markdown/TeX/PDF 预览；不要把中断任务写成成功。
+3. 后台任务与 WebSocket 生命周期解耦另立增量；复杂公式、图表资产、跨页表格和 BibTeX 按需求逐项补齐。
+
+### 2026-09-12：Skill 指定、研究目标与停止条件（Codex，GPT-5）
+
+- 完成任务级 Skill 指定/浏览、阶段加载和版式选择；目录 7 项，4 项可指定，3 个主内容 Skill 互斥，系统规范不可取消。用户指定、Agent 自选、系统契约分别记录，不新增任意脚本权限。
+- 处理否定过程要求误分类、分类 ID 遗漏的有限反馈修正；保留原始需求，分类后约束可重新加载。移除审查上下文和 Writer RAG 中的章节/视角耦合；literature_review v4 只约束研究证据，不规定报告章节。
+- 初审存在“有证据但要求更系统/独立章节”的误阻塞。增加一次有界语义复核，不以字符串规则或预算放行；原文 ID、引用片段与来源验证在两级审查中一致生效。无新证据复用结果，不反复审到通过。
+- 没有改变动态 goal_ids 委派、独立研究循环与并行子 Agent；写作章节规范只在写作侧生效。设计与外部项目核对见 spec §21、docs/skill-reference-study.md。
+
+#### 真实运行记录
+
+| 运行 | 结果 | 说明 |
+| --- | --- | --- |
+| review_45a4fe4926464764aa58d60f40532e75 | failed | 浏览器主动指定两个 Skill 和 brief，约 171 秒；已读论文但审查错误要求独立局限章节，没有交付。 |
+| review_0f65351bc6f04f31bd4416825a0e0821 | failed | 分类输出遗漏目标 ID，停在研究开始前；随后补分类反馈修正。 |
+| review_6f18263bdcf34f499c3ed1184d49220f | failed | 仅调整初审提示词仍要求系统性局限自述；保留原证据和失败轨迹。 |
+| review_e9f32dc05d08483cac1fde6b86e0a810 | replay passed | 复用上述已读证据，审查、写作及 PDF 编译通过；不是完整检索测试。 |
+| review_f62b4a4604b2459483201738039226b1 | completed | 同一请求通过实际 WebSocket 从规划、人工确认节点到原文读取、RAG、审查、写作及编译完成。测试脚本按预先限定的单篇原文范围确认计划，不代表 UI 人工点击。 |
+
+最终请求：仅基于 arXiv:1706.03762，约 1000 字中文精读，说明核心机制、实验条件和局限，不检索额外论文，交付 LaTeX/PDF 简报。模型配置不变，online_rag=true；report_writing 与 source_priority 为用户指定，brief 版式被保留，report_formatting 为系统契约。
+
+- run.json：研究+写作 61.74 秒（不含发布），18 次模型调用、8 次动作、3 次充分性审查、1 篇已读论文、2,215,244 bytes；embedding 7 次/53 文本。单篇任务未派子 Agent，本次不能证明并行性能或广域发现质量。
+- 第 2 次审查触发复核且仍拒绝结束；补读原文复杂度表与适用条件后第 3 次通过，没有强制改状态。初始计划重复 ID 与分类错误都经既有反馈修正后继续。
+- 产物：scientific_57e7cb056af94ea0ac12cb949820bcc2，Markdown、TeX、2 页 PDF 和编译记录均存在。写作检查 849 中文字符、1 个来源、无未读 URL；非逐句事实核验。writing.json 保留选择原因、实际注入内容、版本和哈希。
+- PDF 两页已渲染查看，无裁切/重叠；复杂公式仍是当前支持范围内的简化文本，后续单独增强数学排版。系统 Poppler 缺 Adobe-GB1 映射，改用现有 dora PyMuPDF 检查，不重装依赖、不修改报告来迎合检查器。
+- 字符计数不是账单 token，没有新费用估算；之前用户报告的 2.41 元不复用到本次运行。
+
+#### 启动与检查
+
+- dora 68 项针对性测试与 1 项传输测试通过（6 项依赖弃用警告）；Node 22 TypeScript 无增量类型检查通过。浏览器复核项目树与 Skill 入口，窄屏明确只读，保持原响应式路由。前端 3023 和后端 Skill API 均返回 200。
+- 本轮续接时旧前端出现端口监听但 HTTP 不响应，在同一 3023 正常重启后返回 200；没有删除 .next 或升级 Next。后端正常停止拥有的会话，再在 8018 启动。续轮权限重置一度阻止日志写入，恢复目录权限后启动成功，不是应用功能故障。
+- 仍未覆盖：浏览器断线后台续跑、通用旧入口主动 Skill 配置、任意社区包导入、复现实验实际执行。下一笔功能优先级沿用 spec，而不是在本轮追加平行 Agent 框架。

@@ -1,0 +1,109 @@
+[
+  {
+    "id": "literature_review",
+    "title": "研究证据规范",
+    "kind": "policy",
+    "selectable": false,
+    "version": "4",
+    "phases": [
+      "research"
+    ],
+    "description": "证据获取、预算与有边界的文献调研；基础规范。",
+    "files": [
+      "literature_review.md"
+    ],
+    "source": "Asteria"
+  },
+  {
+    "id": "source_priority",
+    "title": "一手来源与归因",
+    "kind": "guidance",
+    "selectable": true,
+    "version": "2",
+    "phases": [
+      "research",
+      "writing"
+    ],
+    "description": "核对原创贡献与历史归因，避免将后续综述当成最初发现。",
+    "files": [
+      "vendor/gallant/source_priority.md",
+      "source_priority_adapter.md"
+    ],
+    "source": "Gallant Lab literature-review-toolkit · MIT · 4c95c5be；原文节选 + 本地适配"
+  },
+  {
+    "id": "report_writing",
+    "title": "文献综述写作",
+    "kind": "content",
+    "selectable": true,
+    "version": "2",
+    "phases": [
+      "writing"
+    ],
+    "description": "按主题综合证据，对比方法、实验与研究空白。",
+    "files": [
+      "report_writing.md"
+    ],
+    "source": "Asteria"
+  },
+  {
+    "id": "general_writing",
+    "title": "通用调研报告",
+    "kind": "content",
+    "selectable": true,
+    "version": "1",
+    "phases": [
+      "writing"
+    ],
+    "description": "围绕问题、发现、不确定性与结论组织报告，不预设学术章节。",
+    "files": [
+      "general_writing.md"
+    ],
+    "source": "Asteria"
+  },
+  {
+    "id": "experiment_research",
+    "title": "复现实验研究规范",
+    "kind": "policy",
+    "selectable": false,
+    "version": "1",
+    "phases": [
+      "research"
+    ],
+    "description": "为复现实验方案收集环境、数据与方法证据。",
+    "files": [
+      "experiment_design.md"
+    ],
+    "source": "Asteria"
+  },
+  {
+    "id": "experiment_design",
+    "title": "复现实验方案写作",
+    "kind": "content",
+    "selectable": true,
+    "version": "2",
+    "phases": [
+      "writing"
+    ],
+    "description": "环境、数据、基线与指标；不宣称执行了未运行的实验。",
+    "files": [
+      "experiment_writing.md"
+    ],
+    "source": "Asteria"
+  },
+  {
+    "id": "report_formatting",
+    "title": "报告输出契约",
+    "kind": "contract",
+    "selectable": false,
+    "version": "2",
+    "phases": [
+      "formatting"
+    ],
+    "description": "Markdown 语法边界；字体、页边距及版式由独立 TeX 模板控制。",
+    "files": [
+      "report_formatting.md"
+    ],
+    "source": "Asteria"
+  }
+]

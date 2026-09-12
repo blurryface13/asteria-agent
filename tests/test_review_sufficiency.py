@@ -54,6 +54,41 @@ def test_optional_expansion_never_blocks_supported_core():
     assert not validate_report(report, GOALS, catalog)
 
 
+def test_reclassified_plan_can_be_loaded_from_its_saved_json():
+    plan = ReviewPlan(scope="范围", perspectives=[{"name": "方法", "query": "方法"}],
+        required_goals=GOALS + [{"id": "g2", "description": "中文简报", "user_quote": "中文简报"}],
+        delivery_constraints=[f"约束{i}" for i in range(8)])
+    fixed = partition_contract(plan, ScopePartition(research_goal_ids=["g1"], delivery_goal_ids=["g2"]))
+    assert len(ReviewPlan.model_validate_json(fixed.model_dump_json()).delivery_constraints) == 9
+
+
+def test_negated_process_moves_to_constraint_without_becoming_required_search():
+    plan = ReviewPlan(scope="范围", perspectives=[{"name": "方法", "query": "方法"}],
+        required_goals=GOALS, process_requirements=[{"id": "p1", "kind": "autonomous_discovery",
+            "description": "仅用给定论文", "user_quote": "无需检索其他论文"}])
+    fixed = partition_contract(plan, ScopePartition(research_goal_ids=["g1"], process_constraint_ids=["p1"]))
+    assert not fixed.process_requirements
+    assert "无需检索其他论文" in fixed.delivery_constraints
+    assert not process_checks([], searches=0, edges=0)
+    assert len(plan.process_requirements) == 1
+    with pytest.raises(ValueError, match="过程"):
+        partition_contract(plan, ScopePartition(research_goal_ids=["g1"], process_constraint_ids=["p2"]))
+
+
+def test_partition_retries_invalid_ids_without_silently_dropping_goals(tmp_path):
+    requests = []
+    async def model(system, payload):
+        requests.append(json.loads(payload))
+        return json.dumps({"research_goal_ids": ["g9"] if len(requests) == 1 else ["g1"]})
+    async def emit(*args, **kwargs):
+        pass
+    runtime = AutonomousReview(model, None, emit, None, tmp_path, online_rag=False)
+    plan = ReviewPlan(scope="范围", perspectives=[{"name": "方法", "query": "方法"}], required_goals=GOALS)
+    fixed = asyncio.run(runtime.partition_with_contract(plan, "请比较注入方法"))
+    assert fixed.required_goals == plan.required_goals
+    assert len(requests) == 2 and requests[1]["required_id_set"] == ["g1"]
+
+
 def test_shared_process_check_preserves_each_relocated_requirement():
     plan = ReviewPlan(scope="范围", perspectives=[{"name": "方法", "query": "方法"}],
                       required_goals=GOALS + [{"id": "g2", "description": "追踪关键论文书目", "user_quote": "追踪关键论文书目"}],
@@ -142,6 +177,27 @@ def test_unread_sources_cannot_enter_assessor_evidence():
     assert not evidence_catalog(EVIDENCE, set())
 
 
+def test_assessor_does_not_receive_planner_expanded_chapter_requirements(tmp_path):
+    seen = []
+    async def model(system, payload):
+        seen.append((system, json.loads(payload)))
+        return json.dumps(finding(evidence_catalog(EVIDENCE, {URL})))
+    async def emit(*args, **kwargs):
+        pass
+    runtime = AutonomousReview(model, None, emit, None, tmp_path, online_rag=False)
+    runtime.query = "比较注入方法"
+    runtime.plan = {"required_goals": GOALS, "scope": "必须有独立局限章节",
+                    "perspectives": [{"name": "必须一视角一章", "query": "不限扩展"}],
+                    "optional_extensions": ["补足一百篇"], "delivery_constraints": ["仅基于指定原文"]}
+    runtime.library.papers[URL] = {}
+    runtime.evidence = EVIDENCE
+    result = asyncio.run(runtime.assess_sufficiency())
+    assert result["ready"]
+    assert "scope" not in seen[0][1] and "perspectives" not in seen[0][1]
+    assert seen[0][1]["constraints"] == ["仅基于指定原文"]
+    assert "same-named section" in seen[0][0]
+
+
 def test_process_requirements_need_real_discovery_and_verified_edges():
     requirements = [{"id": "p1", "kind": "autonomous_discovery"}, {"id": "p2", "kind": "reference_tracing"}]
     checks = process_checks(requirements, searches=2, edges=0)
@@ -188,7 +244,41 @@ def test_no_new_evidence_stops_repeated_followups_and_caches_assessment(tmp_path
         return await review.lead_checkpoint()
     result = asyncio.run(check())
     assert result["status"] == "incomplete" and "新证据" in result["summary"]
-    assert len(calls) == 1
+    assert len(calls) == 2  # Initial review + one semantic review, cached thereafter.
+
+
+def test_semantic_review_can_correct_format_only_gap(tmp_path):
+    calls = []
+    async def model(system, payload):
+        data = json.loads(payload)
+        calls.append(data)
+        result = finding({e["id"]: e for e in data["evidence"]})
+        if "candidate_assessment" not in data:
+            result["goals"][0].update(status="partial", gap="没有独立方法章节")
+        else:
+            assert data["candidate_assessment"]["goals"][0]["gap"] == "没有独立方法章节"
+            assert "不是替研究者争取通过" in system
+        return json.dumps(result)
+    review = runtime(tmp_path, model)
+    result = asyncio.run(review.assess_sufficiency())
+    assert result["ready"] and result["semantic_review"] and len(calls) == 2
+    assert (review.folder / "assessment-1-review-attempt-1.json").exists()
+
+
+def test_semantic_review_cannot_invent_support_to_release_task(tmp_path):
+    calls = []
+    async def model(system, payload):
+        data = json.loads(payload)
+        calls.append(data)
+        result = finding({e["id"]: e for e in data["evidence"]}, "partial")
+        if "candidate_assessment" in data:
+            result["goals"][0].update(status="supported", gap="")
+            result["goals"][0]["supports"] = [{"evidence_id": "e_invented"}]
+        return json.dumps(result)
+    review = runtime(tmp_path, model)
+    with pytest.raises(ValueError, match="证据校验"):
+        asyncio.run(review.assess_sufficiency())
+    assert len(calls) == 3 and not review.assessments
 
 
 def test_invalid_assessment_is_repaired_not_accepted(tmp_path):

@@ -127,12 +127,12 @@ def build_default_registry() -> CapabilityRegistry:
     registry.register_tool(ToolSpec(
         id="latex_compile",
         name="LaTeX Compile",
-        description="Render a task-scoped report with the fixed safe template and archive compiler output.",
+        description="Publish Markdown using an independent trusted format profile; archive TeX, PDF and compiler output.",
         transport="in_process",
         permission="write",
         input_schema={"type": "object", "required": ["markdown"],
                       "properties": {"markdown": {"type": "string"},
-                                     "template": {"type": "string", "enum": ["scientific_default"]}}},
+                                     "profile": {"type": "string", "enum": ["academic", "brief"]}}},
         output_schema={"type": "object", "required": ["tex", "latex_pdf", "compile_log", "md"]},
         timeout_seconds=120,
     ))
@@ -140,23 +140,22 @@ def build_default_registry() -> CapabilityRegistry:
     registry.register_tool(ToolSpec(
         id="bibliography_resolver",
         name="Bibliography Resolver",
-        description="Extract literal bibliography entries and resolve exact title matches before creating citation edges.",
+        description="Catalog description of runtime references(paper_ids=[read URL], query): resolve literal bibliography entries. Not a separate action.",
         transport="in_process",
         permission="network",
-        input_schema={"type": "object", "required": ["paper_id", "question"],
-                      "properties": {"paper_id": {"type": "string"},
-                                     "question": {"type": "string"}}},
+        input_schema={"type": "object", "required": ["paper_ids", "query"],
+                      "properties": {"paper_ids": {"type": "array", "minItems": 1, "maxItems": 1, "items": {"type": "string"}},
+                                     "query": {"type": "string"}}},
         output_schema={"type": "object", "required": ["resolved", "unresolved"]},
         timeout_seconds=300,
     ))
     registry.register_tool(ToolSpec(
         id="citation_graph",
         name="Citation Graph",
-        description="Persist verified paper nodes, citation edges and unresolved bibliography candidates for a task.",
+        description="Runtime-owned PaperLibrary snapshot/save, not an LLM action. Nodes and edges come only from verified tool results.",
         transport="in_process",
         permission="write",
-        input_schema={"type": "object", "required": ["nodes", "edges"],
-                      "properties": {"nodes": {"type": "array"}, "edges": {"type": "array"}}},
+        input_schema={"type": "object", "properties": {}, "additionalProperties": False},
         output_schema={"type": "object", "required": ["nodes", "edges", "unresolved_references"]},
         timeout_seconds=60,
     ))
@@ -261,42 +260,20 @@ def build_default_registry() -> CapabilityRegistry:
         validators=["outline_check", "citation_audit", "latex_compile"],
         status="active",
     ))
-    registry.register_skill(SkillManifest(
-        id="report_writing",
-        name="Academic Report Writing",
-        description="Turn an evidence ledger into a structured, citation-audited and LaTeX-compatible report.",
-        implementation="asteria_researcher.agentic.skills.report_writing.md",
-        intents=[TaskIntent.ACADEMIC_RESEARCH.value],
-        capabilities=["evidence_synthesis", "citation_audit", "latex_compatible_writing"],
-        allowed_agents=["writer", "evidence_checker"],
-        allowed_tools=["workspace_artifact", "report_structure_check", "citation_audit", "latex_compile"],
-        validators=["report_structure_check", "citation_audit", "latex_compile"],
-        status="active",
-    ))
-    registry.register_skill(SkillManifest(
-        id="report_formatting",
-        name="General Report Formatting",
-        description="Apply a domain-neutral content/presentation boundary and route structured content to a named renderer.",
-        implementation="asteria_researcher.agentic.skills.report_formatting.md",
-        intents=[intent.value for intent in TaskIntent],
-        capabilities=["content_presentation_separation", "template_routing", "renderer_boundary"],
-        allowed_agents=["writer"],
-        allowed_tools=["workspace_artifact", "report_structure_check", "latex_compile"],
-        validators=["report_structure_check"],
-        status="active",
-    ))
-    registry.register_skill(SkillManifest(
-        id="gallant_review_guidance",
-        name="Imported Review Guidance",
-        description="Vendored review-writing guidance for source provenance, temporal priority and mechanical rendering.",
-        implementation="asteria_researcher.agentic.skills.vendor.gallant.review_article_skill.md",
-        intents=[TaskIntent.ACADEMIC_RESEARCH.value],
-        capabilities=["temporal_priority_audit", "source_table_rendering", "review_composition"],
-        allowed_agents=["editor", "writer", "evidence_checker"],
-        allowed_tools=["bibliography_resolver", "citation_graph", "citation_audit", "latex_compile"],
-        validators=["citation_audit", "latex_compile"],
-        status="active",
-    ))
+    # Runtime content/format skills share one catalog; metadata is not a tool grant.
+    from asteria_researcher.agentic.skill_catalog import catalog
+    for phase in ("writing", "formatting"):
+        for entry in catalog(phase):
+            if entry["id"] in registry.skills:
+                continue
+            registry.register_skill(SkillManifest(
+                id=entry["id"], name=entry["id"].replace("_", " ").title(),
+                version=entry["version"], description=entry["description"],
+                implementation="asteria_researcher.agentic.skill_catalog",
+                intents=[intent.value for intent in TaskIntent],
+                capabilities=[phase], allowed_agents=["writer"],
+                allowed_tools=[], validators=["citation_audit"], status="active",
+            ))
 
     registry.register_skill(SkillManifest(
         id="experiment_execution",

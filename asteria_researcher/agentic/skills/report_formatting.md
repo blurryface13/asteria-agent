@@ -1,36 +1,15 @@
-# General report formatting
+# Report output contract · v2
 
-This is a domain-neutral publishing skill. It can be selected for academic
-reviews, company research, data analysis or other research reports when no
-domain-specific writing skill exists.
+Return Markdown, not JSON or a TeX document. The content skill chooses narrative;
+the independent format profile owns page layout, fonts and spacing. Any content
+type may use either profile.
 
-## Separate content from presentation
+Use a single # title, ## sections and ### subsections when needed, paragraphs,
+simple lists and pipe tables with a header separator. Do not invent empty sections.
+Preserve source URLs beside claims. No remote images, local paths, HTML, executable
+TeX macros or shell commands. Complex equations and embedded figures are not yet
+supported; do not promise they were typeset.
 
-First produce a structured report object containing the title, abstract or
-executive summary, sections, claims, tables, figures and source links. Keep
-research reasoning and factual evidence in the content object. Do not make the
-model hand-write page layout, font declarations, bibliography formatting or
-compiler commands.
-
-Then select a named format profile. A format profile owns the page size,
-typography, heading hierarchy, spacing, table and figure treatment, citation
-style, bibliography layout and output targets such as Markdown, LaTeX, PDF or
-HTML. A template is a format profile implementation, not a research skill.
-
-## Default writing contract
-
-- Use clear section hierarchy and short paragraphs.
-- Distinguish source-reported facts, cross-source synthesis and open questions.
-- Keep tables only when the compared fields are genuinely comparable.
-- Preserve source URLs and evidence locations for later audits.
-- Use “未报告” or an equivalent explicit marker instead of filling missing
-  values with assumptions.
-- Keep format-specific markup out of the content model whenever a renderer can
-  add it deterministically.
-
-## Renderer boundary
-
-The renderer may escape text, resolve references, apply the selected template,
-compile the document and return diagnostics. It must not silently add claims,
-citations or experimental results. If a format profile is unavailable, report
-that fact and keep the structured content usable for another renderer.
+The publisher parses Markdown, escapes text and applies a trusted template. It
+cannot add facts or fix citations. Writer and revision use this same contract.
+A compiler error is a publishing error, never permission to fabricate a PDF.

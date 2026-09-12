@@ -15,8 +15,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .library import PaperLibrary, canonical
 from .report_tools import validate_report_draft
+from .skill_catalog import SkillOptions, SkillSession, select_writing
 from .runtime import urls
-from .sufficiency import (ASSESSOR_PROMPT, ReviewPlan, SufficiencyReport, evidence_catalog,
+from .sufficiency import (ASSESSOR_PROMPT, ASSESSOR_REVIEW_PROMPT, ReviewPlan, SufficiencyReport, evidence_catalog,
                           process_checks, validate_contract, validate_report, ScopePartition, partition_contract)
 
 
@@ -29,7 +30,7 @@ class Assignment(BaseModel):
 
 class Action(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    tool: Literal["search", "read", "read_passage", "references", "retrieve", "delegate", "request_user", "finish"]
+    tool: Literal["search", "read", "read_passage", "references", "retrieve", "delegate", "request_user", "load_skill", "finish"]
     purpose: str = Field(min_length=1, max_length=350)
     query: str = Field(default="", max_length=3500)
     paper_ids: list[str] = Field(default_factory=list, max_length=12,
@@ -95,7 +96,7 @@ def _normalize_plan_ids(payload):
 
 
 class AutonomousReview:
-    def __init__(self, model, embeddings, emit, approve, root=Path("outputs"), *, max_actions=None, online_rag=True):
+    def __init__(self, model, embeddings, emit, approve, root=Path("outputs"), *, max_actions=None, online_rag=True, skill_options=None):
         if type(online_rag) is not bool:
             raise ValueError("online_rag must be a boolean")
         self.online_rag, self.started_at = online_rag, time.monotonic()
@@ -113,11 +114,11 @@ class AutonomousReview:
         self.assessments, self.assessment_fingerprint = [], None
         self.last_assessment_action, self.stalled_checks = -3, 0
         self.successful_searches = 0
-        self.skill = Path(__file__).with_name("skills").joinpath("literature_review.md").read_text()
-        self.report_skill = Path(__file__).with_name("skills").joinpath("report_writing.md").read_text()
-        self.format_skill = Path(__file__).with_name("skills").joinpath("report_formatting.md").read_text()
-        self.imported_review_skill = (Path(__file__).with_name("skills") / "vendor" / "gallant"
-                                      / "review_article_skill.md").read_text()
+        self.skill_options = skill_options or SkillOptions()
+        self.research_skills = SkillSession("research", self.skill_options)
+        self.research_skills.load("literature_review", origin="system")
+        self.skill = self.research_skills.prompt()
+        self.format_profile = "academic"
         async def bibliography_model(system, payload):
             return await self.llm(system, json.loads(payload))
         self.library.model = bibliography_model
@@ -159,6 +160,7 @@ class AutonomousReview:
             self.library.save()
             (self.folder / "run.json").write_text(json.dumps({
                 "task": query, "online_rag": self.online_rag,
+                "skill_options": self.skill_options.model_dump(),
                 "status": status, "error": failure, "sufficiency_checks": len(self.assessments),
                 "evidence_mode": "hybrid" if self.online_rag else "direct",
                 "elapsed_seconds": round(time.monotonic() - self.started_at, 2),
@@ -221,6 +223,44 @@ class AutonomousReview:
                              phase=phase, strategy="llm_then_deterministic_id_normalization")
             return plan
 
+    async def partition_with_contract(self, plan, user_scope):
+        """Preserve the goal set; classification errors receive bounded model feedback."""
+        schema = ScopePartition.model_json_schema()
+        goal_ids = [g.id for g in plan.required_goals]
+        for field in ("research_goal_ids", "delivery_goal_ids"):
+            schema["properties"][field]["items"]["enum"] = goal_ids
+        schema["$defs"]["ProcessMove"]["properties"]["goal_id"]["enum"] = goal_ids
+        if plan.process_requirements:
+            schema["properties"]["process_constraint_ids"]["items"]["enum"] = [p.id for p in plan.process_requirements]
+        else:
+            schema["properties"]["process_constraint_ids"]["maxItems"] = 0
+        instruction = (
+            "Classify EVERY existing required_goal exactly once. Partition the supplied g-IDs across "
+            "research_goal_ids, delivery_goal_ids and process_goals.goal_id; no missing, duplicate or invented IDs. "
+            "Knowledge questions answerable by source evidence are research goals, not chapter requirements. "
+            "Report length/language/format belong to delivery goals. Only affirmative mandatory search/reference "
+            "execution belongs to process goals. '无需检索其他论文', '不追踪参考文献' and fixed-source restrictions "
+            "are constraints, not required positive actions. Review existing process_requirements too: put negated "
+            "or merely optional process p-IDs in process_constraint_ids to preserve their wording as constraints. "
+            "Do not put g-IDs in process_constraint_ids. Return ONLY JSON " + json.dumps(schema))
+        payload = {"task": user_scope, "required_goals": [g.model_dump() for g in plan.required_goals],
+                   "process_requirements": [p.model_dump() for p in plan.process_requirements]}
+        for attempt in range(2):
+            raw = await self.llm(instruction, payload)
+            try:
+                partition = ScopePartition.model_validate_json(raw)
+                result = partition_contract(plan, partition)
+                validate_contract(result, user_scope)
+                await self.event("lead", "scope_classification", "completed", "研究目标与过程、交付约束已区分",
+                                 attempt=attempt + 1, classification=partition.model_dump())
+                return result
+            except ValueError as error:
+                await self.event("lead", "scope_classification", "failed", "目标分类需要修正",
+                                 attempt=attempt + 1, error=str(error), candidate=raw, severity="attempt")
+                if attempt:
+                    raise
+                payload.update(invalid_response=raw, validation_error=str(error), required_id_set=goal_ids)
+
     async def research(self):
         # User links are seeds, never silently truncated to the first three.
         for url in urls(self.query):
@@ -229,9 +269,8 @@ class AutonomousReview:
             except ValueError:
                 pass  # Unsupported user URLs remain in the original task.
         self.library.save()
-        await self.event("lead", "skill", "completed", "加载研究、写作、格式与引用规范",
-                         skills=["literature_review v3", "report_writing v1",
-                                 "report_formatting v1", "gallant_review_guidance"])
+        await self.event("lead", "skill", "completed", "加载研究阶段基础规范",
+                         skills=self.research_skills.trace(), phase="research")
         user_scope = self.query
         plan = await self.plan_with_contract(
             "Define scope, time range, inclusion criteria and complementary research objectives. "
@@ -244,22 +283,15 @@ class AutonomousReview:
             + "Required goals must each quote an exact substring of the user's task (user_quote), with stable g1/g2 IDs. "
             + "required_goals are ONLY research questions answerable by paper evidence, NOT formatting or tool execution. "
             + "Put explicit autonomous discovery/reference tracing in process_requirements with p1/p2 IDs and literal user quotes. "
+            + "Only AFFIRMATIVE mandatory tool requirements belong there. '无需检索其他论文', '不追踪参考文献' "
+            + "and '只用给定来源' are scope constraints, NEVER mandatory discovery/tracing. Tool freedom alone is not a requirement. "
             + "Put word count, output language, citation style, no incompatible score comparisons and artifact format in delivery_constraints. "
             + "Capture explicit requirements without adding stricter completeness criteria. Put extra ideas in optional_extensions. "
             + "\n" + self.skill,
             {"task": self.query, "today": str(date.today())}, self.query, "initial")
         for revision in range(3):
             validate_contract(plan, user_scope)
-            partition = ScopePartition.model_validate_json(await self.llm(
-                "Classify every existing required_goal exactly once, without inventing or deleting requirements. "
-                "Research goals concern KNOWLEDGE that paper passages can answer (methods, comparisons, limitations, "
-                "foundational contributions). Delivering/writing a report, word count, language and formatting are "
-                "DELIVERY goals, never research goals. Executing search/reference tracing without a substantive knowledge "
-                "question is a PROCESS goal. Keep comparison evidence requirements as research. "
-                "For example '给出约2500字中文综述并附引用' MUST move to delivery_goal_ids. "
-                "This classifier only relocates existing IDs before user approval. Return ONLY JSON " + json.dumps(ScopePartition.model_json_schema()),
-                {"task": user_scope, "required_goals": [g.model_dump() for g in plan.required_goals]}))
-            plan = partition_contract(plan, partition)
+            plan = await self.partition_with_contract(plan, user_scope)
             await self.event("lead", "plan", "waiting", "确认研究范围", plan=plan.model_dump())
             feedback = await self.approve("请确认研究范围，可填写修改意见：\n" + plan.model_dump_json(indent=2))
             if not feedback or feedback.strip() in {"确认", "同意"}:
@@ -306,30 +338,44 @@ class AutonomousReview:
         call_id = uuid4().hex
         await self.event("assessor", "sufficiency", "started", "审查核心目标与原文证据", call_id=call_id)
         payload = {"task": self.query, "required_goals": self.plan["required_goals"],
-                   "scope": self.plan["scope"], "optional_extensions": self.plan["optional_extensions"],
+                   # Planner-expanded prose/perspectives are not extra acceptance criteria.
+                   "constraints": self.plan.get("delivery_constraints", []),
                    "evidence": selected, "citation_edges": list(self.library.edges.values()),
                    "excerpt_count": len(selected), "available_passage_count": len(catalog)}
         schema = SufficiencyReport.model_json_schema()
         schema["$defs"]["Support"]["properties"].pop("quote")
         schema["$defs"]["Support"]["properties"]["evidence_id"]["enum"] = list(visible)
         schema["$defs"]["GoalFinding"]["properties"]["goal_id"]["enum"] = [g["id"] for g in self.plan["required_goals"]]
-        for attempt in range(2):
-            raw = await self.llm(ASSESSOR_PROMPT + " Return ONLY JSON " + json.dumps(schema), payload)
-            (self.folder / f"assessment-{len(self.assessments) + 1}-attempt-{attempt + 1}.json").write_text(raw)
-            try:
-                report = SufficiencyReport.model_validate_json(raw)
-                ready = validate_report(report, self.plan["required_goals"], visible)
-                if {canonical(u) for u in urls(report.synthesis)} - self.library.papers.keys():
-                    raise ValueError("审查总结引用了未读取来源")
-                break
-            except (ValueError, TypeError) as error:
-                await self.event("assessor", "assessment_check", "failed", "审查输出需要纠正",
-                                 attempt=attempt + 1, error=str(error), severity="attempt")
-                if attempt:
-                    raise ValueError("充分性审查输出未通过证据校验：" + str(error)) from error
-                payload["invalid_response"], payload["validation_error"] = raw, str(error)
+        async def evaluate(prompt, context, stage=""):
+            context = dict(context)
+            for attempt in range(2):
+                raw = await self.llm(prompt + " Return ONLY JSON " + json.dumps(schema), context)
+                (self.folder / f"assessment-{len(self.assessments) + 1}{stage}-attempt-{attempt + 1}.json").write_text(raw)
+                try:
+                    report = SufficiencyReport.model_validate_json(raw)
+                    ready = validate_report(report, self.plan["required_goals"], visible)
+                    if {canonical(u) for u in urls(report.synthesis)} - self.library.papers.keys():
+                        raise ValueError("审查总结引用了未读取来源")
+                    return report, ready
+                except (ValueError, TypeError) as error:
+                    await self.event("assessor", "assessment_check", "failed", "审查输出需要纠正",
+                                     attempt=attempt + 1, stage=stage or "initial", error=str(error), severity="attempt")
+                    if attempt:
+                        raise ValueError("充分性审查输出未通过证据校验：" + str(error)) from error
+                    context["invalid_response"], context["validation_error"] = raw, str(error)
+
+        report, ready = await evaluate(ASSESSOR_PROMPT, payload)
+        reviewed = any(g.status != "supported" and g.supports for g in report.goals)
+        if reviewed:
+            # A blocked goal with evidence may be an actual gap or a qualification.
+            # One independent semantic review, never a code-level override or retry-until-pass.
+            candidate = report.model_dump(exclude={"goals": {"__all__": {"supports"}}})
+            await self.event("assessor", "assessment_review", "started", "复核已有证据与剩余问题", call_id=call_id)
+            report, ready = await evaluate(ASSESSOR_REVIEW_PROMPT, {**payload, "candidate_assessment": candidate}, "-review")
+            await self.event("assessor", "assessment_review", "completed", "证据复核完成", call_id=call_id,
+                             result={"ready": ready, "goals": [{"id": g.goal_id, "status": g.status} for g in report.goals]})
         result = {**report.model_dump(), "ready": ready and all(c["supported"] for c in checks), "action_count": self.actions,
-                  "process_checks": checks,
+                  "process_checks": checks, "semantic_review": reviewed,
                   "evidence_count": len(catalog), "reviewed_evidence_count": len(selected)}
         self.assessments.append(result)
         self.assessment_fingerprint = fingerprint
@@ -360,6 +406,9 @@ class AutonomousReview:
 
     async def loop(self, agent, objective, *, lead=False, steps=16):
         observations, seen, local_evidence = [], set(), []
+        skills = SkillSession("research", self.skill_options)
+        skills.load("literature_review", origin="system")
+        await self.event(agent, "skill", "completed", "加载本研究会话的技能", skills=skills.trace(), phase="research")
         await self.event(agent, "agent", "started", objective)
         system = (
             "You are the lead research agent. Delegate complementary objectives to independent researchers "
@@ -400,7 +449,8 @@ class AutonomousReview:
                "The writer receives the actual shared evidence, not just your personal reads. Do not repeat every "
                "child's reading just because you did not personally call the tool; use the shared evidence index. "
                if lead else "You CANNOT delegate or request_user; return unmet needs to the lead. ")
-            + "\n" + self.skill
+            + "\nload_skill(query=skill ID) loads optional guidance from available_skills. "
+              "Load only if useful to your assigned objective; it grants no additional tools."
         )
         for turn in range(steps):
             if lead and self.plan.get("required_goals") and self.evidence and self.actions - self.last_assessment_action >= 3:
@@ -414,7 +464,7 @@ class AutonomousReview:
             schema = Action.model_json_schema()
             if handoff_now:
                 schema["properties"]["tool"]["enum"] = ["finish"]
-            decision_system = system + "\nReturn ONLY JSON " + json.dumps(schema)
+            decision_system = system + "\n" + skills.prompt() + "\nReturn ONLY JSON " + json.dumps(schema)
             if handoff_now:
                 decision_system += ("\nThis is the reserved handoff turn, NOT another research turn. Only finish is available. "
                                     "Return evidence-supported findings and specific gaps; choose completed or incomplete honestly. "
@@ -424,6 +474,7 @@ class AutonomousReview:
                     "task": self.query, "approved_plan": self.plan, "objective": objective,
                     "today": str(date.today()), "remaining_actions": action_limit - self.actions,
                     "remaining_turns": steps - turn,
+                    "available_skills": skills.discover(), "loaded_skills": list(skills.loaded),
                     "remaining_subagents": 8 - self.children,
                     "sufficiency_review": self.assessments[-1] if self.assessments else None,
                     "delegation_contract": "Each assignment must list goal_ids from required_goals or process_requirements. After sufficiency review, only unresolved IDs are allowed. Delivery constraints are writing checks, never reasons for research. Optional extensions never block delivery.",
@@ -481,7 +532,14 @@ class AutonomousReview:
                     await self.event(agent, "finish", action.outcome, "研究结果已回传", call_id=call_id, result=result)
                     await self.event(agent, "agent", action.outcome, "研究结果已回传", result=result)
                     return result
-                if action.tool == "search":
+                if action.tool == "load_skill":
+                    if action.query.strip() not in {e["id"] for e in skills.discover()}:
+                        raise ValueError("该技能不属于当前 Agent 可发现的指导")
+                    loaded = skills.load(action.query.strip())
+                    result = {k: loaded[k] for k in ("id", "version", "sha256")}
+                    await self.event(agent, "skill", "completed", action.purpose,
+                                     skills=skills.trace(), phase="research")
+                elif action.tool == "search":
                     result = await self.library.search(action.query, start=action.start, sort_by=action.sort_by)
                     if result:
                         self.successful_searches += 1
@@ -573,22 +631,29 @@ class AutonomousReview:
 
     async def write_report(self, synthesis):
         await self.event("lead", "write", "started", "综合研究结果并核对引用")
+        async def writing_model(system, payload):
+            return await self.llm(system, json.loads(payload))
+        selection, writing_prompt, skill_trace = await select_writing(writing_model, self.query, self.plan, self.skill_options)
+        self.format_profile = selection.format_profile
+        (self.folder / "writing.json").write_text(json.dumps({**selection.model_dump(), "skills": skill_trace,
+            "user_selection": self.skill_options.model_dump(), "injected_prompt": writing_prompt}, ensure_ascii=False, indent=2))
+        await self.event("writer", "skill", "completed", selection.reason,
+                         skills=skill_trace, phase="writing", format_profile=self.format_profile)
         requested = re.search(r"(?:约|大约|不超过)?\s*(\d{3,5})\s*字", self.query)
         target_chars = int(requested[1]) if requested else None
         length_guidance = (f"Output approximately {target_chars} Chinese characters TOTAL, including headings and references. "
                            "Prioritize the requested comparison; do not reproduce research notes, handoffs or audit checklists. "
-                           + ("Use three compact paragraphs, inline citations, no separate abstract, taxonomy or bibliography. "
-                              if target_chars <= 1500 else "Use concise thematic sections and inline citations. ")) if target_chars else ""
-        # Retrieve across the shared corpus for each approved perspective. These
-        # are writer evidence, not self-generated research summaries.
-        evidence = []
+                           + "Choose an appropriate structure using the selected content skill; research perspectives "
+                           "are not a mandatory chapter outline. Avoid repeating findings. ") if target_chars else ""
+        # Evidence is organized by user goals, not a perspective-to-chapter mapping.
+        # Preserve already read evidence when augmenting it with writer retrieval.
+        evidence = list(self.evidence)
         if self.online_rag:
-            for perspective in self.plan["perspectives"]:
-                passages = await self.library.retrieve(perspective["query"])
-                evidence.append(passages)
-                self.evidence.append({"agent": "writer", "query": perspective["query"], "passages": json.loads(passages)})
-        else:
-            evidence = self.evidence
+            for goal in self.plan.get("required_goals", []):
+                passages = await self.library.retrieve(goal["description"])
+                record = {"agent": "writer", "query": goal["description"], "passages": json.loads(passages)}
+                evidence.append(record)
+                self.evidence.append(record)
         payload = {"task": self.query, "plan": self.plan, "synthesis": synthesis,
                    "subagent_results": self.briefs, "evidence": evidence,
                    "read_sources": list(self.library.papers), "citation_edges": list(self.library.edges.values()),
@@ -597,9 +662,7 @@ class AutonomousReview:
             "evidence. Cite only read_sources, using Markdown links near factual claims. "
             "Preserve scope/date limits and material research gaps. Do not claim exhaustive coverage, "
             "verified experiments, or factual certainty based only on citation membership. "
-            "Respect requested length.\n" + self.skill + "\n" + self.report_skill
-            + "\n\nImported review-writing guidance:\n" + self.imported_review_skill
-            + "\n\nGeneral report-formatting skill:\n" + self.format_skill
+            "Respect requested length.\n" + writing_prompt
             + "\nOUTPUT CONTRACT: " + length_guidance, payload)
         for attempt in range(3):
             (self.folder / f"draft-{attempt + 1}.md").write_text(report)
@@ -619,7 +682,7 @@ class AutonomousReview:
                 raise ValueError("最终报告未通过引用来源/篇幅校验")
             report = await self.llm("Repair the report. Only cite supplied read_sources, remove unsupported claims. "
                                     "Return full Chinese Markdown, not JSON. Preserve thematic synthesis and the "
-                                    "LaTeX-compatible writing rules from the report-writing skill. " + length_guidance,
+                                    "selected writing and output contract. " + length_guidance + "\n" + writing_prompt,
                                     {"task": self.query, "report": report, "invalid_urls": unknown,
                                      "length_issue": f"当前 {actual_chars} 汉字，请压缩至 {target_chars} 汉字以内，不新增事实" if over_length else None,
                                      "validation_issues": validation["issues"],

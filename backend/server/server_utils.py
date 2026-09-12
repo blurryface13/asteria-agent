@@ -124,6 +124,13 @@ def sanitize_filename(filename: str) -> str:
 
 async def handle_start_command(websocket, data: str, manager, feedback_queue=None):
     json_data = json.loads(data[6:])
+    from asteria_researcher.agentic.skill_catalog import SkillOptions
+    try:
+        skill_options = SkillOptions(skill_ids=json_data.get("skill_ids", []),
+                                     format_profile=json_data.get("format_profile"))
+    except ValueError as error:
+        await websocket.send_json({"type": "error", "content": "error", "output": str(error)})
+        return
     online_rag = json_data.get("online_rag", True)
     if type(online_rag) is not bool:
         await websocket.send_json({"type": "error", "content": "error", "output": "online_rag must be a boolean"})
@@ -156,6 +163,7 @@ async def handle_start_command(websocket, data: str, manager, feedback_queue=Non
     # Create logs handler with websocket and task
     logs_handler = CustomLogsHandler(websocket, task, feedback_queue)
     logs_handler.online_rag = online_rag
+    logs_handler.skill_options = skill_options
     if feedback_queue is not None:
         feedback_queue.handler = logs_handler
     # Initialize log content with query

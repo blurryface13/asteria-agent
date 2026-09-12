@@ -12,6 +12,8 @@ async def run(args):
             "task": args.task, "report_type": "research_report", "report_source": "web",
             "tone": "Objective", "headers": {}, "mcp_enabled": False, "max_search_results": 2,
             "online_rag": not args.no_online_rag,
+            "skill_ids": args.skill,
+            "format_profile": args.format_profile,
         }))
         async def receive():
             while True:
@@ -19,6 +21,7 @@ async def run(args):
                 kind = event.get("type")
                 if kind == "human_feedback":
                     print("HITL request received", flush=True)
+                    print(str(event.get("output", event)), flush=True)
                     if not args.approve_plan:
                         raise RuntimeError("Re-run with --approve-plan only after reviewing the test scope")
                     await socket.send(json.dumps({"type": "human_feedback", "content": None}))
@@ -46,4 +49,6 @@ if __name__ == "__main__":
     parser.add_argument("--timeout", type=int, default=600)
     parser.add_argument("--approve-plan", action="store_true")
     parser.add_argument("--no-online-rag", action="store_true", help="Direct page reading, without embeddings")
+    parser.add_argument("--skill", action="append", default=[], help="Pin a registered skill; repeat for auxiliary guidance")
+    parser.add_argument("--format-profile", choices=["academic", "brief"])
     asyncio.run(run(parser.parse_args()))
