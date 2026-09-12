@@ -101,7 +101,7 @@ def test_latex_preserves_safe_math_but_blocks_executable_commands():
 
 @pytest.mark.skipif(not shutil.which("xelatex"), reason="XeLaTeX not installed")
 def test_real_formula_pdf_has_math_glyphs_and_no_source_delimiters(tmp_path):
-    markdown = "# 公式\n\n$$\\mathrm{Attention}(Q,K,V)=\\mathrm{softmax}\\left(\\frac{QK^T}{\\sqrt{d_k}}\\right)V$$\n\n仅保留正文。 https://example.org/paper"
+    markdown = "# 公式\n\n$$\\mathrm{Attention}(Q,K,V)=\\mathrm{softmax}\\left(\\frac{QK^T}{\\sqrt{d_k}}\\right)V$$\n\n其中 $d_{\\text{model}}$ 表示模型维度。 https://example.org/paper"
     paths = asyncio.run(publish(markdown, tmp_path))
     tex = next(tmp_path.glob("*/report.tex")).read_text()
     assert r"\[\mathrm{Attention}" in tex and r"\$\$" not in tex

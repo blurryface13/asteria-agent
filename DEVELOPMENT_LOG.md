@@ -24,6 +24,14 @@
 - 首次冷编译首页约 68.5 秒、研究深链接约 18.9 秒；编译完成后根页面与研究页面均 HTTP 200，8018 `/api/reports` HTTP 200。未认证的 3023 `/api/reports` 返回 401 属于现有鉴权契约，不是 SSR 500；浏览器应沿用已有本地登录/鉴权状态。
 - 长期约束：源码可继续放在 Documents，但应避免把 `node_modules`、`.next` 和大缓存作为云同步对象；在不改变系统存储设置的前提下，后续可将依赖/构建目录迁出云同步范围。启动前检查只负责失败快报，不用关闭消毒器、删除缓存或切换端口掩盖问题。
 
+### 2026-09-12：真实新调研入口分流修复与 LaTeX 发布复测（GPT-5）
+
+- 首次从页面输入单篇论文精读请求时，页面创建了会话却没有创建 durable Run；服务端实际收到的是旧移动端 `/api/chat` 请求，Tavily 未配置后返回空回答，页面显示旧版 apology。根因是新调研按视口进入了仍保留的旧直聊函数，不是自主研究器完成后的失败。该次失败会话为 `57dd441c-2490-4f50-ade2-80d06078e717`，作为入口分流 BadCase 保留。
+- 修改 `frontend/nextjs/app/page.tsx`：删除移动端新调研的旧 `/api/chat` 实现，`onResearch` 在所有视口统一走 `handleDisplayResult` 和 `useDurableResearch.start`；移动端报告问答仍使用独立 `/api/chat`。因此视口只影响布局，不再决定新调研的执行协议。前端 TypeScript 检查通过。
+- 首次真实运行还发现生成报告含有 `d_{\\text{model}}` 时，受控数学转换器允许 `\\text`，但模板未加载 `amsmath`，XeLaTeX 在发布阶段失败。学术和简报模板均补充 `amsmath`；`tests/test_agentic_runtime.py` 增加同类公式的真实 PDF 编译覆盖，定向测试 16 项通过。格式 Skill 同步明确：编译器/工具内部说明不能写入报告正文，发布状态由 Artifact 与事件记录。
+- 修复后从 `http://127.0.0.1:3023/` 真实提交单篇 `Attention Is All You Need` 精读请求，页面经历范围确认、人工审批、原文读取、充分性审查重试、写作 Skill 加载、引用图、报告校验和 PDF 发布。conversation `49d05f96-e9fd-4b08-8327-792b011ecc5a`，Run `3726b79dd71c4a2ba73bcd9fd2d1d683`，最终 `completed`；43 条持久化事件，9 次模型调用、34,495 tokens，排队 0.72 s，含审批执行 67.23 s。浏览器显示“研究与交付已完成”，PDF/Markdown 入口可见；产物为 `outputs/scientific_70c5cc24ea854c30a2ce87d239961a1c/`、`outputs/review_0d6bbccea735483bb42e42a30f0fffda/`。
+- 本次任务显示 0 个研究子任务，但事件实际包含 lead、assessor、writer 三类角色及自主研究动作；因为请求限定单篇原文，协调器选择直接路径是合理决策，不把“0 子任务”直接判为自主规划失败。开放域综述仍需通过任务范围和证据缺口触发并行研究员。
+
 ### 2026-09-12：审查证据标准、打回上限与 SSR 读取修复（Codex）
 
 - 审查答案新增 direct / synthesis / inference / unknown 分类，保存 answer、reasoning、qualification。综合与推断必须附原始证据、推理链；推断须有限定，未知不能判为 supported。原文未实测的数字不能由推断代替。初审与一次语义复核使用同一证据原则，不新增研究编排或改变子 Agent 并行机制。

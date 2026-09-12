@@ -1027,7 +1027,7 @@ ScopePartition 也采用有限的结构化反馈修正：动态 schema 列举已
 
 ### E1：后台研究运行（实现与真实交付联调完成）
 
-桌面研究入口迁移到持久化 Run + 独立 dora worker，API 与浏览器只提交、审批和观察。保留原有研究编排、前端外观及移动端路由，详见 [后台运行设计](docs/durable-runs.md)。Run/Job/Event/Approval/Artifact 复用 PostgreSQL；报告改为 worker 完成时保存，事件游标支持刷新补拉，取消不再用关闭连接代替。模型真实 usage 通过请求上下文记录。
+研究入口迁移到持久化 Run + 独立 dora worker，API 与浏览器只提交、审批和观察。保留原有研究编排、前端外观及移动端布局/问答体验，所有视口的新调研统一提交 durable run，详见 [后台运行设计](docs/durable-runs.md)。Run/Job/Event/Approval/Artifact 复用 PostgreSQL；报告改为 worker 完成时保存，事件游标支持刷新补拉，取消不再用关闭连接代替。模型真实 usage 通过请求上下文记录。
 
 数据库合同及现有 Agent/workspace/评测回归共 25 项通过，前端类型与增量 lint 通过；真实服务已验证任务提交、运行中刷新、API 独立重启、审批保留与继续、页面关闭后研究继续，以及显式取消。详细 Run ID、用量与失败原因记录于 DEVELOPMENT_LOG.md。worker 崩溃后当前 Agent 不具备完整 checkpoint，标记 interrupted 而不自动重跑；后续实验作业恢复要凭真实 job_id 核对。
 
@@ -1089,3 +1089,13 @@ git push --dry-run origin HEAD:refs/heads/feat/doc-edit-agent
 以上两项网络验证均成功。没有使用 sslVerify=false，没有修改系统 CA、全局 Git、Clash 或其他仓库；测试时的强制代理配置已撤销。后续环境重建须重新确认 CA 路径有效，不能复制他人机器的路径；网络权限与 TLS 校验是两层问题，沙箱拒绝连接时使用经批准的宿主网络操作。
 
 commit 通常只写本地对象；除非 hook 另行联网，证书错误影响的是 fetch/push。同步完成要比较本地 HEAD 与实时远端 SHA，不能仅看本地 tracking ref。push 功能分支不等于合并 main；此次没有创建 PR 或合并 main。
+
+### 22.2 新调研入口统一与真实网页交付复测（2026-09-12，GPT-5）
+
+本轮真实网页复测发现，页面在新调研入口提交任务后会创建独立会话，但旧的移动端研究函数仍直接调用 `/api/chat`。该路径绕过 durable Run，Tavily 未配置时返回空回答，页面显示旧版 apology；这不是自主研究器已经完成后的失败。修复为删除移动端新调研的旧直聊路径，并让 `onResearch` 在所有视口统一调用 `handleDisplayResult` → `useDurableResearch.start`；移动端的报告问答仍保留独立 `/api/chat` 语义。后续不得用视口大小选择不同的新调研执行协议。
+
+同日从首页通过真实浏览器重新提交单篇论文精读任务：会话 `49d05f96-e9fd-4b08-8327-792b011ecc5a`，Run `3726b79dd71c4a2ba73bcd9fd2d1d683`，最终 `completed`。页面实际经历范围确认、人工确认、研究视角自主选择、论文原文读取、证据充分性审查（首审缺口后重新核验）、写作 Skill 加载、引用图记录、报告检查及 LaTeX/PDF 发布；持久化事件 43 条，9 次模型调用共 34,495 tokens，排队 0.72 秒、执行含审批 67.23 秒。结果页面可见“研究与交付已完成”、1 篇发现/1 篇已读、PDF 链接和 Markdown 报告入口；产物目录为 `outputs/scientific_70c5cc24ea854c30a2ce87d239961a1c/` 与 `outputs/review_0d6bbccea735483bb42e42a30f0fffda/`。
+
+该窄范围任务最终显示 0 个研究子任务，但事件中仍有 lead、assessor、writer 三类角色和自主研究动作；这是协调器根据“只读单篇原文”的范围选择直接研究路径，不代表所有任务都由主 Agent 固定完成。开放域综述是否委派并行研究员仍应由任务范围、证据缺口和预算决定。
+
+首次真实复测留下的 LaTeX 阻断也已修复：模型使用了数学命令 `\\text{model}`，受控转换器允许该命令但模板未加载 `amsmath`，XeLaTeX 在发布阶段报 Undefined control sequence。学术与简报模板现统一加载 `amsmath`，回归覆盖该公式；同时更新格式 Skill，禁止把“是否生成 PDF”的内部出版说明写进报告正文。此前失败目录保留为真实 BadCase，不覆盖为成功。
