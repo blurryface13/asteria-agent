@@ -626,7 +626,7 @@ LaTeX Skill 需要支持：
 - Event：run_id、sequence、parent_id、agent_id、事件类型、工具名、脱敏参数、观察结果、耗时、错误、证据与产物引用；保存可见行动理由，不要求隐式思维链。
 - Artifact：文件 hash、类型、来源 Run、版本、引用关系；Score：指标、分母、得分、裁判版本、证据位置、置信/不确定状态。
 
-元数据先用 SQLite，文件与原始轨迹放独立产物目录；多用户/并行写入量增加时迁移 PostgreSQL。评测任务与线上任务分别设预算，禁止 CI 默认消耗真实模型额度。
+存储决策更新（2026-09-12）：旧方案曾计划 SQLite，当前评测模块实际使用 JSONL；项目/对话已使用 PostgreSQL。后续评测元数据直接复用 PostgreSQL，JSONL 保留导入导出，文件与原始轨迹放独立产物目录，不再增加一套 SQLite 主存储。评测任务与线上任务分别设预算，禁止 CI 默认消耗真实模型额度。
 
 ### 17.3 自建 benchmark v0 设计
 
@@ -1022,3 +1022,30 @@ ScopePartition 也采用有限的结构化反馈修正：动态 schema 列举已
 - 当前内容 Skill + 辅助 guidance + 格式 contract + template profile 的组合保持不变。将来支持章节级写作时，再让 Writer 对当前段落发现子技能；不用预先固定“一章一个研究员”。
 - 下一笔可选增量：输入区 `/skill` 复用现有指定接口、技能详情按主文件/参考资料分开展示；后续增加受审查的技能包导入和兼容性报告。社区包的工具依赖、运行目录、渲染器与许可证必须核对，不能把“注册成功”当成“即插即用”。
 - 出版工具优先补规范化 BibTeX、引用标签和独立格式检查；它们作用于交付内容，不提高研究目标门槛。复杂数学与可编辑 LaTeX 项目另立增量。
+
+## 22. 自主实验、评测与项目收束（2026-09-12，Codex）
+
+下一阶段以 [自主实验与评测路线](docs/experiment-evaluation-roadmap.md) 为实现依据；[简历与面试口述稿](docs/resume-agentic-draft.md) 记录当前设计及四条目标深度。目标稿不代表所有功能已完成；运行和提交节点继续写入 DEVELOPMENT_LOG.md。
+
+- 自主实验按 E1 后台运行持久化 → E2 授权主机/工作区和隔离执行 → E3 自主诊断与有界修正 → E4 重跑与报告回流推进。先拆开 WebSocket 和作业生命周期，再做长任务，不把远程 shell 等同于自主实验。
+- 新增 Experiment Agent 复用现有动作契约、Skill 与人工审批；工具处理器执行权限和预算检查。容器/凭据/工作区隔离是硬边界，不由提示词承诺替代。用户需求决定设计或执行，执行必须有授权。
+- 评测优先确定路线与口径：Inspect 适配当前自主运行时，复用已有评测模块与页面；报告指标参考 DeepResearch Bench，科研任务参考 AstaBench。标题相似、URL 匹配和工具名集合分数仅保留作旧版诊断，不冒充语义效果。
+- 指标分任务完成、证据/引用、工具/适应、实验复现、安全、时间费用；明确分母和不可判定情况。采用冻结任务族、独立裁判校准、三次重复与 Skill/RAG/编排消融，不预填提升数字。
+- 开发边界维持“自主调研、受控实验、Agent 评测、RAG”四条。保留现有前端风格、项目层级和响应式入口，不借此重新搭建 UI 或更换 Agent 框架。
+
+### 22.1 GitHub 同步与 TLS
+
+2026-09-12 实测：执行环境默认 CA 校验访问 GitHub 报 `unable to get local issuer certificate`；指定 dora CA 后 HTTPS 校验通过，真实宿主网络的默认校验也能通过。问题在访问环境/信任库差异，不是 commit 内容或前端；不能据此认定宿主系统证书整体损坏。
+
+本机仅在该仓库 `.git/config` 设置 GitHub URL 专属配置：
+
+```sh
+git config --local 'http.https://github.com/.sslCAInfo' /Users/dora/miniconda3/envs/dora/ssl/cert.pem
+git config --local 'http.https://github.com/.sslVerify' true
+git ls-remote origin refs/heads/main refs/heads/feat/doc-edit-agent
+git push --dry-run origin HEAD:refs/heads/feat/doc-edit-agent
+```
+
+以上两项网络验证均成功。没有使用 sslVerify=false，没有修改系统 CA、全局 Git、Clash 或其他仓库；测试时的强制代理配置已撤销。后续环境重建须重新确认 CA 路径有效，不能复制他人机器的路径；网络权限与 TLS 校验是两层问题，沙箱拒绝连接时使用经批准的宿主网络操作。
+
+commit 通常只写本地对象；除非 hook 另行联网，证书错误影响的是 fetch/push。同步完成要比较本地 HEAD 与实时远端 SHA，不能仅看本地 tracking ref。push 功能分支不等于合并 main；此次没有创建 PR 或合并 main。
