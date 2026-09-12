@@ -5,6 +5,7 @@ import pytest
 from asteria_researcher.agentic.autonomous import AutonomousReview
 from asteria_researcher.agentic.library import PaperLibrary, canonical
 from asteria_researcher.agentic.primary_sources import extract_file
+from asteria_researcher.agentic.sufficiency import ReviewPlan
 
 URL = "https://arxiv.org/abs/1706.03762"
 OTHER = "https://arxiv.org/abs/1810.04805"
@@ -155,6 +156,44 @@ def test_lead_can_delegate_unresolved_work_and_merge_shared_evidence(tmp_path):
     assert len(runtime.evidence) == 2
     assert all(name.startswith("method") or name.startswith("evaluation") or name == "broad review"
                for name in calls)
+
+
+def test_adaptive_replan_changes_strategy_but_preserves_confirmed_contract(tmp_path):
+    events = []
+    async def emit(*args, **kwargs):
+        events.append((args, kwargs))
+
+    async def approve(*args):
+        return None
+
+    runtime = AutonomousReview(None, None, emit, approve, tmp_path, online_rag=False)
+    runtime.query = "比较数字水印方法"
+    runtime.user_scope = runtime.query
+    runtime.plan = {
+        "scope": runtime.query,
+        "perspectives": [{"name": "初始方法", "query": "初始方法"}],
+        "required_goals": [{"id": "g1", "description": "比较方法", "user_quote": "比较数字水印方法"}],
+        "process_requirements": [],
+        "delivery_constraints": ["中文"],
+        "optional_extensions": [],
+    }
+
+    async def replan(*args):
+        return ReviewPlan.model_validate({
+            **runtime.plan,
+            "perspectives": [{"name": "证据缺口", "query": "数字水印实验对比"}],
+            "optional_extensions": ["追踪基础方法"],
+        })
+
+    runtime.plan_with_contract = replan
+    result = asyncio.run(runtime.adaptive_replan([{"tool": "search", "result": "未覆盖实验对比"}]))
+
+    assert result["revision"] == 1
+    assert runtime.plan["required_goals"][0]["id"] == "g1"
+    assert runtime.plan["delivery_constraints"] == ["中文"]
+    assert runtime.plan["perspectives"][0]["name"] == "证据缺口"
+    assert (runtime.folder / "plan-revision-1.json").exists()
+    assert any(item[0][0] == "agent_action" and item[0][1]["tool"] == "plan_revised" for item in events)
 
 
 def test_subagent_cannot_delegate_and_tool_failure_is_observed(tmp_path):
