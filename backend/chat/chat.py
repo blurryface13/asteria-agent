@@ -219,6 +219,10 @@ class ChatAgentWithMemory:
 
                 You must respond in markdown format. You must make it readable with paragraphs, tables, etc when possible.
                 Remember that you're answering in a chat not a report.
+                Answer only the latest user question and respect its requested length.
+                Earlier research requests have already been handled; do not repeat their delivery instructions.
+                Use the supplied research completion/artifact state when discussing delivered files;
+                do not invent missing artifacts or add unsolicited export/compilation disclaimers.
 
                 Assume the current time is: {datetime.now()}.
 
@@ -259,8 +263,7 @@ class ChatAgentWithMemory:
             
             # Provide fallback response if message is empty
             if not ai_message:
-                logger.warning("No AI message content found in response, using fallback message")
-                ai_message = "I apologize, but I couldn't generate a proper response. Please try asking your question again."
+                raise ValueError("Model returned an empty chat response")
             
             logger.info(f"Generated response: {ai_message[:100]}..." if len(ai_message) > 100 else f"Generated response: {ai_message}")
             

@@ -110,6 +110,7 @@ export const ResearchResults: React.FC<ResearchResultsProps> = ({
         />
       )}
       {chatComponents}
+      {isProcessingChat && <div role="status" className="py-4 text-sm text-white/60">正在处理…</div>}
     </>
   );
 };

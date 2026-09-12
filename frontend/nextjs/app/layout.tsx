@@ -4,6 +4,7 @@ import { GoogleAnalytics } from '@next/third-parties/google'
 import { ResearchHistoryProvider } from "@/hooks/ResearchHistoryContext";
 import AuthGuard from "@/components/AuthGuard";
 import "./globals.css";
+import 'katex/dist/katex.min.css';
 import Script from 'next/script';
 
 let title = "Asteria Research";

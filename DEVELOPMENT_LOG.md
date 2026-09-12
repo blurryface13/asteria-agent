@@ -4,6 +4,8 @@
 
 ## 当前状态
 
+最新开发节点：2026-09-12 Coordinator 收口，见文末。下一增量为服务器配置与只读连接诊断，科研自主循环本轮未重构。
+
 - 分支：`feat/doc-edit-agent`
 - Python：dora / Python 3.10
 - 前端：Node 22 / 3023
@@ -317,3 +319,34 @@
 - 真实网页验证请求：`请把“测试用例设计”这句话改得更自然一些，只给出一句改写结果。`；会话 `69baad11-b0f9-40df-bc53-e93a3543e0fa`，返回“设计测试用例”，页面显示 `Asteria Chat`，刷新后恢复正常。
 - 后端日志确认该请求只有 Coordinator 意图调用、直接回答调用和两条工作区消息写入，没有 research run、Planner、网页检索、工具或报告生成事件；旧 Run `4c7e80a3ccff42c3afaee0802ecfc3af` 继续保留为修复前 BadCase。
 - 验证：dora 针对性测试 `7 passed, 1 skipped`，前端 TypeScript 检查通过，`git diff --check` 通过；重载 8018 API/worker 后，前端 3023 和后端技能 API 均 HTTP 200。研究综述与实验设计链路未改动。
+
+### 2026-09-12：Coordinator 会话收口与真实网页复测（Codex / GPT-5）
+
+#### 实现
+
+- 将首次分类接口演进为持久化 turn：归属校验、服务端历史、请求幂等、同会话互斥、用户/助手有序落库、刷新观察、失败/中断状态和实际 usage。普通 Chat 不新建研究 Run，报告追问沿用对话 ID；研究由服务端按同一 request_id 提交既有队列。
+- 修复 general_research 二次分类、已完成报告活动被隐藏、失败历史 Run 遮挡后续 Chat。保留现有界面风格、折叠操作和显式配置的外部 LangGraph 入口。未改研究 Agent 的自主动作、并行委派、充分性审查或 Skill 选择规则。
+- 网页数学表达使用解析树上的 math 节点渲染，不用正则改写全文；修复 remark-math 节点元数据导致仍输出 code 的问题。KaTeX 禁用可信命令，最终仍走 HTML 消毒，代码块原样保留。只锁定新增数学依赖，未升级 Next/Node/Python。
+- 报告问答的工具模型路径原来绕过 usage_sink，现补记每次返回的真实 usage；调用失败直接保留错误，不再自动降成无工具回答并额外收费。
+- 最后一次网页追问发现历史“生成 PDF”要求被当作未完成请求，回答多出“无法生成 PDF”的免责声明。现从已完成 Run 与产物索引构造交付状态，只把报告完成后的消息作为追问历史；聊天提示词明确回答最新问题、遵守篇幅，不重复处理旧交付要求。保留修复前回答，不覆盖历史。
+
+#### 真实运行
+
+| 场景 | 记录 | 结果与计量 |
+| --- | --- | --- |
+| 一周 pytest 学习安排 | 对话 `afcddece-f6fb-4d62-9ae4-c57ac4d6327d`，turn `769f9f05-d7f0-468f-8b43-fdb514b32586` | general_chat；4.905 秒，分类+回答 914 tokens |
+| 追问改成三天、每天一小时 | 同对话，turn `0ef8a965-b524-48da-99f5-331331523b82` | 正确沿用上下文；2.795 秒，1,658 tokens；刷新后顺序 user/assistant/user/assistant，0 个研究 Run |
+| 新论文精读 | 对话 `7039807d-0301-4421-a809-df30c411f512`，Run `e567fb6202954a9a9f898943ab8d358c` | 真实首页提交、人工确认、运行中刷新后继续；completed，39 事件，13 产物索引，7 次研究模型调用/28,418 tokens（不含 Coordinator 分类） |
+| 报告追问用量复核 | turn `9f8f39b5-0366-453b-a1f5-f4402a8621e0` | general_chat、无工具调用；4.436 秒，2,436 tokens；发现多余交付免责声明，保留为 BadCase |
+| 完成交付上下文修复后追问 | turn `26340690-aa10-4364-a4b6-2c13c6b9dc22` | 同一报告内回答多头注意力问题，不再添加免责声明；3.930 秒，3,979 tokens，分类/回答用量均保存，无新研究 Run |
+
+精读范围仅为 arXiv:1706.03762，约400字中文简报；online_rag=true，1 篇已读论文，下载 2,215,244 bytes，7 次 embedding/53 文本。独立充分性检查 1 次，0 个子 Agent，0 次重规划；单篇范围不用于证明开放域委派或复杂研究性能。Writer 自主选择 source_priority + general_writing、brief 版式。Markdown/TeX/PDF 位于 `outputs/scientific_eef2f0ce462e4da3b74285a0dd5741b9/`，新报告没有“不承诺已生成 PDF”的内部出版说明。网页公式已渲染，完整 PDF 版面质量本次未单独逐页验收。
+
+研究 Run 数据库耗时：排队0.454秒、执行53.889秒（含人工等待18.852秒）；从入队到完成54.343秒，扣除人工等待的执行时间约35.037秒。这里的真实用量来自 provider 返回的 `deepseek-chat`，不根据别名推断精确版本或换算人民币；先前用户报告的2.41元不套用本轮。报告追问修复前后的上下文长度不同，tokens不能直接视为性能退化结论。
+
+#### 验证与运行约束
+
+- dora 针对性回归58项通过（含隔离 PostgreSQL 并发/幂等/归属/顺序/失败/研究提交测试），6项既有依赖弃用警告；网页数学测试3项通过，TypeScript无增量检查通过。
+- 每次重载前均确认无 active research/Coordinator turn；仅在加载后端修复时重载原8018 API/worker，最后的追问上下文修复只重载API。前端3023本轮不重启、不清.next、不更换端口；dora与Node22保持不变。
+- 本轮模型调用仍可能因供应商超时而结果不确定；幂等保护的是同一请求的本地执行，不承诺供应商侧恰好一次计费。API进程崩溃的Chat不支持checkpoint恢复，明确中断而非自动重放；研究Run继续遵循既有worker生命周期。
+- 后续先实现HostProfile、凭据引用、SSH host key核验、WorkspaceGrant及只读诊断；再接实验submit/inspect/cancel与审批。跨任务指代解析为新研究契约、长历史压缩、旧聊天完整迁移单列增强项，不在本轮隐式改写任务。评测路线与指标沿用 docs/experiment-evaluation-roadmap.md。

@@ -255,6 +255,8 @@ class PgWorkspaceStore:
             row = await conn.fetchrow('SELECT id FROM workspace_conversations WHERE id=$1 AND user_email=$2 FOR UPDATE', conversation_id, user_email)
             if row is None:
                 raise WorkspaceNotFound('conversation not found')
+            if await conn.fetchval("SELECT 1 FROM coordinator_turns WHERE conversation_id=$1 AND status='running'", conversation_id):
+                raise WorkspaceBusy('请等待当前回答结束后再删除对话')
             runs = await conn.fetch('SELECT id,status FROM research_runs WHERE conversation_id=$1 FOR UPDATE', conversation_id)
             if any(r['status'] not in {'completed', 'failed', 'cancelled', 'interrupted'} for r in runs):
                 raise WorkspaceBusy('请先停止正在运行的任务，再删除对话')

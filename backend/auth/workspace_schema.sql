@@ -51,6 +51,19 @@ CREATE TABLE IF NOT EXISTS workspace_messages (
 CREATE INDEX IF NOT EXISTS idx_workspace_messages_conversation_sequence
     ON workspace_messages(conversation_id, sequence_no);
 
+CREATE TABLE IF NOT EXISTS coordinator_turns (
+    conversation_id VARCHAR(100) NOT NULL REFERENCES workspace_conversations(id) ON DELETE CASCADE,
+    request_id VARCHAR(100) NOT NULL,
+    request_hash TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('running','completed','failed','interrupted')),
+    result JSONB,
+    error TEXT,
+    usage JSONB NOT NULL DEFAULT '[]',
+    started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    finished_at TIMESTAMPTZ,
+    PRIMARY KEY (conversation_id, request_id)
+);
+
 -- Existing local databases may have been created during the first draft with
 -- VARCHAR(36) identifiers. Widen them without dropping any user data.
 ALTER TABLE workspace_projects ALTER COLUMN id TYPE VARCHAR(100);

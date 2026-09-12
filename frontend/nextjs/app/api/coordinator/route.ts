@@ -1,5 +1,21 @@
 import { NextResponse } from 'next/server';
 
+export async function GET(request: Request) {
+  const backendUrl = process.env.NEXT_PUBLIC_ASTERIA_API_URL || 'http://localhost:8000';
+  const params = new URL(request.url).searchParams;
+  const query = new URLSearchParams({ conversation_id: params.get('conversation_id') || '' });
+  if (params.get('request_id')) query.set('request_id', params.get('request_id')!);
+  try {
+    const response = await fetch(`${backendUrl}/api/coordinator/turn?${query}`, {
+      headers: request.headers.get('authorization') ? { Authorization: request.headers.get('authorization')! } : {},
+      cache: 'no-store',
+    });
+    return NextResponse.json(await response.json(), { status: response.status });
+  } catch {
+    return NextResponse.json({ error: '协调服务暂不可达，请重新打开对话恢复进度' }, { status: 502 });
+  }
+}
+
 export async function POST(request: Request) {
   const backendUrl = process.env.NEXT_PUBLIC_ASTERIA_API_URL || 'http://localhost:8000';
   try {

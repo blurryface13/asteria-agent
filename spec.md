@@ -1127,6 +1127,8 @@ commit 通常只写本地对象；除非 hook 另行联网，证书错误影响�
 
 ### 22.5 Coordinator 第一阶段：普通问答分流（2026-09-12，GPT-5）
 
+> 后续复核发现此节的完整性结论需收窄，见 §22.6；首轮分流有效，不代表多轮上下文、消息顺序和全部能力的单次分类已经通过。
+
 已完成上一节 BadCase 的最小闭环修复。意图模型新增 `general_chat`，提示词明确将自包含的问答、改写、解释、翻译和头脑风暴与需要联网调研的 `general_research` 分开。新增 `/api/coordinator/route` 作为统一路由入口：先分析意图；普通 Chat 直接调用无检索工具的模型，研究能力才返回给前端创建 durable research Run。
 
 研究请求会把 Coordinator 已选的 `literature_review`、`experiment_design` 或 `general_research` 传入 durable 请求，worker 不重复调用意图模型；直接 Chat 不创建 `research_runs`，不进入 Planner、网页检索、Skill 写作或报告发布。WebSocket 直发的 `general_chat` 也会被明确拒绝进入研究器，避免静默回退旧链路。
@@ -1136,3 +1138,21 @@ commit 通常只写本地对象；除非 hook 另行联网，证书错误影响�
 真实浏览器复测同一请求：会话 `69baad11-b0f9-40df-bc53-e93a3543e0fa`，返回“设计测试用例”，页面显示 `Asteria Chat`；刷新后仍能恢复。后端日志只出现 Coordinator 路由、两次模型调用和两条 workspace message 写入，没有 research run、Planner、搜索、工具或报告事件。前一轮产生的旧错误会话保留为历史 BadCase，不覆盖为成功。
 
 验证：意图/工作区/持久化针对性测试 `7 passed, 1 skipped`，前端 TypeScript 检查通过，`git diff --check` 通过；必要地重载 8018 API 与 dora worker 后，3023 首页和 8018 Skill API 均 HTTP 200。下一轮再扩展标准问答的多轮上下文、知识库问答和实验设计能力，不在本轮改变实验 Agent 或科研综述自主链路。
+
+### 22.6 Coordinator 阶段复核与实验开发门槛（2026-09-12，Codex / GPT-5）
+
+复核基线 `6823597e`，详细证据、真实续聊 BadCase 与下一笔范围见 [阶段复核](docs/coordinator-stage-review.md)。科研核心 22 项针对性测试、隔离 PostgreSQL 3 项测试通过，3023/8018 正常，本轮不重启服务、不修改业务代码。
+
+结论为部分通过：普通请求不再误建研究 Run，历史科研报告与产物仍可读取；但普通 Chat 追问新建会话且缺失上下文、并发消息入库已发生反序、完成报告的活动轨迹被聊天状态隐藏。另需处理 general_research 重复分类、Coordinator 用量归档和网页公式渲染。先收口统一 Coordinator，再进入服务器设置和受控实验，不以现有首轮成功代替整体验收。
+
+下一增量保持现有 Agent 自主循环与前端风格，优先让 conversation/turn/request 与路由状态对齐。服务器阶段复用 E2 的 HostProfile/WorkspaceGrant、凭据引用与隔离执行；新增实验工具不替代 lead 的自主决策，不默认扩大授权。
+
+### 22.7 Coordinator 收口：会话、轮次与研究交付边界（2026-09-12，Codex / GPT-5）
+
+统一入口现在使用 `conversation_id + request_id + message`，不接受客户端伪造历史；后端校验对话归属，读取有序消息和已有报告后进行语义路由。普通咨询与报告追问直接回答；只有研究能力进入现有 durable Run。已传入的 `general_research` 不再二次分类。显式配置的外部 LangGraph 传输保留，不改变大小屏原有入口边界。
+
+新增 PostgreSQL `coordinator_turns` 保存请求摘要、状态、结果、真实模型 usage 和时间。对话行锁与请求身份防止同一提交重复入库/执行；用户消息先写、回答完成后事务写入助手消息与结果。刷新只重新观察，不重复提交。普通回答由 API 持有执行任务，不依赖页面存活；240 秒超时明确失败，API 异常退出遗留的轮次在后续读取时判定中断，不自动重跑可能已计费的调用。这不是跨进程 checkpoint 或供应商侧 exactly-once 保证。
+
+研究报告、已完成运行及产物索引组成交付状态；追问上下文不再把报告完成前的旧要求当成未回答请求。模型依据已有报告与当前问题回答，不重复承诺或否认文件生成。研究轨迹展示由 conversation mode 决定，输入框 mode 仅决定续聊/新任务，避免完成报告后隐藏活动；失败历史 Run 不再遮住后续普通 Chat。网页公式使用 remark-math 与 KaTeX，保留最终 HTML 消毒和禁用可信命令，代码块保持原样。未改变自主研究循环、证据结算、Skill 选择和出版模板。
+
+测试及真实网页记录见 DEVELOPMENT_LOG.md。当前边界：多轮普通问答与报告追问已实测；已有报告基础上的新研究请求虽能路由，但跨任务指代转为完整研究契约、研究中途改策/抢占、长对话压缩、旧式 report.chat_messages 的完整迁移还需专项增量。外部 LangGraph 兼容分支仅经过类型检查，没有可用外部部署的端到端复测。下一阶段先做 HostProfile/WorkspaceGrant 与只读连接诊断，再做授权范围内的实验执行，不扩大成另一套科研编排框架。

@@ -1,8 +1,27 @@
 import { remark } from 'remark';
 import html from 'remark-html';
 import remarkGfm from 'remark-gfm';
-import { Compatible } from "vfile";
+import type { Compatible } from "vfile";
 import DOMPurify from 'isomorphic-dompurify';
+import remarkMath from 'remark-math';
+import katex from 'katex';
+
+// Render parsed math nodes, never regex-replace code blocks or raw HTML.
+const renderMath = () => (tree: any) => {
+  const visit = (node: any) => {
+    if (node.type === 'math' || node.type === 'inlineMath') {
+      const value = katex.renderToString(node.value, {
+        displayMode: node.type === 'math', throwOnError: false,
+        trust: false, strict: 'warn', maxExpand: 1000, maxSize: 20,
+      });
+      node.type = 'html'; node.value = value;
+      delete node.children;
+      // remark-math's hName/hChildren otherwise re-emit the original code node.
+      delete node.data;
+    } else node.children?.forEach(visit);
+  };
+  visit(tree);
+};
 
 /**
  * Adds target="_blank" and rel="noopener noreferrer" attributes to all links in HTML content
@@ -41,6 +60,8 @@ export const markdownToHtml = async (markdown: Compatible | string): Promise<str
   try {
     const result = await remark()
       .use(remarkGfm) // Add GitHub Flavored Markdown support (tables, strikethrough, etc.)
+      .use(remarkMath)
+      .use(renderMath)
       .use(html, { sanitize: false })
       .process(markdown);
     
@@ -61,4 +82,4 @@ export const markdownToHtml = async (markdown: Compatible | string): Promise<str
     console.error('Error converting Markdown to HTML:', error);
     return ''; // Handle error gracefully, return empty string or default content
   }
-}; 
+};

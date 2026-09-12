@@ -365,142 +365,111 @@ export default function Home() {
     return id;
   };
 
-  const persistWorkspaceMessage = async (conversationId: string, message: ChatMessage) => {
-    const response = await authFetch(`/api/workspace/conversations/${conversationId}/messages`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      // The workspace API owns persistence metadata; do not forward the
-      // browser-only timestamp field to its strict message contract.
-      body: JSON.stringify({
-        role: message.role,
-        content: message.content,
-        metadata: message.metadata || {},
-      }),
+  const coordinatorBusy = useRef(false);
+  const [conversationMode, setConversationMode] = useState<'research' | 'chat'>('research');
+
+  const coordinatorRequest = async (path: string, body?: unknown) => {
+    const response = await authFetch('/api/coordinator' + path, body === undefined ? {cache: 'no-store'} : {
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body),
     });
-    if (!response.ok) throw new Error(`workspace message API error: ${response.status}`);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail || data.error || `协调服务错误 ${response.status}`);
+    return data;
   };
 
-  const handleCoordinatorChat = async (task: string, response: any) => {
-    const workspaceConversationId = await prepareWorkspaceConversation(task, 'chat', 'coordinator-chat');
-    const userMessage: ChatMessage = { role: 'user', content: task, timestamp: Date.now() };
-    const assistantMessage: ChatMessage = {
-      role: 'assistant',
-      content: response.content,
-      timestamp: response.timestamp || Date.now(),
-      metadata: response.metadata,
-    };
-    await Promise.all([
-      persistWorkspaceMessage(workspaceConversationId, userMessage),
-      persistWorkspaceMessage(workspaceConversationId, assistantMessage),
-    ]);
-    pendingWorkspaceConversationId.current = null;
-    setCurrentResearchId(workspaceConversationId);
-    setIsInChatMode(true);
-    setSidebarOpen(true);
-    setShowResult(true);
-    setLoading(false);
-    setIsStopped(false);
-    setQuestion(task);
-    setAnswer('');
-    setPromptValue('');
-    setOrderedData([
-      { type: 'question', content: task },
-      { type: 'chat', content: response.content, metadata: response.metadata },
-    ]);
-    window.history.replaceState(null, '', `/?conversation=${encodeURIComponent(workspaceConversationId)}`);
-    window.dispatchEvent(new Event('asteria:workspace-changed'));
+  const waitForTurn = async (id: string, initial: any, selection: number) => {
+    let turn = initial;
+    while (turn?.status === 'running') {
+      await new Promise(resolve => setTimeout(resolve, 800));
+      if (selection !== selectionGeneration.current) return null;
+      turn = (await coordinatorRequest(`?conversation_id=${encodeURIComponent(id)}&request_id=${encodeURIComponent(turn.request_id)}`)).turn;
+    }
+    if (selection !== selectionGeneration.current) return null;
+    if (!turn) throw new Error('未找到协调请求');
+    if (turn.status !== 'completed') throw new Error(turn.error || '协调请求未完成');
+    return turn.result;
   };
 
-  const handleDisplayResult = async (newQuestion: string) => {
-    selectionGeneration.current++;
+  const handleDisplayResult = async (rawQuestion: string, continueConversation = false) => {
+    const newQuestion = rawQuestion.trim();
+    if (!newQuestion || coordinatorBusy.current || loading) return;
+    coordinatorBusy.current = true;
+    setIsProcessingChat(true);
+    const selection = ++selectionGeneration.current;
     clearTimeout(selectionRetry.current);
-    let coordination: any;
+    durableResearch.detach();
+    setShowHumanFeedback(false);
     try {
-      const response = await authFetch('/api/coordinator', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: newQuestion }),
-      });
-      coordination = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(coordination.detail || coordination.error || `Coordinator API error: ${response.status}`);
-      if (coordination.capability === 'general_chat') {
-        if (!coordination.response?.content) throw new Error('Coordinator returned an empty chat response');
-        await handleCoordinatorChat(newQuestion, coordination.response);
+      const id = continueConversation && currentResearchId
+        ? currentResearchId : await prepareWorkspaceConversation(newQuestion, 'chat', 'coordinator');
+      if (selection !== selectionGeneration.current) return;
+      setCurrentResearchId(id);
+      linkedConversation.current = id;
+      window.history.replaceState(null, '', `/?conversation=${encodeURIComponent(id)}`);
+      setShowResult(true);
+      if (!continueConversation) {
+        setQuestion(newQuestion); setAnswer(''); setOrderedData([]);
+        setConversationMode('chat'); durableConversation.current = null;
+      }
+      setOrderedData(prev => [...prev, {type: 'question', content: newQuestion}]);
+      setPromptValue(''); setChatPromptValue('');
+      const retrievers = getRetrieversForStrategy(chatBoxSettings.search_strategy, chatBoxSettings.retrievers);
+      const domains = JSON.parse(localStorage.getItem('domainFilters') || '[]').map((item: any) => item.value);
+      const langgraphHost = JSON.parse(localStorage.getItem('apiVariables') || '{}').LANGGRAPH_HOST_URL;
+      const externalResearch = chatBoxSettings.report_type === 'multi_agents' && Boolean(langgraphHost);
+      const body = {
+        request_id: uuidv4(), conversation_id: id, message: newQuestion,
+        research_request: externalResearch ? null : {
+          task: newQuestion, report_type: chatBoxSettings.report_type,
+          report_source: chatBoxSettings.report_source, tone: chatBoxSettings.tone,
+          headers: {retrievers}, search_strategy: chatBoxSettings.search_strategy || 'general',
+          online_rag: chatBoxSettings.online_rag !== false, skill_ids: chatBoxSettings.skill_ids || [],
+          format_profile: chatBoxSettings.format_profile || null, query_domains: domains,
+          mcp_enabled: chatBoxSettings.mcp_enabled || false, mcp_strategy: chatBoxSettings.mcp_strategy || 'fast',
+          mcp_configs: chatBoxSettings.mcp_configs || [],
+        },
+      };
+      // Reuse the request identity if the POST response was lost.
+      let turn;
+      try { turn = await coordinatorRequest('', body); }
+      catch (error) {
+        if (!(error instanceof TypeError)) throw error;
+        turn = await coordinatorRequest('', body);
+      }
+      const result = await waitForTurn(id, turn, selection);
+      if (!result) return;
+      // Preserve the explicitly configured external LangGraph transport.
+      // Ordinary conversation still exits through the shared Coordinator.
+      if (externalResearch && result.capability !== 'general_chat') {
+        setConversationMode('research'); setIsInChatMode(false); setLoading(true);
+        const {streamResponse, host, thread_id} = await startLanggraphResearch(
+          newQuestion, chatBoxSettings.report_source, langgraphHost,
+          chatBoxSettings.search_strategy, retrievers);
+        setOrderedData(prev => [...prev, {type: 'langgraphButton', link: `https://smith.langchain.com/studio/thread/${thread_id}?baseUrl=${host}`}]);
+        let previousChunk: any = null;
+        for await (const chunk of streamResponse) {
+          if (selection !== selectionGeneration.current) return;
+          if (chunk.data.report && chunk.data.report !== 'Full report content here') {
+            setOrderedData(prev => [...prev, {...chunk.data, output: chunk.data.report, type: 'report'}]);
+            setAnswer(chunk.data.report);
+          } else if (previousChunk) {
+            setOrderedData(prev => [...prev, {type: 'differences', content: 'differences', output: JSON.stringify(findDifferences(previousChunk, chunk))}]);
+          }
+          previousChunk = chunk;
+        }
+        setLoading(false);
         return;
       }
-      if (!['literature_review', 'experiment_design', 'general_research'].includes(coordination.capability)) {
-        throw new Error('Coordinator returned an unsupported capability');
-      }
+      window.dispatchEvent(new Event('asteria:workspace-changed'));
+      await handleSelectResearch(id);
     } catch (error) {
-      console.error('Coordinator routing failed:', error);
-      toast.error(error instanceof Error ? error.message : '无法完成任务意图识别，请重试。');
-      return;
-    }
-    let workspaceConversationId: string;
-    try {
-      workspaceConversationId = await prepareWorkspaceConversation(newQuestion);
-    } catch (error) {
-      console.error('Error creating workspace conversation:', error);
-      toast.error('无法创建项目子任务，请检查工作区服务后重试。');
-      return;
-    }
-    // Exit chat mode when starting a new research
-    setIsInChatMode(false);
-    setSidebarOpen(true);
-    setShowResult(true);
-    setLoading(true);
-    setQuestion(newQuestion);
-    setPromptValue("");
-    setAnswer("");
-    setCurrentResearchId(null); // Reset current research ID for new research
-    setOrderedData((prevOrder) => [...prevOrder, { type: 'question', content: newQuestion }]);
-
-    const storedConfig = localStorage.getItem('apiVariables');
-    const apiVariables = storedConfig ? JSON.parse(storedConfig) : {};
-    const langgraphHostUrl = apiVariables.LANGGRAPH_HOST_URL;
-
-    // Starting new research - tracking for redirection once complete
-    const newResearchStarted = Date.now().toString();
-    // We'll use this as a temporary ID to keep track of this research
-    const tempResearchId = `temp-${newResearchStarted}`;
-
-    if (chatBoxSettings.report_type === 'multi_agents' && langgraphHostUrl) {
-      const retrievers = getRetrieversForStrategy(chatBoxSettings.search_strategy, chatBoxSettings.retrievers);
-      let { streamResponse, host, thread_id } = await startLanggraphResearch(
-        newQuestion,
-        chatBoxSettings.report_source,
-        langgraphHostUrl,
-        chatBoxSettings.search_strategy,
-        retrievers
-      );
-      const langsmithGuiLink = `https://smith.langchain.com/studio/thread/${thread_id}?baseUrl=${host}`;
-      setOrderedData((prevOrder) => [...prevOrder, { type: 'langgraphButton', link: langsmithGuiLink }]);
-
-      let previousChunk = null;
-      for await (const chunk of streamResponse) {
-        if (chunk.data.report != null && chunk.data.report != "Full report content here") {
-          setOrderedData((prevOrder) => [...prevOrder, { ...chunk.data, output: chunk.data.report, type: 'report' }]);
-          setLoading(false);
-        
-          // Save research and navigate to its unique URL once it's complete
-          setAnswer(chunk.data.report);
-        } else if (previousChunk) {
-          const differences = findDifferences(previousChunk, chunk);
-          setOrderedData((prevOrder) => [...prevOrder, { type: 'differences', content: 'differences', output: JSON.stringify(differences) }]);
-        }
-        previousChunk = chunk;
-      }
-    } else {
-      setCurrentResearchId(workspaceConversationId);
-      window.history.replaceState(null, '', `/?conversation=${encodeURIComponent(workspaceConversationId)}`);
-      linkedConversation.current = workspaceConversationId;
-      durableConversation.current = workspaceConversationId;
-      try {
-        await durableResearch.start(newQuestion, chatBoxSettings, workspaceConversationId, coordination.capability);
-      } catch (error) {
+      if (selection === selectionGeneration.current) {
         setLoading(false);
-        setOrderedData(prev => [...prev, {type: 'logs', content: 'error', output: error instanceof Error ? error.message : '任务提交失败'} as Data]);
+        toast.error(error instanceof Error ? error.message : '请求失败，重新打开对话可恢复已保存进度');
       }
+    } finally {
+      coordinatorBusy.current = false;
+      setIsProcessingChat(false);
     }
   };
 
@@ -611,6 +580,7 @@ export default function Home() {
     setIsStopped(false);
     setIsInChatMode(false);
     setCurrentResearchId(null); // Reset research ID
+    setConversationMode('research');
     setIsProcessingChat(false);
     
     // Clear previous research data
@@ -687,7 +657,7 @@ export default function Home() {
       // Prevent infinite loops by checking if we're already updating
       if (isUpdatingRef.current) return;
       // The worker owns report persistence; never overwrite it with partial replay.
-      if (durableConversation.current && !isInChatMode) return;
+      if (durableConversation.current) return;
       
       if (showResult && !loading && answer && question && orderedData.length > 0) {
         if (isInChatMode && currentResearchId) {
@@ -761,7 +731,8 @@ export default function Home() {
       if (!latest.ok) throw new Error('无法读取后台任务状态');
       const snapshot = await latest.json();
       if (selection !== selectionGeneration.current) return;
-      if (snapshot.run && snapshot.run.status !== 'completed') {
+      if (snapshot.run && ['queued', 'running', 'waiting_approval', 'cancel_requested'].includes(snapshot.run.status)) {
+        setConversationMode('research');
         durableConversation.current = id;
         setQuestion(snapshot.run.request.task);
         setIsInChatMode(false);
@@ -771,10 +742,30 @@ export default function Home() {
       const conversationResponse = await authFetch(`/api/workspace/conversations/${id}`);
       if (conversationResponse.ok) {
         const conversation = await conversationResponse.json();
+        if (selection !== selectionGeneration.current) return;
+        const turn = (await coordinatorRequest(`?conversation_id=${encodeURIComponent(id)}`)).turn;
+        if (selection !== selectionGeneration.current) return;
+        if (turn?.status === 'running') {
+          setIsProcessingChat(true);
+          try {
+            await waitForTurn(id, turn, selection);
+            if (selection === selectionGeneration.current) {
+              setIsProcessingChat(false);
+              await handleSelectResearch(id);
+            }
+          } finally {
+            if (selection === selectionGeneration.current) setIsProcessingChat(false);
+          }
+          return;
+        }
+        if (turn && ['failed', 'interrupted'].includes(turn.status)) toast.error(turn.error);
         if (conversation.mode === 'chat') {
           const messagesResponse = await authFetch(`/api/workspace/conversations/${id}/messages`);
-          const messagesData = messagesResponse.ok ? await messagesResponse.json() : { messages: [] };
+          if (!messagesResponse.ok) throw new Error('无法读取对话消息');
+          const messagesData = await messagesResponse.json();
+          if (selection !== selectionGeneration.current) return;
           const messages = Array.isArray(messagesData.messages) ? messagesData.messages : [];
+          setConversationMode('chat');
           const firstUser = messages.find((message: any) => message.role === 'user');
           setQuestion(firstUser?.content || conversation.title);
           setAnswer('');
@@ -791,14 +782,32 @@ export default function Home() {
           return;
         }
       }
+      if (snapshot.run && snapshot.run.status !== 'completed') {
+        setConversationMode('research');
+        durableConversation.current = id;
+        setQuestion(snapshot.run.request.task);
+        setIsInChatMode(false);
+        await durableResearch.restore(id);
+        return;
+      }
       durableConversation.current = snapshot.run ? id : null;
       const research = await getResearchById(id);
       if (selection !== selectionGeneration.current) return;
       if (research) {
+        setConversationMode('research');
         setCurrentResearchId(id);
         setQuestion(research.question);
         setAnswer(research.answer || '');
-        setOrderedData(research.orderedData || []);
+        const response = await authFetch(`/api/workspace/conversations/${id}/messages`);
+        if (!response.ok) throw new Error('无法读取报告追问');
+        const messages = (await response.json()).messages || [];
+        if (selection !== selectionGeneration.current) return;
+        // Research source messages are already represented in orderedData.
+        // Only append persisted Coordinator chat turns after the report.
+        const lastResearchTime = snapshot.run?.finished_at ? Date.parse(snapshot.run.finished_at) : 0;
+        const followups = messages.filter((m: any) => m.metadata?.turn_id && Date.parse(m.created_at) > lastResearchTime);
+        setOrderedData([...(research.orderedData || []), ...followups.map((m: any) =>
+          ({type: m.role === 'user' ? 'question' : 'chat', content: m.content, metadata: m.metadata}))]);
         setShowResult(true);
         setLoading(false);
         setIsStopped(false);
@@ -896,7 +905,8 @@ export default function Home() {
       // New research always uses the durable agent run. Viewport size only
       // changes layout; it must not select a legacy /api/chat path.
       onResearch={handleDisplayResult}
-      onChat={isMobile ? handleMobileChat : handleChat}
+      onChat={message => handleDisplayResult(message, true)}
+      conversationMode={conversationMode}
       onNew={handleStartNewResearch} onEnter={handleEnterWorkspace}
       onStop={handleStopResearch} onSelect={handleSelectResearch}
       selectedId={currentResearchId || pendingWorkspaceConversationId.current}
@@ -907,7 +917,7 @@ export default function Home() {
       <ResearchResults compact isResearchRunning={loading} orderedData={orderedData} answer={answer} allLogs={allLogs}
         chatBoxSettings={chatBoxSettings} handleClickSuggestion={handleClickSuggestion}
         currentResearchId={currentResearchId || undefined} isProcessingChat={isProcessingChat}
-        onShareClick={currentResearchId ? handleCopyUrl : undefined} showResearchActivity={!isInChatMode}/>
+        onShareClick={currentResearchId ? handleCopyUrl : undefined} showResearchActivity={conversationMode === 'research'}/>
       {showHumanFeedback && <HumanFeedback questionForHuman={questionForHuman}
         websocket={null} onFeedbackSubmit={handleFeedbackSubmit}/>}
     </ResearchHarness>

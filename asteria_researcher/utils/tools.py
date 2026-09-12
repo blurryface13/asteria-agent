@@ -14,6 +14,7 @@ from langchain_core.tools import tool
 
 from .costs import calculate_llm_cost
 from .llm import create_chat_completion
+from .usage_context import record_usage
 from ..evaluation.trace import get_current_recorder
 from ..evaluation.models import SpanKind, TraceStatus
 
@@ -79,7 +80,7 @@ async def create_chat_completion_with_tools(
         Tuple of (response_content, tool_calls_metadata)
         
     Raises:
-        Exception: If tool-enabled completion fails, falls back to simple completion
+        Exception: If tool-enabled completion fails; callers retain the failure.
     """
     try:
         from ..llm_provider.generic.base import GenericLLMProvider
@@ -121,6 +122,7 @@ async def create_chat_completion_with_tools(
             attributes={"model": model, "provider": llm_provider, "bound_tools": [getattr(item, "name", str(item)) for item in tools]},
         ) if recorder else None
         response = await llm_with_tools.ainvoke(lc_messages)
+        await record_usage(model, llm_provider, 1, getattr(response, 'usage_metadata', None))
         if llm_span and recorder:
             recorder.finish_span(llm_span, output_messages=[{"role": "assistant", "content": str(getattr(response, "content", ""))}], attributes={"tool_call_count": len(getattr(response, "tool_calls", []) or [])})
         _track_response_cost(
@@ -208,6 +210,7 @@ async def create_chat_completion_with_tools(
                 attributes={"model": model, "provider": llm_provider, "phase": "final"},
             ) if recorder else None
             final_response = await llm_with_tools.ainvoke(lc_messages)
+            await record_usage(model, llm_provider, 2, getattr(final_response, 'usage_metadata', None))
             if final_span and recorder:
                 recorder.finish_span(final_span, output_messages=[{"role": "assistant", "content": str(getattr(final_response, "content", ""))}])
              
@@ -238,21 +241,9 @@ async def create_chat_completion_with_tools(
             f"Error in tool-enabled chat completion: {error_type}: {error_msg}",
             exc_info=True
         )
-        logger.info("Falling back to simple chat completion without tools")
-        
-        # Fallback to simple chat completion without tools
-        response = await create_chat_completion(
-            model=model,
-            messages=messages,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            llm_provider=llm_provider,
-            llm_kwargs=llm_kwargs,
-            cost_callback=cost_callback,
-            websocket=websocket,
-            **kwargs
-        )
-        return response, []
+        # Do not silently drop tools or issue another billed completion after
+        # a failed tool turn. The persisted Coordinator exposes this failure.
+        raise
 
 
 def create_search_tool(search_function: Callable[[str], Dict]) -> Callable:

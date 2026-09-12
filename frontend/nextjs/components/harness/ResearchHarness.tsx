@@ -11,6 +11,7 @@ import SkillBrowser from "./SkillBrowser";
 import { useWorkspace } from "@/hooks/useWorkspace";
 
 interface Props {
+  conversationMode?: 'research' | 'chat';
   skillsSupported?: boolean;
   selectedId?: string | null;
   history: ResearchHistoryItem[];
@@ -225,8 +226,8 @@ export default function ResearchHarness(p: Props) {
     }
   }, [modal]);
   useEffect(() => {
-    setMode(p.answer ? "chat" : "research");
-  }, [p.answer]);
+    setMode(p.answer || (p.active && p.conversationMode === 'chat') ? "chat" : "research");
+  }, [p.answer, p.active, p.conversationMode, p.selectedId]);
   useEffect(() => {
     if (!menu) return;
     const close = () => setMenu("");
@@ -266,7 +267,7 @@ export default function ResearchHarness(p: Props) {
       !value.trim() ||
       p.loading ||
       p.chatting ||
-      (mode === "chat" && !p.answer)
+      (mode === "chat" && !p.answer && p.conversationMode !== 'chat')
     )
       return;
     if (mode === "chat") p.onChat(value.trim());
@@ -590,19 +591,19 @@ export default function ResearchHarness(p: Props) {
                       }
                     >
                       <option value="research">新调研</option>
-                      <option value="chat">报告问答</option>
+                      <option value="chat">{p.conversationMode === 'chat' ? '继续对话' : '报告问答'}</option>
                     </select>
                   )}
                 </div>
                 <div className={s.inputBox}>
                   <textarea
                     ref={input}
-                    aria-label={mode === "chat" ? "报告问答内容" : "任务内容"}
+                    aria-label={mode === "chat" ? (p.conversationMode === 'chat' ? '对话内容' : '报告问答内容') : "任务内容"}
                     value={value}
                     onChange={(e) => setValue(e.target.value)}
                     placeholder={
                       mode === "chat"
-                        ? "针对当前报告提问…"
+                        ? (p.conversationMode === 'chat' ? '继续对话…' : "针对当前报告提问…")
                         : "描述你的任务，或从上方选择一个研究起点"
                     }
                     onKeyDown={(e) => {
@@ -679,7 +680,7 @@ export default function ResearchHarness(p: Props) {
                         disabled={
                           !value.trim() ||
                           p.chatting ||
-                          (mode === "chat" && !p.answer)
+                          (mode === "chat" && !p.answer && p.conversationMode !== 'chat')
                         }
                         onClick={submit}
                         aria-label="发送"
@@ -691,7 +692,7 @@ export default function ResearchHarness(p: Props) {
                 </div>
               </div>
               <small className={s.disclaimer}>
-                {mode === "chat" && !p.answer
+                {mode === "chat" && !p.answer && p.conversationMode !== 'chat'
                   ? "报告生成后可在此继续问答；知识库问答请进入离线 RAG。"
                   : "Asteria 也可能会犯错，请仔细甄别"}
               </small>

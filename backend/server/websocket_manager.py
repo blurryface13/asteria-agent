@@ -151,7 +151,7 @@ async def run_agent(task, report_type, report_source, source_urls, document_urls
         })
     if capability == "general_research":
         capability = None
-    if not return_researcher and capability is None and getattr(logs_handler, "feedback_queue", None) is not None:
+    if not return_researcher and coordinator_capability is None and capability is None and getattr(logs_handler, "feedback_queue", None) is not None:
         from asteria_researcher.agentic.intent import analyze_intent
         from .agentic_runner import configured_model
         await logs_handler.send_json({"type": "logs", "content": "intent_analysis", "output": "分析目标与交付要求"})
