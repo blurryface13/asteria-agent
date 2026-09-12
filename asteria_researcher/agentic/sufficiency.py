@@ -117,6 +117,10 @@ class GoalFinding(BaseModel):
     reason: str = Field(min_length=1, max_length=1200)
     supports: list[Support] = Field(default_factory=list, max_length=8)
     gap: str = Field(default="", max_length=900)
+    answer_kind: Literal["direct", "synthesis", "inference", "unknown"] = "direct"
+    answer: str = Field(default="", max_length=1800)
+    reasoning: str = Field(default="", max_length=1800)
+    qualification: str = Field(default="", max_length=900)
 
 
 class SufficiencyReport(BaseModel):
@@ -145,6 +149,13 @@ def validate_report(report, goals, catalog):
     if len(actual) != len(set(actual)) or set(actual) != expected:
         raise ValueError("充分性审查不得新增、遗漏或重复核心目标")
     for finding in report.goals:
+        if finding.status == "supported" and finding.answer_kind == "unknown":
+            raise ValueError("未知答案不能标记为已覆盖")
+        if finding.status == "supported" and finding.answer_kind in {"synthesis", "inference"}:
+            if not finding.answer.strip() or not finding.reasoning.strip():
+                raise ValueError("综合或推断必须说明答案及证据到结论的推理")
+            if finding.answer_kind == "inference" and not finding.qualification.strip():
+                raise ValueError("推断必须明确限定条件，不能冒充原文事实")
         if finding.status == "supported" and (not finding.supports or finding.gap.strip()):
             raise ValueError("已覆盖目标必须有原文证据，且不能同时存在核心缺口")
         if finding.status != "supported" and not finding.gap.strip():
@@ -161,6 +172,26 @@ def validate_report(report, goals, catalog):
                 raise ValueError(f"目标 {finding.goal_id} 的 quote 不是 {support.evidence_id} 原文中的连续片段：{support.quote!r}。"
                                  "请从该 ID 的 text 逐字复制，不要拼接句子、补省略号或改写原文。")
     return all(g.status == "supported" for g in report.goals)
+
+
+EVIDENCE_STANDARD = """
+Classify each answer by its evidential nature, not by the presence of a matching quotation:
+- direct: facts/numbers explicitly reported in a source; do not invent measurements.
+- synthesis: a comparison or thematic conclusion supported jointly by supplied passages;
+  explain how premises combine and whether experimental settings are comparable.
+- inference: an analytical conclusion derived from cited premises, NOT an author-stated fact.
+  Explain the premise-to-conclusion reasoning and explicit qualifications. For example,
+  quadratic attention complexity supports possible resource pressure for long sequences;
+  it does NOT prove an unreported failure, measured memory cost, or negative experiment.
+- unknown: evidence cannot answer the substantive question; identify the missing fact.
+Return answer_kind, answer, reasoning and qualification for every goal. A supported synthesis
+or inference does NOT require the source to state the conclusion verbatim. If the user asks
+specifically for measured results or author-stated claims, an inference cannot substitute.
+For analysis/limitations requests, a qualified evidence-backed answer can satisfy the goal.
+Unknown is not supported; never turn an untested hypothesis into a finding.
+Do not demand a quotation for connective prose or the writer's organization. Citation density
+is not quality: source support for a premise and validity of an inference are separate checks.
+"""
 
 
 ASSESSOR_PROMPT = """You are an independent research sufficiency assessor, not a researcher or planner.
@@ -192,7 +223,7 @@ Runtime checks explicit process requirements separately.
 Return a concise evidence-grounded synthesis for the writer, clearly separating established findings
 and coverage limits. Cite only supplied source URLs, never unread candidates. Write in Chinese.
 This is a semantic judgment; ID/text validation proves provenance, not truth.
-"""
+""" + EVIDENCE_STANDARD
 
 
 ASSESSOR_REVIEW_PROMPT = """你是独立的研究证据复核者，复核初审，而不是替研究者争取通过。
@@ -207,4 +238,4 @@ ASSESSOR_REVIEW_PROMPT = """你是独立的研究证据复核者，复核初审�
 不能因为篇幅短、预算不足或希望任务成功就放行。只引用提供的 evidence_id，
 未读取来源、标题和研究者的总结不能代替原文。不得新增、遗漏或重复目标。
 输出完整 SufficiencyReport JSON，不输出原文 quote，由程序绑定原始证据。
-"""
+""" + EVIDENCE_STANDARD

@@ -113,6 +113,9 @@ class AutonomousReview:
         self.evidence, self.briefs = [], []
         self.assessments, self.assessment_fingerprint = [], None
         self.last_assessment_action, self.stalled_checks = -3, 0
+        # Three consecutive rejected assessments permit two targeted follow-ups.
+        # New passage IDs alone must not reset an unresolved goal's retry budget.
+        self.max_goal_rejections = max(1, min(8, int(os.getenv("REVIEW_MAX_GOAL_REJECTIONS", "3"))))
         self.successful_searches = 0
         self.skill_options = skill_options or SkillOptions()
         self.research_skills = SkillSession("research", self.skill_options)
@@ -346,6 +349,7 @@ class AutonomousReview:
         schema["$defs"]["Support"]["properties"].pop("quote")
         schema["$defs"]["Support"]["properties"]["evidence_id"]["enum"] = list(visible)
         schema["$defs"]["GoalFinding"]["properties"]["goal_id"]["enum"] = [g["id"] for g in self.plan["required_goals"]]
+        schema["$defs"]["GoalFinding"]["required"] += ["answer_kind", "answer", "reasoning", "qualification"]
         async def evaluate(prompt, context, stage=""):
             context = dict(context)
             for attempt in range(2):
@@ -391,6 +395,25 @@ class AutonomousReview:
         if assessment["ready"]:
             result = {"status": "completed", "agent": "lead", "summary": assessment["synthesis"]}
             await self.event("lead", "agent", "completed", "充分性审查通过，结束补研", result=result)
+            return result
+        exhausted = []
+        for goal in [*assessment["goals"], *assessment.get("process_checks", [])]:
+            identifier = goal.get("goal_id", goal.get("id"))
+            count = 0
+            for previous in reversed(self.assessments):
+                findings = [*previous["goals"], *previous.get("process_checks", [])]
+                finding = next((g for g in findings if g.get("goal_id", g.get("id")) == identifier), None)
+                if not finding or finding.get("status") == "supported" or finding.get("supported") is True:
+                    break
+                count += 1
+            if count >= self.max_goal_rejections:
+                exhausted.append(identifier)
+        if exhausted:
+            result = {"status": "incomplete", "agent": "lead", "summary":
+                      f"目标 {', '.join(exhausted)} 连续 {self.max_goal_rejections} 轮审查仍未解决，停止自动打回；" +
+                      "；".join(self.assessment_gaps(assessment))}
+            await self.event("lead", "review_limit", "incomplete", "达到目标打回上限，保留证据与审查分歧",
+                             result=result, goal_ids=exhausted, max_rejections=self.max_goal_rejections)
             return result
         if self.stalled_checks >= 2:
             result = {"status": "incomplete", "agent": "lead", "summary": "连续补研未获得新证据：" +
@@ -655,6 +678,7 @@ class AutonomousReview:
                 evidence.append(record)
                 self.evidence.append(record)
         payload = {"task": self.query, "plan": self.plan, "synthesis": synthesis,
+                   "reviewed_answers": self.assessments[-1]["goals"] if self.assessments else [],
                    "subagent_results": self.briefs, "evidence": evidence,
                    "read_sources": list(self.library.papers), "citation_edges": list(self.library.edges.values()),
                    "instructions": "区分原文结果、推断和未解决问题，按主题综合，不要逐篇罗列。"}
@@ -662,6 +686,10 @@ class AutonomousReview:
             "evidence. Cite only read_sources, using Markdown links near factual claims. "
             "Preserve scope/date limits and material research gaps. Do not claim exhaustive coverage, "
             "verified experiments, or factual certainty based only on citation membership. "
+            "Preserve reviewed answer kinds: distinguish author-reported facts, cross-source synthesis, "
+            "qualified analysis and unknowns. Cite the supporting premises of an inference, never label "
+            "it as an author claim. Integrate citations at claim-group/paragraph level when unambiguous; "
+            "do not repeat the same citation after every sentence or replace thematic reasoning with excerpts. "
             "Respect requested length.\n" + writing_prompt
             + "\nOUTPUT CONTRACT: " + length_guidance, payload)
         for attempt in range(3):

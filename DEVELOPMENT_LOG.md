@@ -15,6 +15,18 @@
 
 ## 开发节点
 
+### 2026-09-12：审查证据标准、打回上限与 SSR 读取修复（Codex）
+
+- 审查答案新增 direct / synthesis / inference / unknown 分类，保存 answer、reasoning、qualification。综合与推断必须附原始证据、推理链；推断须有限定，未知不能判为 supported。原文未实测的数字不能由推断代替。初审与一次语义复核使用同一证据原则，不新增研究编排或改变子 Agent 并行机制。
+- Writer 接收逐目标审查答案与类型，区分作者事实、跨来源综合和分析；相同来源可在明确的论断组/段落统一引用，避免逐句重复链接。仍不声称已实现全文逐句事实核验。
+- 默认同一目标连续 3 次独立证据审查被拒即停止自动补研（首审后最多两轮），通过 `REVIEW_MAX_GOAL_REJECTIONS` 设置 1–8。新 evidence ID 不重置未解决目标的计数，已满足目标不计入连续拒绝；缓存重读不重复计数，保留既有无证据增量停止保护。达到上限返回 incomplete、记录 review_limit 和缺口，不强行交付。过程要求也遵守此上限。
+- 测试：审查、Agent、Run、workspace、评测合计 52 项通过。新增限定推断合同、未知拒绝、不同新证据下仍受打回上限约束、临界轮真实通过不被拦截等用例。
+- 真实定点回放：复用失败目录 `review_c2a9133e57844b2e81364ccaa74fe0fa` 的同一计划和原文证据，未重新搜索/下载/写报告。`review_49670f0eb70844d7820c2453a3ba1ce3` 一次审查 ready=true，3 个目标 supported，局限回答区分直接说明与条件推断；10.90 s，输入 8,572 / 输出 1,830，共 10,402 tokens。反例 `review_6b39c1071e954883beceefb480bfd48b` 要求原文没有的百万 token 序列实测显存数字，一次审查为 missing/unknown；5.42 s，共 8,966 tokens。模型适配器为既有 deepseek-chat；费用未计价。定点验证不等于又跑完一次广域研究。
+- SSR 根因证据：短暂诊断记录具体失败路径 `node_modules/dompurify/dist/purify.es.mjs`；`ls -lO` 显示 compressed,dataless。前台读取将内容恢复本地后，错误继续暴露 `tldts` 元数据及 jsdom/entities/css-tree 内部文件的云端读取问题。恢复占位文件，并按锁文件版本、SHA-512 校验的官方包修复 jsdom 29.1.1、entities 6.0.1、css-tree 3.2.1，保留 jsdom 嵌套依赖；未升级依赖、修改 lockfile、关闭消毒器或删除 .next。旧包留在 `/tmp/asteria-jsdom-repair.oruHWU/jsdom-before`、`/tmp/asteria-package-repair-mY1Exj/before`、`/tmp/asteria-package-repair-db0wJv/before`，属于临时可恢复备份。
+- 启动新增 `scripts/check-frontend-files.cjs`：在独立进程实际导入 jsdom/DOMPurify，最多 30 秒；失败输出依赖可读性诊断，不带错误进入服务。终端启动与本机 launchctl 均接入检查，临时读取追踪已撤下。只检查实际 SSR 消毒依赖图，未保留全 node_modules 云端下载方案。系统仍可能再次卸载云端文件；长期应将依赖目录保持下载，或单独规划迁出云同步目录，不擅自改系统存储设置。
+- 确认无活动研究后按原 dora/Node22、8018/3023 重载 API、worker 与前端，使新审查代码生效；没有打断用户进行中的任务。
+- 修复后首页、历史报告深链接均为 HTTP 200，Run API 为 200，worker ready；启动依赖检查实际成功，诊断用 NODE_OPTIONS 已移除。原构建缓存与前端样式保留。
+
 ### 2026-09-12：E1 后台研究运行与页面恢复（Codex）
 
 - 新增 PostgreSQL Run、Job、Event、Approval、Artifact；桌面研究由独立 dora worker 执行，API 接收请求、审批与取消，浏览器按事件序号补拉。现有主 Agent、并行研究员、Skill 和出版编排不改写，移动端与外部 LangGraph 分支不迁移。

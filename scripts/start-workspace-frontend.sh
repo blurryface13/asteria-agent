@@ -17,4 +17,5 @@ export WATCHPACK_POLLING="${WATCHPACK_POLLING:-true}"
 export NEXT_PUBLIC_ASTERIA_API_URL="${NEXT_PUBLIC_ASTERIA_API_URL:-http://127.0.0.1:8018}"
 export NEXT_PUBLIC_BACKEND_URL="${NEXT_PUBLIC_BACKEND_URL:-$NEXT_PUBLIC_ASTERIA_API_URL}"
 # Authentication is configured by the caller/.env.local, never disabled here.
+"$node_bin" ../../scripts/check-frontend-files.cjs
 exec "$node_bin" node_modules/next/dist/bin/next dev --hostname 127.0.0.1 --port "${ASTERIA_FRONTEND_PORT:-3023}"

@@ -58,6 +58,8 @@ Worker 读取仓库 `.env`，使用与研究 API 一致的模型、Embedding 和
 
 本机用户级服务标签为 `com.asteria.backend8018`、`com.asteria.research-worker`、`com.asteria.frontend3023`。更新后端时先确认任务状态：worker 正常退出会排空当前任务，API 可单独重启。移除标签后必须确认旧标签已退出，再提交同名服务；不要把 remove/submit 紧接执行后直接视为重启成功。日志分别为 `/tmp/asteria-backend-8018.log`、`/tmp/asteria-research-worker.log`、`/tmp/asteria-frontend-3023.log`。
 
+前端 SSR 出现 `Unknown system error -11, read` 时先定位读取路径，并用 `ls -lO` 检查 dataless 标记。本机实际遇到的是云端占位依赖，不能据此删除构建缓存。前台运行 `node ../../scripts/check-frontend-files.cjs`（cwd 为 frontend/nextjs）检查消毒器依赖图，检查子进程超时 30 秒。必要时恢复本地内容，或校验 package-lock integrity 后修复准确版本的单个包；必须保留嵌套 node_modules。启动脚本与本机 launchctl 已接入该检查。不得关闭 DOMPurify 消毒或关闭 TLS 校验来绕过。文件仍可能再次被系统卸载，长期保持下载或迁移依赖目录需单独规划。
+
 浏览器从 URL 的 conversation 恢复运行；首次加载遇到临时服务错误与后续事件断线都只重试读取。401/403/404 明确提示不能查看，不无限重试。未完成的独立对话也显示在任务侧栏；已完成任务读取保存的报告及后续问答，不用原始 Run 事件覆盖问答。删除运行中对话返回 409；用户明确删除已结束对话时，在一个事务中删除其数据库运行记录与报告，产物文件保留。
 
 数据库合同测试在随机独立 schema 内运行并清理自身数据，不碰业务表：

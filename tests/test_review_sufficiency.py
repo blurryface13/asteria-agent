@@ -307,3 +307,52 @@ def test_missing_process_requirement_blocks_then_rechecks_after_actual_progress(
         return await review.lead_checkpoint()
     assert asyncio.run(check())["status"] == "completed"
     assert len(review.assessments) == 2
+
+
+def test_qualified_inference_needs_premises_reasoning_and_qualification():
+    catalog = evidence_catalog(EVIDENCE, {URL})
+    data = finding(catalog)
+    data["goals"][0].update(answer_kind="inference", answer="限定推断", reasoning="由原文前提推导", qualification="尚未实测")
+    report = SufficiencyReport.model_validate(data)
+    assert validate_report(report, GOALS, catalog)
+    report.goals[0].qualification = ""
+    with pytest.raises(ValueError, match="限定"):
+        validate_report(report, GOALS, catalog)
+    report.goals[0].answer_kind = "unknown"
+    with pytest.raises(ValueError, match="未知"):
+        validate_report(report, GOALS, catalog)
+
+
+def test_rejected_goal_limit_survives_new_passages_but_never_forces_success(tmp_path):
+    calls = []
+    async def model(system, payload):
+        data = json.loads(payload)
+        calls.append(data)
+        assert "answer_kind" in system and "inference" in system
+        result = finding({e["id"]: e for e in data["evidence"]}, "partial")
+        # Let the runtime bind the exact current passage rather than copying old text.
+        result["goals"][0]["supports"][0].pop("quote")
+        return json.dumps(result)
+    review = runtime(tmp_path, model)
+    async def check():
+        for i in range(3):
+            review.evidence = [{"agent": "reader", "query": "method", "passages": [
+                {"source": URL, "page": i + 1, "text": TEXT + str(i)}]}]
+            result = await review.lead_checkpoint()
+            if i < 2:
+                assert result is None
+        return result
+    result = asyncio.run(check())
+    assert result["status"] == "incomplete" and "连续 3 轮" in result["summary"]
+    assert len(calls) == 6  # Each fresh evidence snapshot has only one semantic review.
+    assert not review.assessments[-1]["ready"]
+
+
+def test_success_at_rejection_boundary_is_not_blocked(tmp_path):
+    async def model(system, payload):
+        data = json.loads(payload)
+        return json.dumps(finding({e["id"]: e for e in data["evidence"]}))
+    review = runtime(tmp_path, model)
+    partial = finding(evidence_catalog(EVIDENCE, {URL}), "partial")
+    review.assessments = [partial, partial]
+    assert asyncio.run(review.lead_checkpoint())["status"] == "completed"
