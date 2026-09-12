@@ -876,6 +876,18 @@ export default function Home() {
     }
   };
 
+  // Deep links open an existing conversation in the same research harness.
+  // This only restores saved state; it never submits a new research request.
+  const linkedConversation = useRef<string | null>(null);
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get('conversation');
+    if (!id || linkedConversation.current === id) return;
+    linkedConversation.current = id;
+    void handleSelectResearch(id);
+  // The ref prevents repeated restores when the history context refreshes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [getResearchById]);
+
   // Toggle sidebar
   const toggleSidebar = () => {
     setSidebarOpen(!sidebarOpen);

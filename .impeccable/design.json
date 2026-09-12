@@ -1,0 +1,189 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-12T06:35:21.827Z",
+  "title": "Asteria Research Workspace",
+  "extensions": {
+    "colorMeta": {
+      "background": {
+        "role": "background",
+        "displayName": "画布",
+        "canonical": "#171717",
+        "tonalRamp": [
+          "#171717",
+          "#232323",
+          "#363636",
+          "#555555",
+          "#777777",
+          "#989896",
+          "#c6c6c3",
+          "#e7e7e5"
+        ]
+      },
+      "surface": {
+        "role": "surface",
+        "displayName": "侧栏与输入",
+        "canonical": "#232323",
+        "tonalRamp": [
+          "#171717",
+          "#232323",
+          "#363636",
+          "#555555",
+          "#777777",
+          "#989896",
+          "#c6c6c3",
+          "#e7e7e5"
+        ]
+      },
+      "onSurface": {
+        "role": "onSurface",
+        "displayName": "正文",
+        "canonical": "#e7e7e5",
+        "tonalRamp": [
+          "#171717",
+          "#232323",
+          "#363636",
+          "#555555",
+          "#777777",
+          "#989896",
+          "#c6c6c3",
+          "#e7e7e5"
+        ]
+      },
+      "outline": {
+        "role": "outline",
+        "displayName": "分隔线",
+        "canonical": "#363636",
+        "tonalRamp": [
+          "#171717",
+          "#232323",
+          "#363636",
+          "#555555",
+          "#777777",
+          "#989896",
+          "#c6c6c3",
+          "#e7e7e5"
+        ]
+      }
+    },
+    "shadows": [
+      {
+        "name": "default",
+        "value": "none",
+        "purpose": "默认平面层级"
+      }
+    ],
+    "motion": {
+      "feedback": "150–160ms",
+      "reducedMotion": "none"
+    },
+    "breakpoints": {
+      "compact": 1100,
+      "railOverlay": 899,
+      "detailOverlay": 760
+    }
+  },
+  "components": [
+    {
+      "name": "primary-button",
+      "kind": "button",
+      "refersTo": "button",
+      "description": "提交动作",
+      "html": "<button class=\"primary\">导入轨迹</button>",
+      "css": ".primary{font:12px/1.5 -apple-system,BlinkMacSystemFont,sans-serif;background:#e7e7e5;color:#171717;border:0;border-radius:18px;padding:7px 12px}"
+    },
+    {
+      "name": "secondary-button",
+      "kind": "button",
+      "refersTo": "button",
+      "description": "次要动作",
+      "html": "<button class=\"secondary\">打开研究记录</button>",
+      "css": ".secondary{font:12px/1.5 -apple-system,BlinkMacSystemFont,sans-serif;background:transparent;color:#e7e7e5;border:1px solid #424242;border-radius:18px;padding:7px 12px}"
+    },
+    {
+      "name": "search-field",
+      "kind": "input",
+      "refersTo": "field",
+      "description": "列表搜索",
+      "html": "<input class=\"field\" placeholder=\"搜索名称或 ID\" aria-label=\"搜索记录\"/>",
+      "css": ".field{font:14px/1.5 -apple-system,BlinkMacSystemFont,sans-serif;background:#232323;color:#e7e7e5;border:1px solid #363636;border-radius:8px;padding:8px 12px}.field::placeholder{color:#989896}"
+    },
+    {
+      "name": "navigation",
+      "kind": "navigation",
+      "refersTo": "workspace",
+      "description": "工作台导航",
+      "html": "<nav class=\"nav\"><a class=\"selected\">评测中心</a><a>知识库</a></nav>",
+      "css": ".nav{width:220px;background:#232323;color:#e7e7e5;font:14px/1.5 -apple-system,BlinkMacSystemFont,sans-serif;padding:8px}.nav a{display:block;padding:6px 10px;border-radius:20px;margin:2px 0}.selected{background:#383838}"
+    },
+    {
+      "name": "source-switch",
+      "kind": "chip",
+      "refersTo": "button",
+      "description": "研究历史与轨迹归档",
+      "html": "<div class=\"switch\"><button class=\"active\">研究历史</button><button>Trace 归档</button></div>",
+      "css": ".switch{display:inline-flex;padding:3px;background:#232323;border-radius:20px}.switch button{font:12px/1.5 -apple-system,BlinkMacSystemFont,sans-serif;padding:5px 12px;border:0;border-radius:18px;background:transparent;color:#989896}.switch .active{background:#383838;color:#e7e7e5}"
+    },
+    {
+      "name": "workspace-frame",
+      "kind": "card",
+      "refersTo": "workspace",
+      "description": "单一主画布",
+      "html": "<section class=\"frame\"><header>评测中心</header><p>运行记录</p></section>",
+      "css": ".frame{background:#171717;border:1px solid #343434;border-radius:27px;color:#e7e7e5;padding:14px;font:14px/1.5 -apple-system,BlinkMacSystemFont,sans-serif;min-width:280px;min-height:120px}.frame header{font-size:12px}.frame p{padding:20px 8px;font-size:23px}"
+    }
+  ],
+  "narrative": {
+    "northStar": "让研究过程和证据成为界面中心。",
+    "overview": "沿用当前科研工作台，以 ClawsGO 与 Codex 的任务式界面为交互参照：左侧组织项目和对话，中间完成任务，右侧检查证据、文件和报告。评测是工作台的延伸，不另起一套管理后台。产品范围见 PRODUCT.md；本文件只约束呈现和交互。",
+    "keyCharacteristics": [
+      "深灰分层、克制的状态色，正文始终优先于装饰。",
+      "项目与任务层级清楚，侧栏可收起且始终能展开。",
+      "先显示结论与摘要，再按需展开工具、子 Agent 和原始记录。",
+      "原有研究首页及响应式入口保留，不用视觉统一改写后端路由。"
+    ],
+    "rules": [
+      {
+        "name": "Continuity",
+        "section": "Overview",
+        "body": "新页面复用现有工作台外壳、字体与图标。不得为了新增功能重做首页、改变研究编排或替换技术栈。"
+      },
+      {
+        "name": "Semantic Color",
+        "section": "Colors",
+        "body": "红色仅表示真实失败；低饱和绿色（#a1b9ab）表示已完成/已采纳，暖灰黄色（#d0b683）表示进行中/待审核。状态必须同时有文字，不能只靠颜色表达。"
+      },
+      {
+        "name": "Honest State",
+        "section": "Colors",
+        "body": "运行成功不等于评测通过。缺失分数显示 N/A；计划功能保持不可用并说明具体缺口，禁止用模拟成绩填满界面。"
+      },
+      {
+        "name": "Quiet Copy",
+        "section": "Typography",
+        "body": "不放“Research workspace”“你想研究什么？”等重复标题、产品说明段或空泛口号。操作文案说动作，辅助文案只解释真实限制。"
+      },
+      {
+        "name": "One Canvas",
+        "section": "Elevation",
+        "body": "默认平面层级；只有覆盖式菜单、弹窗和窄屏检查器使用阴影。禁止玻璃滤镜、渐变光晕或白色卡片覆盖当前深色语言。"
+      },
+      {
+        "name": "Progressive Evidence",
+        "section": "Components",
+        "body": "先看任务结果、关键指标和失败原因，需要定位时再展开具体调用。不得默认把所有节点平铺成日志墙。"
+      }
+    ],
+    "dos": [
+      "保留现有深色研究工作台，以真实任务、证据和产物组织空间。",
+      "使用相同外壳、图标、字体、圆角和渐进展开方式扩展评测。",
+      "对错误、缺失数据与未接入功能明确标识，操作完成后再反馈成功。",
+      "用真实页面截图展示功能，公开前检查用户名、文件与内容是否适合发布。"
+    ],
+    "donts": [
+      "不使用 SaaS landing-page clichés 或 generic AI tool marketing 式布局。",
+      "不加入大标题口号、三张装饰性 KPI 卡、彩色发光和无意义说明文字。",
+      "不破坏原有首页的响应式入口，不更改 Agent 后端行为来适应排版。",
+      "不把生产审查当独立评测，不把占位按钮或历史规则分数宣传为新功能完成。"
+    ]
+  }
+}

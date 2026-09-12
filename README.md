@@ -1,47 +1,47 @@
 # 🐰 Asteria Agent
 
-> 本地优先的 AI 调研助手:输入一个问题,它会自动拆解子查询、联网检索、阅读来源,产出一份带真实引用的调研报告——生成后还可以继续与报告对话。
+面向文献调研、综述写作和实验设计的科研智能体工作台。用自然语言描述目标，Agent 自主规划、委派研究、阅读与追踪论文，在证据充分后交付带引用的报告。
 
-![Python](https://img.shields.io/badge/Python-3.13-3776AB?logo=python&logoColor=white)
-![LangChain](https://img.shields.io/badge/LangChain-core-1C3C3C?logo=langchain&logoColor=white)
-![LangGraph](https://img.shields.io/badge/LangGraph-multi--agent-FF6F61)
-![FastAPI](https://img.shields.io/badge/FastAPI-backend-009688?logo=fastapi&logoColor=white)
-![Next.js](https://img.shields.io/badge/Next.js-14-000000?logo=nextdotjs&logoColor=white)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-storage-4169E1?logo=postgresql&logoColor=white)
-![Ollama](https://img.shields.io/badge/Ollama-bge--m3-white?logo=ollama&logoColor=black)
+Python · LangGraph · FastAPI · Next.js · PostgreSQL · Ollama
 
-## ✨ 功能特性
+## ✨ 能做什么
 
-| | 特性 | 说明 |
-|---|---|---|
-| 🔍 | **可溯源调研** | 子查询拆解 → 检索抓取 → embedding 相关性过滤 → 带引用写作,引用来自真实访问记录而非 LLM 输出;报告导出 Markdown / Word / PDF |
-| 🤖 | **多智能体模式** | LangGraph `StateGraph` 编排研究角色,支持大纲人工审核与章节级并行 |
-| 🔐 | **多用户** | 邮箱验证码 + JWT 鉴权,调研历史按用户隔离存储于 PostgreSQL |
-| 📡 | **实时交互** | WebSocket 流式推送调研进度;可对已生成报告继续追问 |
-| 🔌 | **模型无关** | LLM 与 embedding 均走 OpenAI 兼容规范,任意 provider(含本地 Ollama)一行配置切换 |
+- **自主研究**：根据任务目标安排检索、原文阅读与引用追踪，动态委派并行研究 Agent；计划支持人工确认与修订，补研依据证据缺口，而不是固定章节流水线。
+- **按需使用 Skill**：Agent 发现技能并按阶段加载，用户也可查看、指定技能。内容写作指导、格式契约、LaTeX 模板和编译工具分别维护。
+- **报告交付**：生成 Markdown、LaTeX 与 PDF，在工作台检查报告、源码、研究轨迹和引用关系；支持围绕报告继续问答。
+- **项目与知识库**：项目组织多轮对话，历史内容持久化到 PostgreSQL。离线 RAG 保留独立入口，支持混合检索与重排；在线研究可选择启用 RAG。
+- **评测工作台**：查看研究历史、导入 Trace、展开父子调用、检查规则报告；对 BadCase 质检并回流种子题库。当前自主运行时的语义评分与版本对比正在接入。
 
-## 🏗️ 架构
+## 🖥️ 工作台
 
-![Asteria / Bunny Research 主线流程](assets/readme/main-flow.png)
+已完成的文献综述：研究进度与报告并排查看，细节按需展开。
 
-![Multi-Agent LangGraph Workflow 编排](assets/readme/langgraph-workflow.png)
+![科研工作台与报告预览](assets/readme/research-workspace.png)
 
-代码库沿一条清晰的边界拆分:
+评测中心：示例 Trace 的规则归因、人工质检与种子回流，共用研究工作台的侧栏和详情面板。
 
-- **`asteria_researcher/`** — 自包含的调研引擎(检索、抓取、prompt、LLM 抽象、报告写作),完全不感知 Web 层,可作为纯 Python 库独立使用
-- **`backend/`** — 包在引擎外面的 FastAPI 服务层:路由、鉴权、WebSocket 推送、PostgreSQL 持久化
-- **`frontend/nextjs/`** — Web 界面:调研控制台、实时日志、报告阅读、对话
-- **`multi_agents/`** — LangGraph 多智能体工作流(planner → 人工审核 → 并行 researcher → writer → fact-checker)
+![评测工作台](assets/readme/evaluation-workspace.png)
 
-## 🗺️ Roadmap
+## 🛠️ 开发
 
-- [ ] **实验室知识库(RAG)** — 基于 pgvector 对内部文献与笔记做混合检索(BM25 + dense + RRF 融合),cross-encoder 重排序,封装为 MCP server 供本应用与其他 agent 共同调用
-- [ ] 检索评估集与指标对比(hybrid vs. dense-only)
-- [ ] 生产部署(Docker、`next build`、云主机)
-- [ ] 成本看板(单次调研的 token / 费用明细)
+当前本地开发使用 **Python 3.10（dora）与 Node.js 22**；Next.js 为 14.2 系列。研究 API、前端与 Embedding 服务独立运行，模型凭据保存在本地环境配置中。
+
+- [开发规范与当前进度](spec.md)
+- [界面设计规范](DESIGN.md)
+- [开发节点与真实运行记录](DEVELOPMENT_LOG.md)
+- [评测工作台与评分策略](docs/evaluation-workspace.md)
+- [自主实验与评测路线](docs/experiment-evaluation-roadmap.md)
+
+调研引擎位于 `asteria_researcher/`，API 与持久化位于 `backend/`，Web 工作台位于 `frontend/nextjs/`。既有 LangGraph 工作流保留在 `multi_agents/`，与自主研究运行时分开维护。
+
+## 🗺️ 接下来
+
+- 授权主机与工作区内的自主实验执行、日志观察和结果复现。
+- 当前 Agent 的历史补评、独立裁判、版本对比与 BadCase 回归。
+- 后台任务恢复与真实 token / 费用记录。
 
 ## 🙏 致谢
 
-基于优秀的开源项目 [GPT Researcher](https://github.com/assafelovic/gpt-researcher) 的思路与实现模式构建,并围绕本地优先工作流、按用户持久化与不同的鉴权/存储架构进行了重塑。
+项目从 [GPT Researcher](https://github.com/assafelovic/gpt-researcher) 的开源实现起步，也从 [STORM](https://github.com/stanford-oval/storm) 的多视角研究方法中获得了启发。感谢这些工作让科研助手的探索有了扎实的起点。
 
-多智能体调研的预写作与多视角提问思路亦受到 STORM 启发：Shao et al., [Assisting in Writing Wikipedia-like Articles From Scratch with Large Language Models](https://arxiv.org/abs/2402.14207), 2024。
+界面交互参考 [ClawsGO](https://clawsgo.cn/) 与 Codex。引入的第三方技能材料保留各自的来源与许可证。
