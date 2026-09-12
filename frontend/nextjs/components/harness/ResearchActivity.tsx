@@ -55,6 +55,10 @@ export default function ResearchActivity({logs, done, active}: {logs: any[]; don
         {actions.map((event, i) => <details className={s.action} key={event.call_id || `${event.tool}-${i}`}>
           <summary><span>{labels[event.tool] || event.tool}</span><span className={s.purpose}>{event.purpose}</span>
             <small data-error={event.status === "failed"}>{stateLabels[event.status] || event.status}{event.seconds != null ? ` · ${event.seconds}s` : ""}</small></summary>
+          {event.skills?.map((skill: any) => <details key={skill.id}><summary>
+            {skill.title || skill.id} · v{skill.version} · {skill.origin === "user" ? "用户指定" : skill.origin === "system" ? "系统契约" : "Agent 自选"}
+          </summary><pre>{JSON.stringify(skill, null, 2)}</pre></details>)}
+          {event.format_profile && <p>报告版式：{event.format_profile === "brief" ? "研究简报" : event.format_profile === "academic" ? "学术报告" : event.format_profile}</p>}
           <pre>{JSON.stringify({arguments: event.arguments, skill: event.skill, plan: event.plan, result: event.result, error: event.error}, null, 2)}</pre>
         </details>)}
       </details>)}

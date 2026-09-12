@@ -50,6 +50,8 @@ export default function Home() {
           return {
             ...defaultSettings,
             ...parsedSettings, // Override defaults with saved settings
+            skill_ids: [],
+            format_profile: null,
           };
         } catch (e) {
           console.error('Error parsing saved settings:', e);
@@ -771,6 +773,7 @@ export default function Home() {
    * - Closes any existing WebSocket connections
    */
   const handleStartNewResearch = () => {
+    setChatBoxSettings(v => ({...v, skill_ids: [], format_profile: null}));
     reset();
     setSidebarOpen(false);
   };
@@ -914,7 +917,8 @@ export default function Home() {
 
   // Save chatBoxSettings to localStorage when they change
   useEffect(() => {
-    localStorage.setItem('chatBoxSettings', JSON.stringify(chatBoxSettings));
+    const {skill_ids, format_profile, ...preferences} = chatBoxSettings;
+    localStorage.setItem('chatBoxSettings', JSON.stringify(preferences));
   }, [chatBoxSettings]);
 
   // Set chat mode when a report is complete
@@ -935,6 +939,8 @@ export default function Home() {
       onChat={isMobile ? handleMobileChat : handleChat}
       onNew={handleStartNewResearch} onEnter={handleEnterWorkspace}
       onStop={handleStopResearch} onSelect={handleSelectResearch}
+      selectedId={currentResearchId || pendingWorkspaceConversationId.current}
+      skillsSupported={!isMobile}
       settings={chatBoxSettings} setSettings={setChatBoxSettings} logCount={allLogs.length}
       artifactPaths={preprocessOrderedData(orderedData).filter((item: any) => item.type === 'path').at(-1)?.output}
     >

@@ -3,6 +3,7 @@
   --bg: #171717;
   --surface: #232323;
   --raised: #2c2c2c;
+  --hover: #303030;
   --line: #363636;
   --text: #e7e7e5;
   --muted: #989896;
@@ -196,6 +197,22 @@
 .projectNew:hover:not(:disabled) {
   color: var(--text);
 }
+.projectTree { margin: 2px 0; }
+.project:hover, .project:focus-within { background: var(--hover); }
+.projectFolder { flex: 0 0 18px; display: grid; place-items: center; }
+.projectFolder > svg:last-child { display: none; }
+.project:hover .projectFolder > svg:first-child { display: none; }
+.project:hover .projectFolder > svg:last-child { display: block; }
+.projectNew { opacity: 0; transition: opacity 150ms; }
+.project:hover .projectNew, .project:focus-within .projectNew { opacity: 1; }
+.projectChildren { margin: 2px 8px 8px 19px; padding-left: 9px; border-left: 1px solid var(--line); }
+.projectTask { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 8px; border-radius: 7px; text-align: left; font-size: 13px; }
+.projectTask > span:last-child { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.projectTask:hover { background: var(--hover); }
+.projectTask .taskDot { margin: 0; flex: 0 0 9px; width: 9px; height: 9px; }
+.projectTask .taskDot[data-status="failed"] { border-color: #df8984; }
+.projectTask .taskDot[data-status="completed"] { background: var(--muted); border-color: transparent; width: 5px; height: 5px; flex-basis: 5px; margin: 2px; }
+@media (hover: none) { .projectNew { opacity: 1; } }
 .task {
   display: flex;
   gap: 9px;

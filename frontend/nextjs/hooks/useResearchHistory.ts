@@ -353,7 +353,21 @@ export const useResearchHistory = () => {
         const data = await response.json();
         return data.report;
       } else if (response.status === 404) {
-        // If not found on server, try localStorage
+        // A conversation can exist before a final report (running or failed task).
+        const conversationResponse = await authFetch(`/api/workspace/conversations/${id}`);
+        if (conversationResponse.ok) {
+          const conversation = await conversationResponse.json();
+          const messagesResponse = await authFetch(`/api/workspace/conversations/${id}/messages`);
+          if (!messagesResponse.ok) throw new Error(`Message API error: ${messagesResponse.status}`);
+          const { messages = [] } = await messagesResponse.json();
+          return {
+            id, question: messages.find((m: any) => m.role === 'user')?.content || conversation.title,
+            answer: messages.filter((m: any) => m.role === 'assistant').map((m: any) => m.content).join('\n\n'),
+            orderedData: [], timestamp: conversation.updated_at,
+          };
+        }
+        if (conversationResponse.status !== 404) throw new Error(`Conversation API error: ${conversationResponse.status}`);
+        // Pre-migration local records have no server conversation.
         const localHistory = localStorage.getItem('researchHistory');
         if (localHistory) {
           const parsedHistory = JSON.parse(localHistory);

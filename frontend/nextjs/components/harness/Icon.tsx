@@ -1,6 +1,8 @@
 import React from "react";
 
 const paths: Record<string, React.ReactNode> = {
+  more: <><circle cx="5" cy="12" r="1" /><circle cx="12" cy="12" r="1" /><circle cx="19" cy="12" r="1" /></>,
+  compose: <><path d="M12 4H5a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h13a2 2 0 0 0 2-2v-7" /><path d="m16 3 5 5-10 10-5 1 1-5Z" /></>,
   panel: (
     <>
       <rect x="3" y="4" width="18" height="16" rx="3" />

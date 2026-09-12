@@ -7,9 +7,12 @@ import { markdownToHtml } from "@/helpers/markdownHelper";
 import Icon from "./Icon";
 import s from "./harness.module.css";
 import LatexPreview from "./LatexPreview";
+import SkillBrowser from "./SkillBrowser";
 import { useWorkspace } from "@/hooks/useWorkspace";
 
 interface Props {
+  skillsSupported?: boolean;
+  selectedId?: string | null;
   history: ResearchHistoryItem[];
   active: boolean;
   question: string;
@@ -202,6 +205,7 @@ export default function ResearchHarness(p: Props) {
     [search, setSearch] = useState("");
   const [projectName, setProjectName] = useState(""),
     [activeProjectId, setActiveProjectId] = useState<string | null>(null);
+  const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>({});
   const { projects, conversations, loading: workspaceLoading, error: workspaceError, createProject } = useWorkspace();
   const [notice, setNotice] = useState(""),
     [sourceView, setSourceView] = useState(false);
@@ -211,6 +215,7 @@ export default function ResearchHarness(p: Props) {
     setRail(window.innerWidth >= 900);
     setUsername(localStorage.getItem("asteria.displayName") || "bunny");
     setActiveProjectId(localStorage.getItem("asteria.activeProjectId"));
+    try { setExpandedProjects(JSON.parse(localStorage.getItem("asteria.expandedProjects") || "{}")); } catch { /* Ignore an obsolete UI preference. */ }
   }, []);
   useEffect(() => {
     if (modal) {
@@ -297,6 +302,22 @@ export default function ResearchHarness(p: Props) {
     </button>
   );
   const selectedProject = projects.find((project) => project.id === activeProjectId);
+  const expandProject = (id: string, expanded: boolean) => {
+    setExpandedProjects((current) => {
+      const next = { ...current, [id]: expanded };
+      localStorage.setItem("asteria.expandedProjects", JSON.stringify(next));
+      return next;
+    });
+  };
+  const newProjectTask = (id: string | null) => {
+    if (p.loading || p.chatting) { setNotice("当前任务仍在运行，请先结束任务。"); return; }
+    setActiveProjectId(id);
+    if (id) { localStorage.setItem("asteria.activeProjectId", id); expandProject(id, true); }
+    else localStorage.removeItem("asteria.activeProjectId");
+    start();
+    input.current?.focus();
+  };
+  const projectTaskIds = new Set(conversations.filter((item) => item.project_id).map((item) => item.id));
   const selectedProjectConversations = selectedProject
     ? conversations.filter((conversation) => conversation.project_id === selectedProject.id)
     : [];
@@ -316,7 +337,7 @@ export default function ResearchHarness(p: Props) {
           <Icon name="down" size={16} />
         </button>
         <nav>
-          {nav("新任务", "new", start, !p.active)}
+          {nav("新任务", "new", () => newProjectTask(null), !p.active && !activeProjectId)}
           {nav("主机管理", "host", () => open("主机管理"))}
           {nav("Agent", "agent", () => open("Agent"))}
           {nav("团队与订阅", "team", () => open("团队与订阅"))}
@@ -330,35 +351,44 @@ export default function ResearchHarness(p: Props) {
             </summary>
             {nav("新建项目", "folder", () => open("新建项目"))}
             {projects.map((project) => (
-              <div
-                className={s.project}
-                key={project.id}
-              >
+              <div key={project.id} className={s.projectTree}>
+              <div className={`${s.project} ${project.id === activeProjectId ? s.selected : ""}`}>
                 <button
                   className={s.projectMain}
-                  onClick={() => {
-                    setActiveProjectId(project.id);
-                    localStorage.setItem("asteria.activeProjectId", project.id);
-                    open("项目");
-                    setProjectName(project.name);
-                  }}
+                  aria-expanded={!!expandedProjects[project.id]}
+                  aria-controls={`project-${project.id}`}
+                  title={project.name}
+                  onClick={() => expandProject(project.id, !expandedProjects[project.id])}
                 >
-                  <Icon name="folder" size={17} />
+                  <span className={s.projectFolder}><Icon name="folder" size={17} /><Icon name={expandedProjects[project.id] ? "down" : "chevron"} size={14} /></span>
                   <span>{project.name}</span>
-                  <small>{project.id === activeProjectId ? "当前 · " : ""}{conversations.filter((item) => item.project_id === project.id).length} 个对话</small>
                 </button>
+                <button className={s.projectNew} aria-label={`查看项目“${project.name}”`} title="项目详情" onClick={() => {
+                  setActiveProjectId(project.id); localStorage.setItem("asteria.activeProjectId", project.id);
+                  setProjectName(project.name); open("项目");
+                }}><Icon name="more" size={16} /></button>
                 <button
                   className={s.projectNew}
                   aria-label={`在项目“${project.name}”中新建对话`}
                   title="新建对话"
-                  onClick={() => {
-                    setActiveProjectId(project.id);
-                    localStorage.setItem("asteria.activeProjectId", project.id);
-                    start();
-                  }}
+                  onClick={() => newProjectTask(project.id)}
                 >
-                  <Icon name="plus" size={16} />
+                  <Icon name="compose" size={16} />
                 </button>
+              </div>
+              {expandedProjects[project.id] && <div id={`project-${project.id}`} className={s.projectChildren}>
+                {conversations.filter((item) => item.project_id === project.id).map((conversation) => (
+                  <button key={conversation.id} className={`${s.projectTask} ${p.selectedId === conversation.id ? s.selected : ""}`}
+                    title={conversation.title} onClick={() => {
+                      if (p.loading || p.chatting) { select(conversation.id); return; }
+                      setActiveProjectId(project.id); localStorage.setItem("asteria.activeProjectId", project.id);
+                      select(conversation.id);
+                    }}>
+                    <span className={s.taskDot} data-status={conversation.status} />
+                    <span>{conversation.title}</span>
+                  </button>
+                ))}
+              </div>}
               </div>
             ))}
           </details>
@@ -366,11 +396,14 @@ export default function ResearchHarness(p: Props) {
             <summary>
               任务 <Icon name="down" size={14} />
             </summary>
-            {p.history.map((item) => (
+            {p.history.filter((item) => !projectTaskIds.has(item.id)).map((item) => (
               <button
                 key={item.id}
-                className={`${s.task} ${p.question === item.question ? s.selected : ""}`}
-                onClick={() => select(item.id)}
+                className={`${s.task} ${p.selectedId === item.id ? s.selected : ""}`}
+                onClick={() => {
+                  if (!p.loading && !p.chatting) { setActiveProjectId(null); localStorage.removeItem("asteria.activeProjectId"); }
+                  select(item.id);
+                }}
               >
                 <span className={s.taskDot} />
                 <span>
@@ -613,6 +646,11 @@ export default function ResearchHarness(p: Props) {
                       <Icon name="down" size={13} />
                     </button>
                     <span className={s.spacer} />
+                    <button className={s.modelButton} onClick={() => open("Agent", "技能")} aria-label="查看和指定技能">
+                      <Icon name="skill" size={16} />
+                      {p.settings.skill_ids?.length ? `${p.settings.skill_ids.length} 项技能` : "技能"}
+                      {p.settings.format_profile && <small> · {p.settings.format_profile === "brief" ? "简报" : "学术"}</small>}
+                    </button>
                     <button
                       className={s.iconButton}
                       aria-label="语音输入"
@@ -1020,24 +1058,10 @@ export default function ResearchHarness(p: Props) {
                         ? "按需加载研究方法、工具约束与输出规范。"
                         : "管理授权服务器、允许目录与实验执行权限。"}
                 </p>
-                <div className={s.pendingBadge}>{section === "技能" ? "内置能力 · 自定义技能管理待接入" : "待接入运行时"}</div>
+                {section !== "技能" && <div className={s.pendingBadge}>待接入运行时</div>}
                 {section === "技能" ? (
-                  <div className={s.skillList}>
-                    {[
-                      ["文献综述与证据审阅", "已接入"],
-                      ["论文原文读取", "已接入"],
-                      ["LaTeX 报告排版", "已接入"],
-                      ["复现实验设计", "仅设计，不执行"],
-                      ["逐条引用事实核验", "规划中"],
-                      ["公开数据分析", "规划中"],
-                    ].map(([name, status]) => (
-                      <div key={name}>
-                        <Icon name="skill" />
-                        <span>{name}</span>
-                        <small>{status}</small>
-                      </div>
-                    ))}
-                  </div>
+                  <SkillBrowser settings={p.settings} onChange={next => p.setSettings(next)}
+                    locked={p.loading || p.chatting} supported={p.skillsSupported !== false && mode === "research"} />
                 ) : (
                   <div className={s.placeholder}>
                     <Icon

@@ -14,6 +14,7 @@ async function forward(request: Request, { params }: RouteContext) {
 
   const response = await fetch(`${backendUrl}/api/workspace/${path}${incoming.search}`, {
     method: request.method,
+    cache: "no-store",
     headers,
     body: request.method === "GET" || request.method === "HEAD" ? undefined : await request.text(),
   });
@@ -22,7 +23,7 @@ async function forward(request: Request, { params }: RouteContext) {
   if (response.status === 204) return new NextResponse(null, { status: 204 });
   return new NextResponse(content, {
     status: response.status,
-    headers: { "Content-Type": response.headers.get("content-type") || "application/json" },
+    headers: { "Content-Type": response.headers.get("content-type") || "application/json", "Cache-Control": "no-store" },
   });
 }
 

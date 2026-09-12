@@ -106,6 +106,8 @@ export const useWebSocket = (
             },
             search_strategy: search_strategy || "general",
             online_rag: chatBoxSettings.online_rag !== false,
+            skill_ids: [...(chatBoxSettings.skill_ids || [])],
+            format_profile: chatBoxSettings.format_profile || null,
             query_domains: domains,
             mcp_enabled: mcp_enabled || false,
             mcp_strategy: mcp_strategy || "fast",
