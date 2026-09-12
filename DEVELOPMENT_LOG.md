@@ -300,3 +300,11 @@
 - TLS 排查：默认 CA 在当前执行环境报 issuer 错误，使用 dora CA 验证 GitHub 成功，宿主默认 TLS 亦正常；不修改系统信任库。仅设置当前仓库 GitHub URL 的 sslCAInfo 与 sslVerify=true；测试用强制代理设置已撤销，保持其他访问不变。
 - 普通 git ls-remote 和 push --dry-run 在宿主执行均成功；dry-run 返回 Everything up-to-date。未关闭证书校验。后续提交同步以实时远端 SHA 验证。
 - 本轮仅更新文档和本地 Git 连接配置；不改前后端代码，不重启服务，不重复跑研究任务。检查范围为文档差异和 Git 同步。
+
+### 2026-09-12：非研究请求意图路由复测（GPT-5）
+
+- 通过真实浏览器首页提交普通改写请求：`请把“测试用例设计”这句话改得更自然一些，只给出一句改写结果。`
+- 意图模型正确返回 `general_research`，并说明该请求属于一般文本润色，不涉及文献综述或实验设计；未进入新的文献综述 Agent/Writer。
+- 发现后续路由缺口：`websocket_manager.py` 将 `general_research` 折叠为 `capability=None`，随后回退旧 `BasicReport` 通用研究器，实际触发网页检索和来源抓取。该请求不应创建研究 Run。
+- 真实运行：Run `4c7e80a3ccff42c3afaee0802ecfc3af`，最终由用户取消；3 次模型调用、1,321 tokens、22.49 秒、无产物。取消前没有报告写作，但已产生不必要的研究成本。
+- 本次只记录 BadCase，不修改代码、不重启服务。后续应新增与研究协议分离的直接回答分支，并验证同一请求不会产生 research/tool/report 事件；不改变文献综述和实验设计的自主规划链路。
