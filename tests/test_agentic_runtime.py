@@ -1,6 +1,7 @@
 import asyncio
 import json
 import shutil
+from pathlib import Path
 
 import pytest
 
@@ -89,6 +90,22 @@ def test_latex_does_not_execute_model_tex():
     assert r"\input{" not in tex
     assert r"\textbackslash{}input\{" in tex
     assert r"\$100" in tex
+
+
+def test_latex_preserves_safe_math_but_blocks_executable_commands():
+    tex = render_tex(r"公式 $A=\frac{QK^T}{\sqrt{d_k}}$。$$\mathrm{softmax}(x)$$ \\input{/etc/passwd}")
+    assert r"\(A=\frac{QK^T}{\sqrt{d_k}}\)" in tex
+    assert r"\(\mathrm{softmax}(x)\)" in tex
+    assert r"\textbackslash{}input" in tex
+
+
+@pytest.mark.skipif(not shutil.which("xelatex"), reason="XeLaTeX not installed")
+def test_real_formula_pdf_has_math_glyphs_and_no_source_delimiters(tmp_path):
+    markdown = "# 公式\n\n$$\\mathrm{Attention}(Q,K,V)=\\mathrm{softmax}\\left(\\frac{QK^T}{\\sqrt{d_k}}\\right)V$$\n\n仅保留正文。 https://example.org/paper"
+    paths = asyncio.run(publish(markdown, tmp_path))
+    tex = next(tmp_path.glob("*/report.tex")).read_text()
+    assert r"\[\mathrm{Attention}" in tex and r"\$\$" not in tex
+    assert Path(next(tmp_path.glob("*/report.pdf"))).read_bytes().startswith(b"%PDF")
 
 
 def test_writer_repairs_citation_before_delivery():

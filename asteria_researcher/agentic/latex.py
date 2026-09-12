@@ -17,6 +17,42 @@ def escape(value: str) -> str:
     return "".join(replacements.get(char, char) for char in value)
 
 
+# Math is preserved as a structured fragment, but arbitrary TeX commands are
+# still escaped. This keeps useful formulas editable without turning the
+# publishing path into a model-controlled TeX execution surface.
+SAFE_MATH_COMMANDS = {
+    "alpha", "beta", "gamma", "delta", "epsilon", "theta", "lambda", "mu", "pi", "sigma", "phi", "psi", "omega",
+    "mathrm", "mathbf", "mathit", "mathsf", "operatorname", "text", "frac", "dfrac", "tfrac", "sqrt", "left", "right",
+    "sum", "prod", "int", "lim", "log", "exp", "sin", "cos", "tan", "cdot", "times", "pm", "leq", "geq", "neq",
+    "approx", "infty", "to", "rightarrow", "mapsto", "top", "mid", "perp", "forall", "exists", "in", "notin",
+}
+
+
+def sanitize_math(value: str) -> str:
+    """Keep a small, presentation-oriented TeX math vocabulary only."""
+    result, index = [], 0
+    while index < len(value):
+        if value[index] == "\\":
+            match = re.match(r"\\([A-Za-z]+|[^A-Za-z])", value[index:])
+            if not match:
+                result.append(r"\textbackslash{}")
+                index += 1
+                continue
+            command = match[1]
+            if command.isalpha() and command in SAFE_MATH_COMMANDS:
+                result.append("\\" + command)
+            elif not command.isalpha() and command in {"!", ",", ";", ":", "'", "[", "]", "(", ")"}:
+                result.append("\\" + command)
+            else:
+                result.append(r"\textbackslash{}" + command)
+            index += len(match[0])
+            continue
+        char = value[index]
+        result.append({"&": r"\&", "%": r"\%", "#": r"\#", "~": r"\textasciitilde{}"}.get(char, char))
+        index += 1
+    return "".join(result)
+
+
 TEMPLATES = Path(__file__).with_name("templates")
 
 def format_profiles():
@@ -31,7 +67,15 @@ def render_tex(markdown: str, profile: str = "academic") -> str:
         raise ValueError("Template must be a trusted local asset")
     def inline(text):
         text = re.sub(r"\[([^\]]+)\]\((https?://[^)]+)\)", r"\1 (\2)", text)
-        return escape(text.replace("**", "").replace("`", ""))
+        text = text.replace("**", "").replace("`", "")
+        parts, cursor = [], 0
+        pattern = re.compile(r"(?<!\\)(\$\$([^$\n]+?)\$\$|\$([^$\n]+?)\$|\\\((.+?)\\\))")
+        for match in pattern.finditer(text):
+            parts.append(escape(text[cursor:match.start()]))
+            parts.append(r"\(" + sanitize_math(match[2] or match[3] or match[4]) + r"\)")
+            cursor = match.end()
+        parts.append(escape(text[cursor:]))
+        return "".join(parts)
     lines, index, list_kind = [], 0, None
     source = markdown.splitlines()
     while index < len(source):
@@ -47,6 +91,10 @@ def render_tex(markdown: str, profile: str = "academic") -> str:
                 lines.append("\\begin{" + kind + "}")
                 list_kind = kind
             lines.append(r"\item " + inline(item[2]))
+            continue
+        display = re.fullmatch(r"\s*(?:\$\$(.+?)\$\$|\\\[(.+?)\\\])\s*", line)
+        if display:
+            lines.append(r"\[" + sanitize_math(display[1] or display[2]) + r"\]")
             continue
         if "|" in line and index < len(source) and re.fullmatch(r"[\s|:\-]+", source[index]) and "-" in source[index]:
             cells = lambda row: [inline(c.strip()) for c in row.strip().strip("|").split("|")]

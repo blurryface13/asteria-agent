@@ -13,7 +13,10 @@ if [[ "$("$node_bin" -p 'process.versions.node.split(".")[0]')" != "22" ]]; then
   echo "The workspace frontend requires Node 22." >&2
   exit 1
 fi
-export WATCHPACK_POLLING="${WATCHPACK_POLLING:-true}"
+# Polling avoids low watcher limits on some machines, but on macOS cloud-backed
+# Documents it can deadlock reads from node_modules. Prefer native watching;
+# callers can opt into polling explicitly when they hit EMFILE.
+export WATCHPACK_POLLING="${WATCHPACK_POLLING:-false}"
 export NEXT_PUBLIC_ASTERIA_API_URL="${NEXT_PUBLIC_ASTERIA_API_URL:-http://127.0.0.1:8018}"
 export NEXT_PUBLIC_BACKEND_URL="${NEXT_PUBLIC_BACKEND_URL:-$NEXT_PUBLIC_ASTERIA_API_URL}"
 # Authentication is configured by the caller/.env.local, never disabled here.

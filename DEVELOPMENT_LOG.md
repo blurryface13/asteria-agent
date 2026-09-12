@@ -27,6 +27,14 @@
 - 确认无活动研究后按原 dora/Node22、8018/3023 重载 API、worker 与前端，使新审查代码生效；没有打断用户进行中的任务。
 - 修复后首页、历史报告深链接均为 HTTP 200，Run API 为 200，worker ready；启动依赖检查实际成功，诊断用 NODE_OPTIONS 已移除。原构建缓存与前端样式保留。
 
+### 2026-09-12：公式出版修复与本轮收尾（GPT-5）
+
+- 在不改变报告模板、PDF 安全边界和前端设计的前提下，修复 Markdown → LaTeX 转换：行内 `$...$`、`\(...\)` 和独立行 `$$...$$`/`\[...\]` 进入受控数学环境；正文仍使用原有严格转义。仅保留出版所需的常见数学命令，未知命令和 `\input` 等执行性命令继续转义，`xelatex -no-shell-escape` 保持不变。
+- 回归覆盖数学结构保留、恶意 TeX 不执行、真实中文 PDF 编译。复用已保存报告渲染 PDF 后，公式已显示为排版后的数学式；本机 Poppler 截图仍提示缺少 Adobe-GB1 中文映射，中文缺字属于本机预览器字体包问题，不影响 TeX 编译和浏览器 PDF 产物。
+- 最终验证：Python 回归 69 项通过，TypeScript 检查通过，`git diff --check` 通过；3023 首页与 8018 报告接口均为 HTTP 200，前端、API、worker 用户级服务 `LastExitStatus=0`。没有重新发起付费研究任务。
+- 本节点由 GPT-5 执行并记录；后续独立待办仍包括完整报告的论断级引用/推断审查、数学以外的 LaTeX 结构支持，以及将云同步目录中的 `node_modules` 迁出或固定下载。
+- 收尾冷启动复测发现旧的 `WATCHPACK_POLLING=true` 会放大云端 Documents 下 Next 开发服务的依赖读取死锁；清理本项目残留 Next/构建进程后，以原生 watcher 重启，3023 首页、研究深链接和报告 API 均恢复 200。启动脚本默认改为 `false`，`true` 仅作为遇到 `EMFILE` 时的显式选项。本项由 GPT-5 完成。
+
 ### 2026-09-12：E1 后台研究运行与页面恢复（Codex）
 
 - 新增 PostgreSQL Run、Job、Event、Approval、Artifact；桌面研究由独立 dora worker 执行，API 接收请求、审批与取消，浏览器按事件序号补拉。现有主 Agent、并行研究员、Skill 和出版编排不改写，移动端与外部 LangGraph 分支不迁移。
