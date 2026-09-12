@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from backend.auth.dependencies import get_current_user_email
 from backend.auth.workspace_models import (
     ConversationCreateRequest,
+    ConversationMoveRequest,
     ConversationUpdateRequest,
     MessageCreateRequest,
     ProjectCreateRequest,
@@ -132,6 +133,17 @@ async def rename_conversation(
         return await workspace_store.rename_conversation(
             conversation_id, _email, request.title
         )
+    except WorkspaceNotFound as exc:
+        raise _not_found(exc) from exc
+
+
+@router.patch("/conversations/{conversation_id}/project")
+async def move_conversation(conversation_id: str, request: ConversationMoveRequest,
+                            _email: str = Depends(get_current_user_email)):
+    try:
+        return await workspace_store.move_conversation(conversation_id, _email, request.project_id)
+    except WorkspaceBusy as exc:
+        raise HTTPException(409, str(exc)) from exc
     except WorkspaceNotFound as exc:
         raise _not_found(exc) from exc
 

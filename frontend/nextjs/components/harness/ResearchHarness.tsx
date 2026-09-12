@@ -209,7 +209,7 @@ export default function ResearchHarness(p: Props) {
   const [projectName, setProjectName] = useState(""),
     [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>({});
-  const { projects, conversations, loading: workspaceLoading, error: workspaceError, createProject, deleteProject } = useWorkspace();
+  const { projects, conversations, loading: workspaceLoading, error: workspaceError, createProject, deleteProject, updateEntity } = useWorkspace();
   const [notice, setNotice] = useState(""),
     [sourceView, setSourceView] = useState(false);
   const dialog = useRef<HTMLDialogElement>(null),
@@ -321,12 +321,35 @@ export default function ResearchHarness(p: Props) {
     input.current?.focus();
   };
   const projectTaskIds = new Set(conversations.filter((item) => item.project_id).map((item) => item.id));
+  const taskActions = (id: string) => {
+    const conversation = conversations.find(item => item.id === id);
+    if (!conversation) return {};
+    return {
+      projects, projectId: conversation.project_id,
+      onRename: (title: string) => updateEntity("conversations", id, {title}),
+      onMove: async (projectId: string | null) => {
+        await updateEntity("conversations", id, {project_id: projectId}, "/project");
+        if (projectId) expandProject(projectId, true);
+        if (p.selectedId === id) {
+          setActiveProjectId(projectId);
+          if (projectId) localStorage.setItem("asteria.activeProjectId", projectId);
+          else localStorage.removeItem("asteria.activeProjectId");
+        }
+        input.current?.focus();
+      },
+    };
+  };
   const reportIds = new Set(p.history.map((item) => item.id));
+  const searchableTasks = [
+    ...conversations.map(item => ({id: item.id, question: item.title})),
+    ...p.history.filter(item => !conversations.some(conversation => conversation.id === item.id)),
+  ];
   const standaloneTasks = [
     ...conversations.filter((item) => !item.project_id && !reportIds.has(item.id)).map((item) => ({
       id: item.id, question: item.title, mode: item.mode, timestamp: new Date(item.updated_at).getTime(),
     })),
-    ...p.history.filter((item) => !projectTaskIds.has(item.id)),
+    ...p.history.filter((item) => !projectTaskIds.has(item.id)).map(item => ({...item,
+      question: conversations.find(conversation => conversation.id === item.id)?.title || item.question})),
   ].sort((a, b) => b.timestamp - a.timestamp);
   const selectedProjectConversations = selectedProject
     ? conversations.filter((conversation) => conversation.project_id === selectedProject.id)
@@ -373,7 +396,10 @@ export default function ResearchHarness(p: Props) {
                   <span className={s.projectFolder}><Icon name="folder" size={17} /><Icon name={expandedProjects[project.id] ? "down" : "chevron"} size={14} /></span>
                   <span>{project.name}</span>
                 </button>
-                <EntityActions kind="项目" title={project.name} onOpen={() => {
+                <EntityActions kind="项目" title={project.name} onRename={async name => {
+                  await updateEntity("projects", project.id, {name});
+                  if (activeProjectId === project.id) setProjectName(name);
+                }} onOpen={() => {
                   setActiveProjectId(project.id); localStorage.setItem("asteria.activeProjectId", project.id);
                   setProjectName(project.name); open("项目");
                 }} onDelete={async () => {
@@ -403,7 +429,7 @@ export default function ResearchHarness(p: Props) {
                     <span className={s.taskDot} data-status={conversation.status} />
                     <span>{conversation.title}</span>
                   </button>
-                  <EntityActions kind="任务" title={conversation.title} onOpen={() => select(conversation.id)} disabled={p.loading || p.chatting}
+                  <EntityActions kind="任务" title={conversation.title} {...taskActions(conversation.id)} onOpen={() => select(conversation.id)} disabled={p.loading || p.chatting}
                     onDelete={async () => { if (!await p.onDelete(conversation.id)) throw new Error("删除未完成，请确认任务已停止后重试。"); input.current?.focus(); }}/>
                   </div>
                 ))}
@@ -436,7 +462,7 @@ export default function ResearchHarness(p: Props) {
                   </small>
                 </span>
               </button>
-              <EntityActions kind="任务" title={item.question} onOpen={() => select(item.id)} disabled={p.loading || p.chatting}
+              <EntityActions kind="任务" title={item.question} {...taskActions(item.id)} onOpen={() => select(item.id)} disabled={p.loading || p.chatting}
                 onDelete={async () => { if (!await p.onDelete(item.id)) throw new Error("删除未完成，请确认任务已停止后重试。"); input.current?.focus(); }}/>
               </div>
             ))}
@@ -477,7 +503,7 @@ export default function ResearchHarness(p: Props) {
           {p.active && (
             <span className={s.taskPill}>
               <span className={p.loading ? s.running : s.taskDot} />
-              {p.question || "新任务"}
+              {conversations.find(item => item.id === p.selectedId)?.title || p.question || "新任务"}
             </span>
           )}
           <span className={s.spacer} />
@@ -925,7 +951,7 @@ export default function ResearchHarness(p: Props) {
                   onChange={(e) => setSearch(e.target.value)}
                 />
                 <div className={s.searchResults}>
-                  {p.history
+                  {searchableTasks
                     .filter((x) =>
                       x.question.toLowerCase().includes(search.toLowerCase()),
                     )

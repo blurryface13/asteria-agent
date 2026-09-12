@@ -87,5 +87,19 @@ export function useWorkspace() {
     window.dispatchEvent(new Event("asteria:workspace-changed"));
   }, []);
 
-  return { projects, conversations, loading, error, refresh, createProject, deleteProject };
+  const updateEntity = useCallback(async (kind: "projects" | "conversations", id: string, body: object, suffix = "") => {
+    const response = await authFetch(`/api/workspace/${kind}/${encodeURIComponent(id)}${suffix}`, {
+      method: "PATCH", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(typeof data.detail === "string" ? data.detail : `保存失败（${response.status}）`);
+    }
+    const entity = await response.json();
+    if (kind === "projects") setProjects(current => current.map(item => item.id === id ? entity : item));
+    else setConversations(current => current.map(item => item.id === id ? entity : item));
+    window.dispatchEvent(new Event("asteria:workspace-changed"));
+  }, []);
+
+  return { projects, conversations, loading, error, refresh, createProject, deleteProject, updateEntity };
 }

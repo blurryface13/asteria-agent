@@ -247,7 +247,27 @@ class PgWorkspaceStore:
                 title.strip(),
                 datetime.now(timezone.utc),
             )
+        if row is None:
+            raise WorkspaceNotFound('conversation not found')
         return _conversation(row)
+
+    async def move_conversation(self, conversation_id: str, user_email: str, project_id: str | None) -> dict[str, Any]:
+        pool = await get_pool()
+        async with pool.acquire() as conn, conn.transaction():
+            # Lock the target against concurrent project deletion before updating membership.
+            if project_id is not None:
+                target = await conn.fetchval('SELECT id FROM workspace_projects WHERE id=$1 AND user_email=$2 FOR KEY SHARE', project_id, user_email)
+                if target is None:
+                    raise WorkspaceNotFound('project not found')
+            row = await conn.fetchrow('SELECT id FROM workspace_conversations WHERE id=$1 AND user_email=$2 FOR UPDATE', conversation_id, user_email)
+            if row is None:
+                raise WorkspaceNotFound('conversation not found')
+            if await conn.fetchval("SELECT 1 FROM coordinator_turns WHERE conversation_id=$1 AND status='running'", conversation_id):
+                raise WorkspaceBusy('请等待当前回答结束后再移动任务')
+            if await conn.fetchval("SELECT 1 FROM research_runs WHERE conversation_id=$1 AND status IN ('queued','running','waiting_approval','cancel_requested')", conversation_id):
+                raise WorkspaceBusy('请先结束正在运行的研究，再移动任务')
+            row = await conn.fetchrow('UPDATE workspace_conversations SET project_id=$3,updated_at=now() WHERE id=$1 AND user_email=$2 RETURNING *', conversation_id, user_email, project_id)
+            return _conversation(row)
 
     async def delete_conversation(self, conversation_id: str, user_email: str) -> None:
         pool = await get_pool()
