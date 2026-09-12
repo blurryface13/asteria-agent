@@ -580,6 +580,8 @@ export default function Home() {
     setIsStopped(false);
     setIsInChatMode(false);
     setCurrentResearchId(null); // Reset research ID
+    pendingWorkspaceConversationId.current = null;
+    setChatPromptValue("");
     setConversationMode('research');
     setIsProcessingChat(false);
     
@@ -909,6 +911,11 @@ export default function Home() {
       conversationMode={conversationMode}
       onNew={handleStartNewResearch} onEnter={handleEnterWorkspace}
       onStop={handleStopResearch} onSelect={handleSelectResearch}
+      onDelete={async id => {
+        const deleted = await deleteResearch(id);
+        if (deleted && id === (currentResearchId || pendingWorkspaceConversationId.current)) handleStartNewResearch();
+        return deleted;
+      }}
       selectedId={currentResearchId || pendingWorkspaceConversationId.current}
       skillsSupported={!isMobile}
       settings={chatBoxSettings} setSettings={setChatBoxSettings} logCount={allLogs.length}

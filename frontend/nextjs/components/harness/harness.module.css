@@ -198,6 +198,10 @@
   color: var(--text);
 }
 .projectTree { margin: 2px 0; }
+.taskRow { display: flex; align-items: center; padding-right: 4px; border-radius: 9px; }
+.taskRow:hover, .taskRow:focus-within { background: var(--hover); }
+.taskRow > button:first-child { flex: 1; min-width: 0; }
+.agentAvatar { object-fit: contain; flex-shrink: 0; }
 .project:hover, .project:focus-within { background: var(--hover); }
 .projectFolder { flex: 0 0 18px; display: grid; place-items: center; }
 .projectFolder > svg:last-child { display: none; }

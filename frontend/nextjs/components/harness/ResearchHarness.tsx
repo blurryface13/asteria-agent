@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ResearchHistoryItem, ChatBoxSettings } from "@/types/data";
 import { markdownToHtml } from "@/helpers/markdownHelper";
 import Icon from "./Icon";
+import EntityActions from "./EntityActions";
 import s from "./harness.module.css";
 import LatexPreview from "./LatexPreview";
 import SkillBrowser from "./SkillBrowser";
@@ -31,6 +32,7 @@ interface Props {
   onEnter: () => void;
   onStop: () => void;
   onSelect: (id: string) => void;
+  onDelete: (id: string) => Promise<boolean>;
   settings: ChatBoxSettings;
   setSettings: React.Dispatch<React.SetStateAction<ChatBoxSettings>>;
   logCount: number;
@@ -207,7 +209,7 @@ export default function ResearchHarness(p: Props) {
   const [projectName, setProjectName] = useState(""),
     [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>({});
-  const { projects, conversations, loading: workspaceLoading, error: workspaceError, createProject } = useWorkspace();
+  const { projects, conversations, loading: workspaceLoading, error: workspaceError, createProject, deleteProject } = useWorkspace();
   const [notice, setNotice] = useState(""),
     [sourceView, setSourceView] = useState(false);
   const dialog = useRef<HTMLDialogElement>(null),
@@ -371,10 +373,15 @@ export default function ResearchHarness(p: Props) {
                   <span className={s.projectFolder}><Icon name="folder" size={17} /><Icon name={expandedProjects[project.id] ? "down" : "chevron"} size={14} /></span>
                   <span>{project.name}</span>
                 </button>
-                <button className={s.projectNew} aria-label={`查看项目“${project.name}”`} title="项目详情" onClick={() => {
+                <EntityActions kind="项目" title={project.name} onOpen={() => {
                   setActiveProjectId(project.id); localStorage.setItem("asteria.activeProjectId", project.id);
                   setProjectName(project.name); open("项目");
-                }}><Icon name="more" size={16} /></button>
+                }} onDelete={async () => {
+                  await deleteProject(project.id);
+                  if (activeProjectId === project.id) { setActiveProjectId(null); localStorage.removeItem("asteria.activeProjectId"); }
+                  expandProject(project.id, false);
+                  input.current?.focus();
+                }}/>
                 <button
                   className={s.projectNew}
                   aria-label={`在项目“${project.name}”中新建对话`}
@@ -386,7 +393,8 @@ export default function ResearchHarness(p: Props) {
               </div>
               {expandedProjects[project.id] && <div id={`project-${project.id}`} className={s.projectChildren}>
                 {conversations.filter((item) => item.project_id === project.id).map((conversation) => (
-                  <button key={conversation.id} className={`${s.projectTask} ${p.selectedId === conversation.id ? s.selected : ""}`}
+                  <div key={conversation.id} className={`${s.taskRow} ${p.selectedId === conversation.id ? s.selected : ""}`}>
+                  <button className={s.projectTask}
                     title={conversation.title} onClick={() => {
                       if (p.loading || p.chatting) { select(conversation.id); return; }
                       setActiveProjectId(project.id); localStorage.setItem("asteria.activeProjectId", project.id);
@@ -395,6 +403,9 @@ export default function ResearchHarness(p: Props) {
                     <span className={s.taskDot} data-status={conversation.status} />
                     <span>{conversation.title}</span>
                   </button>
+                  <EntityActions kind="任务" title={conversation.title} onOpen={() => select(conversation.id)} disabled={p.loading || p.chatting}
+                    onDelete={async () => { if (!await p.onDelete(conversation.id)) throw new Error("删除未完成，请确认任务已停止后重试。"); input.current?.focus(); }}/>
+                  </div>
                 ))}
               </div>}
               </div>
@@ -405,9 +416,9 @@ export default function ResearchHarness(p: Props) {
               任务 <Icon name="down" size={14} />
             </summary>
             {standaloneTasks.map((item) => (
+              <div key={item.id} className={`${s.taskRow} ${p.selectedId === item.id ? s.selected : ""}`}>
               <button
-                key={item.id}
-                className={`${s.task} ${p.selectedId === item.id ? s.selected : ""}`}
+                className={s.task}
                 onClick={() => {
                   if (!p.loading && !p.chatting) { setActiveProjectId(null); localStorage.removeItem("asteria.activeProjectId"); }
                   select(item.id);
@@ -425,6 +436,9 @@ export default function ResearchHarness(p: Props) {
                   </small>
                 </span>
               </button>
+              <EntityActions kind="任务" title={item.question} onOpen={() => select(item.id)} disabled={p.loading || p.chatting}
+                onDelete={async () => { if (!await p.onDelete(item.id)) throw new Error("删除未完成，请确认任务已停止后重试。"); input.current?.focus(); }}/>
+              </div>
             ))}
           </details>
           <details className={s.group}>
@@ -533,7 +547,7 @@ export default function ResearchHarness(p: Props) {
                 {p.question && <div className={s.question}>{p.question}</div>}
                 {p.question && (
                   <div className={s.agentLabel}>
-                    <Icon name="agent" />
+                    <img src="/img/agent-avatar.png" alt="" width={30} height={26} className={s.agentAvatar}/>
                     Asteria Research{" "}
                     <span>
                       {p.loading
@@ -644,7 +658,7 @@ export default function ResearchHarness(p: Props) {
                       className={s.modelButton}
                       onClick={() => open("调研设置")}
                     >
-                      <Icon name="agent" size={18} />
+                      <img src="/img/agent-avatar.png" alt="" width={24} height={21} className={s.agentAvatar}/>
                       {p.settings.search_strategy === "academic"
                         ? "学术检索"
                         : p.settings.search_strategy === "hybrid"

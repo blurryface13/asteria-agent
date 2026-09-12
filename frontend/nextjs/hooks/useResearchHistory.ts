@@ -59,17 +59,16 @@ export const useResearchHistory = () => {
         }
 
         console.log('Loaded research history from server:', data.reports.length, 'items');
-        if (localHistory && localHistory.length > 0) {
-          // Upload legacy local-only reports, then prefer the server copy for
-          // every report that already has a durable record.
-          await syncLocalHistoryWithServer(localHistory, data.reports);
-        } else {
-          const sortedHistory = [...data.reports].sort((a, b) =>
-            (b.timestamp || 0) - (a.timestamp || 0),
-          );
-          setHistory(sortedHistory);
-          localStorage.setItem('researchHistory', JSON.stringify(sortedHistory));
+        // Never recreate server-deleted reports from a stale browser cache.
+        // Retain legacy drafts separately; importing them must be explicit.
+        if (localHistory?.length && !localStorage.getItem('researchHistory.legacyBackup')) {
+          localStorage.setItem('researchHistory.legacyBackup', JSON.stringify(localHistory));
         }
+        const sortedHistory = [...data.reports].sort((a, b) =>
+          (b.timestamp || 0) - (a.timestamp || 0),
+        );
+        setHistory(sortedHistory);
+        localStorage.setItem('researchHistory', JSON.stringify(sortedHistory));
       } catch (error) {
         console.error('Error fetching research history:', error);
         // We're already using local history from above
@@ -101,71 +100,6 @@ export const useResearchHistory = () => {
       }
     };
     
-    // Helper to sync local history with server
-    const syncLocalHistoryWithServer = async (localHistory: ResearchHistoryItem[], serverHistory: ResearchHistoryItem[]) => {
-      console.log('Syncing local history with server...');
-      
-      // Create a map of server history IDs for quick lookup
-      const serverIds = new Set(serverHistory.map(item => item.id));
-      
-      // Find local reports that aren't on the server
-      const localOnlyReports = localHistory.filter(item => !serverIds.has(item.id));
-      console.log('Found local-only reports:', localOnlyReports.length);
-      
-      // Upload local-only reports to server
-      for (const report of localOnlyReports) {
-        try {
-          // Skip reports without questions or answers
-          if (!report.question || !report.answer) continue;
-          
-          console.log(`Uploading local report to server: ${report.id}`);
-          
-          const response = await authFetch('/api/reports', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              id: report.id,
-              question: report.question,
-              answer: report.answer,
-              orderedData: report.orderedData || [],
-              chatMessages: report.chatMessages || []
-            }),
-          });
-          
-          if (!response.ok) {
-            console.warn(`Failed to upload local report ${report.id} to server:`, response.status);
-          }
-        } catch (error) {
-          console.error(`Error uploading local report ${report.id} to server:`, error);
-        }
-      }
-      
-      // Create a unified history with server data prioritized
-      const combinedHistory = [...serverHistory];
-      
-      // Add local-only reports to the combined history
-      for (const report of localOnlyReports) {
-        if (!serverIds.has(report.id)) {
-          combinedHistory.push(report);
-        }
-      }
-      
-      // Sort by timestamp if available, newest first
-      const sortedHistory = combinedHistory.sort((a, b) => {
-        const timeA = a.timestamp || 0;
-        const timeB = b.timestamp || 0;
-        return timeB - timeA;
-      });
-      
-      setHistory(sortedHistory);
-      
-      // Update localStorage with the complete merged set
-      localStorage.setItem('researchHistory', JSON.stringify(sortedHistory));
-      
-      console.log('History sync complete, total items:', sortedHistory.length);
-    };
     
     fetchHistory();
   }, []); // Empty dependency array - only run once on mount

@@ -79,5 +79,13 @@ export function useWorkspace() {
     [],
   );
 
-  return { projects, conversations, loading, error, refresh, createProject };
+  const deleteProject = useCallback(async (id: string) => {
+    const response = await authFetch(`/api/workspace/projects/${encodeURIComponent(id)}`, {method: "DELETE"});
+    if (!response.ok) throw new Error(`项目删除失败（${response.status}）`);
+    setProjects(current => current.filter(item => item.id !== id));
+    setConversations(current => current.map(item => item.project_id === id ? {...item, project_id: null} : item));
+    window.dispatchEvent(new Event("asteria:workspace-changed"));
+  }, []);
+
+  return { projects, conversations, loading, error, refresh, createProject, deleteProject };
 }
