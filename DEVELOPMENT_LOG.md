@@ -4,7 +4,7 @@
 
 ## 当前状态
 
-最新开发节点：2026-09-12 Coordinator 收口，见文末。下一增量为服务器配置与只读连接诊断，科研自主循环本轮未重构。
+最新开发节点：2026-09-13 本地运行目录迁移，见文末。当前仓库为 `/Users/dora/Developer/asteria-agent`；下一功能增量仍为服务器配置与只读连接诊断，科研自主循环本轮未重构。
 
 - 分支：`feat/doc-edit-agent`
 - Python：dora / Python 3.10
@@ -350,3 +350,25 @@
 - 每次重载前均确认无 active research/Coordinator turn；仅在加载后端修复时重载原8018 API/worker，最后的追问上下文修复只重载API。前端3023本轮不重启、不清.next、不更换端口；dora与Node22保持不变。
 - 本轮模型调用仍可能因供应商超时而结果不确定；幂等保护的是同一请求的本地执行，不承诺供应商侧恰好一次计费。API进程崩溃的Chat不支持checkpoint恢复，明确中断而非自动重放；研究Run继续遵循既有worker生命周期。
 - 后续先实现HostProfile、凭据引用、SSH host key核验、WorkspaceGrant及只读诊断；再接实验submit/inspect/cancel与审批。跨任务指代解析为新研究契约、长历史压缩、旧聊天完整迁移单列增强项，不在本轮隐式改写任务。评测路线与指标沿用 docs/experiment-evaluation-roadmap.md。
+
+### 2026-09-13：iCloud 文件卸载导致 SSR 500，迁移本地运行目录（Codex / GPT-5）
+
+#### 故障证据
+
+- 前端3023返回500，API8018仍可响应。Node日志重复出现 `Unknown system error -11, read`，涉及Next默认错误页加载；同时有webpack缓存rename ENOENT。不能把这类SSR故障归因于研究Planner或Coordinator。
+- 旧路径 `/Users/dora/Documents/项目/code/reference-repos/asteria-agent` 的 `.next/server/middleware-manifest.json`、DOMPurify、Next错误页和 `.env` 有 `compressed,dataless` 标记。Git loose object读取卡住，历史输出复制曾报mmap超时；重新下载一次依赖不足以避免再次卸载。
+
+#### 迁移与约束
+
+- 新运行根目录 `/Users/dora/Developer/asteria-agent`。迁移前工作树干净，本地与远端同为 `e3562e9f7655cf67b52004f7a033e003beed9da4`；云端Git对象无法完整读取，改为从原GitHub仓库取得完全相同提交，保留分支 `feat/doc-edit-agent`。没有覆盖未提交业务修改。
+- 复制本地配置与全部历史outputs，后者 `diff -qr` 逐文件一致；新Git `fsck --full` 通过。PostgreSQL保持原库，18份报告、21个对话未重建。旧目录及迁移中间目录保留为备份，不作为日常工作区；父目录放置迁移指引。
+- 不复制 `.next`、node_modules、闲置 `.venv` 和临时缓存。Node22按原lockfile安装877个包，不升级Next或改锁；Python仍使用原dora。新位置核心依赖、manifest与.env没有dataless标记。
+- 本机三个LaunchAgent保存为正式plist并切换到新根目录，维持3023/8018、loopback、原鉴权与模型配置。切换前确认0个活动research Run/Coordinator turn；没有打断运行任务。bootout后首次bootstrap曾因同名job退出尚未完成返回I/O error，确认旧job移除后重试成功；没有使用root、改端口或重复启动。
+- 前后端启动器新增macOS真实路径约束，拒绝Documents/Desktop/Mobile Documents目录。此约束是本项目防复发策略，不推断所有这些目录都开启了云同步。LOCAL_DEV.md替换过时3000/8000与广泛pkill说明，记录托管服务、健康检查、精准重载和配置边界。未关闭TLS验证、HTML消毒或改全局代理。
+
+#### 验证
+
+- 新目录Next/SWC/jsdom/DOMPurify真实导入通过；TypeScript无增量检查通过；前后端云目录拒绝测试各3例通过；Git diff whitespace检查通过。
+- API进程实际cwd为新目录，worker日志ready；前端首页、Skill API及历史PDF均HTTP200。
+- 真实浏览器刷新用户当前对话，不再出现Internal Server Error；另打开已完成会话 `7039807d-0301-4421-a809-df30c411f512`，项目树、历史任务、研究报告与追问均恢复，PDF链接可读。用户当前 `bfcbef25-cb7d-4502-b2d0-281e2db6c33d` 在迁移前就是无Run的旧会话，不将其空研究区描述成新任务成功或迁移丢失。
+- 本轮未另发付费研究任务，也没有重测外部模型质量；验证范围为基础设施恢复与历史数据完整性。保持三项服务开启。后续开发从新目录继续，研究自主性、Skill和实验/评测路线不变。

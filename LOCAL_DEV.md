@@ -1,66 +1,66 @@
-# 本机启动方式(不用 Docker)
+# 本地开发与服务维护
 
-## 一键启动
+## 当前运行基线
+
+本机仓库位于 `/Users/dora/Developer/asteria-agent`，不再从 Documents 中启动。Python 使用已有的 `dora` 环境，前端使用 Node 22 和仓库 lockfile。不要为日常启动重新安装依赖或创建另一套虚拟环境。
+
+| 服务 | 地址 / 入口 | 本机 launchd label |
+| --- | --- | --- |
+| Next.js 工作台 | http://127.0.0.1:3023 | `com.asteria.frontend3023` |
+| API | http://127.0.0.1:8018 | `com.asteria.backend8018` |
+| 研究 worker | `scripts/start-research-service.py worker` | `com.asteria.research-worker` |
+
+三项服务由 `~/Library/LaunchAgents/` 中同名 plist 管理，登录后启动，终端关闭不影响运行。plist 是本机配置，不含在仓库中；解释器、工作目录和脚本路径均指向新位置。旧的 `start-local.sh` / 3000、8000 示例不是这套已部署工作台的运行方式。
+
+## 先检查，不重复启动
+
 ```bash
-./start-local.sh
+launchctl print gui/$(id -u)/com.asteria.frontend3023
+launchctl print gui/$(id -u)/com.asteria.backend8018
+launchctl print gui/$(id -u)/com.asteria.research-worker
+curl --noproxy '*' -f http://127.0.0.1:3023/ -o /dev/null
+curl --noproxy '*' -f http://127.0.0.1:8018/api/workspace/skills -o /dev/null
 ```
 
-## 手动启动(推荐调试时用,分两个终端窗口)
+HTTP 200 只证明页面/API 可读。完整启动检查还应确认 worker 日志出现 ready、浏览器能恢复历史对话、历史 PDF 可打开；涉及模型或检索修改时，另做对应真实调用。不要把端口监听等同于研究任务可执行。
 
-**终端 1 —— 后端**
+日志：`/tmp/asteria-frontend.stdout`、`/tmp/asteria-frontend.stderr`、`/tmp/asteria-backend-8018.log`、`/tmp/asteria-research-worker.log`。这些日志可能保留旧错误，应按进程启动时间判断新故障。
+
+## 必要时重载
+
+文档修改不重启；前端普通源码更新交给开发服务器。后端代码需要重载时，先确认没有 active research Run 或 Coordinator turn，只重载受影响服务，不用广泛的 `pkill`。
+
 ```bash
-cd /path/to/asteria-agent
-source /Users/dora/miniconda3/bin/activate dora
-export ASTERIA_DEV_AUTH_BYPASS=1
-export ASTERIA_DEV_AUTH_EMAIL="local@asteria.dev"
-export ASTERIA_LLM_MAX_ATTEMPTS=3
-uvicorn main:app --host 0.0.0.0 --port 8000
+# 仅在确认没有活动任务且需要加载 API 修改时执行
+launchctl kickstart -k gui/$(id -u)/com.asteria.backend8018
 ```
 
-**终端 2 —— 前端**
+修改 plist 时先 bootout 对应 job，确认 label 消失且端口释放，再 bootstrap 同一 plist。紧接 bootout 的 bootstrap 可能因旧 job 尚未移除返回 I/O error；先检查状态，不能据此改端口或以 root 再启动一份。维护后检查 HTTP 和进程实际工作目录。
+
+## 手动调试入口
+
+仅在对应托管服务已停止时使用，防止重复占用端口或并行启动未知 worker：
+
 ```bash
-cd /path/to/asteria-agent/frontend/nextjs
-export PATH="/opt/homebrew/opt/node@22/bin:$PATH"
-export WATCHPACK_POLLING=false
-export WATCHPACK_POLL_INTERVAL=1000
-export NEXT_PUBLIC_ASTERIA_DEV_AUTH_BYPASS=1
-npm run dev -- --hostname 127.0.0.1 --port 3000
+cd /Users/dora/Developer/asteria-agent
+/Users/dora/miniconda3/envs/dora/bin/python scripts/start-research-service.py api
+# 独立终端：
+/Users/dora/miniconda3/envs/dora/bin/python scripts/start-research-service.py worker
+# 独立终端：
+bash scripts/start-workspace-frontend.sh
 ```
 
-**终端 3 —— 多智能体服务(可选,只有要用 Preferences 里的 "Multi Agents Report" 才需要起)**
-```bash
-cd /path/to/asteria-agent
-source /Users/dora/miniconda3/bin/activate dora
-langgraph dev --port 2024 --config langgraph-multiagent.json --no-browser --no-reload --allow-blocking
-```
-起来之后,去前端 Preferences 面板,把 Report Type 选成 "Multi Agents Report",下面会冒出一个 "LangGraph Host URL" 输入框(这个字段是我们自己补的,上游项目本身没做完整),填 `http://localhost:2024`,保存后就能用了。
+模型、数据库等配置来自本地 `.env`，前端配置来自 `.env.local`。手动启动还需保持与本机 plist 相同的鉴权配置；脚本本身不自动关闭鉴权。本机现有免登录模式只允许 loopback 开发使用，不用于共享部署。不要把密钥、数据库连接串或完整环境变量写入日志、文档和提交。
 
-## 访问地址
-- 前端(Next.js,主要用这个):http://localhost:3000
-- 后端 API + 内置经典 UI:http://localhost:8000
-- 多智能体服务(LangGraph):http://localhost:2024
+## 文件读取与云同步
 
-启动检查以 `/login`、`/docs` 和 `/openapi.json` 的实际 HTTP 返回为准；只看到端口被占用，不代表服务已经完成首次编译或可以访问。
+2026-09-13 已证实旧 Documents 工作区的 `.next`、`node_modules`、`.env` 和 Git 对象出现 `dataless`，导致 Node 读取错误和 HTTP 500。关闭轮询或一次重新下载依赖无法阻止后续云端卸载。
 
-本机开发启动脚本默认启用本地免登录模式：前端不会被 AuthGuard 重定向，后端 API 和 WebSocket 使用 `local@asteria.dev` 作为本地身份。前端开关同时记录在 `frontend/nextjs/.env.example`；当前机器的 `.env.local` 也固定了该开关，避免手动启动 Next 时因遗漏环境变量反复跳回登录页。该模式只用于本机，不应带到共享或生产环境；要验证真实登录链路时去掉前端 `NEXT_PUBLIC_ASTERIA_DEV_AUTH_BYPASS` 和后端两个 `ASTERIA_*_AUTH_BYPASS` 环境变量即可。
+- macOS 启动入口拒绝从 Documents、Desktop、`Library/Mobile Documents` 下运行，且解析真实路径以避免软链接绕回旧目录。这是项目的保守目录约束，不是自动检测系统是否开启 iCloud。
+- 仓库、配置、依赖、构建目录与产物统一存于本地 Developer 目录；不要只移动 node_modules，却继续从云目录读取源码或 `.env`。
+- `ls -lO <文件>` 可检查 dataless 标记；`scripts/check-frontend-files.cjs` 实际导入 Next/SWC 与 SSR 消毒依赖，启动前限制检查时间。
+- 不在运行中清 `.next`，不并行执行覆盖相同 `.next` 的 build，不关闭 HTML 消毒。只有停下准确的前端进程后，才考虑隔离故障构建目录并重建。
+- 依赖缺失按 lockfile 恢复，保持 Node 22；不升级 Next、不迁移 dora 来掩盖文件读取问题。
+- Ollama、PostgreSQL 和外部模型网络分别诊断；文件可读并不代表这些依赖健康。Git 保持证书验证，本机仓库使用 dora CA，不修改全局代理和信任配置。
 
-如果已经打开过旧的 `/login` 标签页，刷新即可：本地免登录模式会自动回到首页。若研究过程中出现 401/4401，前端不会在本地模式下再次跳登录，而会显示鉴权配置错误；此时检查后端是否也以 `ASTERIA_DEV_AUTH_BYPASS=1` 启动，以及 `ASTERIA_API_URL`/`NEXT_PUBLIC_ASTERIA_API_URL` 是否指向同一个后端。
-
-## 停止服务
-```bash
-pkill -f "uvicorn main:app"
-pkill -f "next dev"
-pkill -f "langgraph dev"
-```
-
-## 说明
-- 后端本地启动固定使用 dora 环境；改 Python 代码后重新运行启动命令
-- 本地 LLM 请求默认最多重试 3 次；代理或外部服务不可用时会明确结束任务并在前端展示错误，不会无限重试
-- 启动脚本会先对 `.env` 中的 Ollama embedding 模型执行真实 `/api/embed` 自检；macOS 26 上的 Ollama 版本低于 0.23.3 会直接停止并提示更新，不会启动一个必然在检索中途失败的后端
-- 前端固定使用 Node 22；默认关闭 `WATCHPACK_POLLING`，避免云端 Documents 读取 `node_modules` 时出现 `Resource deadlock avoided`；若遇到 macOS watcher 配额导致的 `EMFILE`，再显式设置为 `true`
-- 设置弹窗使用浏览器 Portal 和 Framer Motion，已通过 `next/dynamic({ ssr: false })` 延迟到 hydration 后加载；避免 Next.js 开发态服务端渲染阻塞首页响应，同时保留完整设置功能
-- `.env` 放本地模型、搜索源、邮箱和鉴权配置；不要提交真实密钥
-- `node_modules` 装过一次后长期保留,重启电脑后直接跑上面命令即可,不用重新安装依赖
-- 多智能体服务用了单独一份配置 `langgraph-multiagent.json`(根目录下,不是 `multi_agents/langgraph.json`),因为 `multi_agents/agent.py` 用绝对导入(`from multi_agents.agents import ...`),必须从仓库根目录起、且 `--config` 里的路径要相对根目录写,两者对不上默认配置,所以单独建了一份改好路径的
-- `langgraph dev` 必须加 `--no-reload`(默认的热重载会把 dora 里几万个文件也当源码监视,一直触发重启打断任务)和 `--allow-blocking`(默认会拦截一切同步 IO,第三方库 `fake_useragent` 读本地文件是同步的,不加这个参数会直接报错)
-- 当前 dora 环境若没有 `langgraph` 可执行文件,普通科研主流程仍可启动；使用 `Multi Agents Report` 前需额外安装 LangGraph CLI
+旧目录 `/Users/dora/Documents/项目/code/reference-repos/asteria-agent` 暂留作迁移备份，不再编辑或启动。迁移保留全部历史 outputs，并逐文件比对；数据库未迁移或重建。需要回退业务版本时在新目录操作 Git，不能回到已发生云端卸载的旧运行位置。迁移过程与验证边界见 `DEVELOPMENT_LOG.md`、`spec.md` §22.8。

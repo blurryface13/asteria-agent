@@ -15,6 +15,10 @@ def main():
     parser.add_argument('service', choices=('api', 'worker'))
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
+    if sys.platform == 'darwin':
+        cloud_roots = [Path.home() / folder for folder in ('Documents', 'Desktop', 'Library/Mobile Documents')]
+        if any(root.is_relative_to(folder) for folder in cloud_roots):
+            raise RuntimeError('Run from a local directory such as ~/Developer/asteria-agent, not a macOS cloud-managed folder. Configuration, source and artifacts must remain locally readable.')
     os.chdir(root)
     sys.path.insert(0, str(root))
     sys.path.insert(0, str(root / 'backend'))

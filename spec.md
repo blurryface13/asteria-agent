@@ -1156,3 +1156,13 @@ commit 通常只写本地对象；除非 hook 另行联网，证书错误影响�
 研究报告、已完成运行及产物索引组成交付状态；追问上下文不再把报告完成前的旧要求当成未回答请求。模型依据已有报告与当前问题回答，不重复承诺或否认文件生成。研究轨迹展示由 conversation mode 决定，输入框 mode 仅决定续聊/新任务，避免完成报告后隐藏活动；失败历史 Run 不再遮住后续普通 Chat。网页公式使用 remark-math 与 KaTeX，保留最终 HTML 消毒和禁用可信命令，代码块保持原样。未改变自主研究循环、证据结算、Skill 选择和出版模板。
 
 测试及真实网页记录见 DEVELOPMENT_LOG.md。当前边界：多轮普通问答与报告追问已实测；已有报告基础上的新研究请求虽能路由，但跨任务指代转为完整研究契约、研究中途改策/抢占、长对话压缩、旧式 report.chat_messages 的完整迁移还需专项增量。外部 LangGraph 兼容分支仅经过类型检查，没有可用外部部署的端到端复测。下一阶段先做 HostProfile/WorkspaceGrant 与只读连接诊断，再做授权范围内的实验执行，不扩大成另一套科研编排框架。
+
+### 22.8 本地运行目录与云同步隔离（2026-09-13，Codex / GPT-5）
+
+科研仓库的本机运行位置统一为 `/Users/dora/Developer/asteria-agent`。旧 Documents 目录仅保留迁移备份，不再启动或开发。前端3023、API8018、独立worker均由本机 LaunchAgent 管理，Python沿用dora，Node沿用22；数据库、模型配置、研究协议、前端风格和自主决策循环不变。
+
+本次500有明确文件系统证据：旧目录的Next错误页、DOMPurify、middleware manifest与.env出现dataless；Node报读取错误，迁移还遇到Git对象与历史输出的读取超时。迁出云同步目录解决的是运行时文件被卸载的问题，不声称能消除所有应用层500。
+
+前后端启动入口新增macOS真实路径检查，拒绝Documents、Desktop、Library/Mobile Documents下的运行目录；这是保守部署约束，并非iCloud开关探测。启动前仍实际导入Next/SWC和SSR消毒依赖。不清理运行中的.next，不放宽HTML消毒，不更换框架和解释器，不改系统代理。托管服务状态、健康检查、精准重载步骤以LOCAL_DEV.md为准。
+
+迁移使用与远端一致的e3562e9f基线恢复Git和受控代码，保留本地配置与产物；outputs逐文件比对一致，Git fsck通过，历史对话/报告/PDF在真实页面可读。完整证据和验证边界记录于DEVELOPMENT_LOG.md。本轮为基础设施修复，没有新增研究运行或重新验证模型端研究质量；后续仍先推进受控服务器/实验能力及既定评测路线。
