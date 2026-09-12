@@ -109,6 +109,54 @@ def test_subagents_have_independent_parallel_action_loops(tmp_path):
     assert by_agent == {"robustness": 2, "security": 2}
 
 
+def test_lead_can_delegate_unresolved_work_and_merge_shared_evidence(tmp_path):
+    calls = {}
+
+    async def model(system, payload):
+        data = json.loads(payload)
+        objective = data["objective"]
+        turn = calls.get(objective, 0)
+        calls[objective] = turn + 1
+        if objective == "broad review":
+            return json.dumps({
+                "tool": "delegate" if turn == 0 else "finish",
+                "purpose": "split unresolved research goals",
+                "assignments": [
+                    {"name": "method", "objective": "method evidence", "goal_ids": []},
+                    {"name": "evaluation", "objective": "evaluation evidence", "goal_ids": []},
+                ] if turn == 0 else [],
+                "summary": "Merged evidence " + URL,
+            })
+        return json.dumps({
+            "tool": "retrieve" if turn == 0 else "finish",
+            "purpose": objective,
+            "query": objective,
+            "summary": "Child evidence " + URL,
+        })
+
+    async def emit(*args, **kwargs):
+        pass
+
+    async def approve(*args):
+        return None
+
+    runtime = AutonomousReview(model, Embeddings(), emit, approve, tmp_path, online_rag=True)
+    runtime.query, runtime.plan = "broad review", {}
+    runtime.library.papers[URL] = {}
+
+    async def retrieve(*args):
+        return json.dumps([{"source": URL, "page": 1, "text": "shared child evidence"}])
+
+    runtime.library.retrieve = retrieve
+    result = asyncio.run(runtime.loop("lead", "broad review", lead=True, steps=2))
+
+    assert result["status"] == "completed"
+    assert runtime.children == 2
+    assert len(runtime.evidence) == 2
+    assert all(name.startswith("method") or name.startswith("evaluation") or name == "broad review"
+               for name in calls)
+
+
 def test_subagent_cannot_delegate_and_tool_failure_is_observed(tmp_path):
     seen = []
     async def model(system, payload):
