@@ -4,6 +4,12 @@ import { v4 as uuidv4 } from 'uuid';
 import { ResearchHistoryItem, Data, ChatMessage } from '../types/data';
 import { authFetch } from "@/helpers/auth";
 
+// A cache write must never roll back an already persisted server operation.
+function cacheServerHistory(reports: ResearchHistoryItem[]) {
+  try { localStorage.setItem('researchHistory', JSON.stringify(reports)); }
+  catch { /* Keep the existing local copy; PostgreSQL remains authoritative. */ }
+}
+
 export const useResearchHistory = () => {
   const [history, setHistory] = useState<ResearchHistoryItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -16,7 +22,7 @@ export const useResearchHistory = () => {
       if (Array.isArray(data.reports)) {
         const reports = [...data.reports].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
         setHistory(reports);
-        localStorage.setItem('researchHistory', JSON.stringify(reports));
+        cacheServerHistory(reports);
       }
     };
     const listener = () => { void refresh().catch(console.error); };
@@ -61,14 +67,25 @@ export const useResearchHistory = () => {
         console.log('Loaded research history from server:', data.reports.length, 'items');
         // Never recreate server-deleted reports from a stale browser cache.
         // Retain legacy drafts separately; importing them must be explicit.
-        if (localHistory?.length && !localStorage.getItem('researchHistory.legacyBackup')) {
-          localStorage.setItem('researchHistory.legacyBackup', JSON.stringify(localHistory));
-        }
         const sortedHistory = [...data.reports].sort((a, b) =>
           (b.timestamp || 0) - (a.timestamp || 0),
         );
         setHistory(sortedHistory);
-        localStorage.setItem('researchHistory', JSON.stringify(sortedHistory));
+        // Only archive local-only drafts. Duplicating every full server report
+        // exhausted localStorage and prevented the fresh list from displaying.
+        const serverIds = new Set(sortedHistory.map(item => item.id));
+        const drafts = localHistory.filter(item => !serverIds.has(item.id));
+        try {
+          if (drafts.length) {
+            const backup = JSON.parse(localStorage.getItem('researchHistory.legacyBackup') || '[]');
+            const ids = new Set(backup.map((item: ResearchHistoryItem) => item.id));
+            localStorage.setItem('researchHistory.legacyBackup', JSON.stringify([...backup, ...drafts.filter(item => !ids.has(item.id))]));
+          }
+          cacheServerHistory(sortedHistory);
+        } catch {
+          // Do not overwrite unarchived drafts if storage is full/unavailable.
+          toast.error('旧草稿仍保留在浏览器原缓存中，空间不足未备份；服务器历史已正常加载', {id:'history-backup-full'});
+        }
       } catch (error) {
         console.error('Error fetching research history:', error);
         // We're already using local history from above
@@ -188,10 +205,7 @@ export const useResearchHistory = () => {
         // Also save to localStorage as fallback
         const localHistory = localStorage.getItem('researchHistory');
         const parsedHistory = localHistory ? JSON.parse(localHistory) : [];
-        localStorage.setItem(
-          'researchHistory',
-          JSON.stringify([newResearch, ...parsedHistory])
-        );
+        cacheServerHistory([newResearch, ...parsedHistory]);
         
         return newId;
       } else {
@@ -266,7 +280,7 @@ export const useResearchHistory = () => {
         const updatedHistory = parsedHistory.map((item: any) => 
           item.id === id ? { ...item, answer, orderedData, timestamp: Date.now() } : item
         );
-        localStorage.setItem('researchHistory', JSON.stringify(updatedHistory));
+        cacheServerHistory(updatedHistory);
       }
       
       return true;
@@ -369,7 +383,7 @@ export const useResearchHistory = () => {
       if (localHistory) {
         const parsedHistory = JSON.parse(localHistory);
         const filteredHistory = parsedHistory.filter((item: any) => item.id !== id);
-        localStorage.setItem('researchHistory', JSON.stringify(filteredHistory));
+        cacheServerHistory(filteredHistory);
       }
       
       return true;
@@ -430,7 +444,7 @@ export const useResearchHistory = () => {
           }
           return item;
         });
-        localStorage.setItem('researchHistory', JSON.stringify(updatedHistory));
+        cacheServerHistory(updatedHistory);
       }
       
       return true;

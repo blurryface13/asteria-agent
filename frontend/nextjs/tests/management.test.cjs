@@ -81,3 +81,41 @@ test('stale report cache is preserved as backup, never uploaded after server del
     assert.deepEqual(JSON.parse(localStorage.getItem('researchHistory.legacyBackup')),legacy);
   } finally {await act(async()=>root.unmount()); dom.window.close();}
 });
+
+test('full browser storage cannot hide server history or undo a saved report', async () => {
+  const vm = require('node:vm');
+  const dom = new JSDOM('<div id="root"></div>', {url:'http://localhost'});
+  global.window = dom.window; global.document = dom.window.document; global.navigator = dom.window.navigator;
+  global.IS_REACT_ACT_ENVIRONMENT = true;
+  const legacy = [{id:'local-draft',question:'draft',answer:'unsaved',timestamp:1}];
+  const server = [{id:'saved',question:'server',answer:'persisted',timestamp:2}];
+  const storage = {
+    getItem: key => key === 'researchHistory' ? JSON.stringify(legacy) : null,
+    setItem: () => {throw new dom.window.DOMException('full','QuotaExceededError');},
+  };
+  const requests=[];
+  const box={exports:{},console,window,Event:dom.window.Event,localStorage:storage,require:name=>{
+    if(name==='react-hot-toast') return {toast:{error:()=>{},success:()=>{}}};
+    if(name==='@/helpers/auth') return {authFetch:async(url,options)=>{
+      requests.push([url,options]);
+      return {ok:true,json:async()=>({reports:server})};
+    }};
+    return require(name);
+  }};
+  vm.runInNewContext(ts.transpileModule(fs.readFileSync('hooks/useResearchHistory.ts','utf8'),{
+    compilerOptions:{module:ts.ModuleKind.CommonJS,esModuleInterop:true},
+  }).outputText,box);
+  let state;
+  function Consumer(){state=box.exports.useResearchHistory(); return null;}
+  const root=createRoot(document.getElementById('root'));
+  try {
+    await act(async()=>root.render(React.createElement(Consumer)));
+    assert.equal(state.history[0].id,'saved');
+    assert.equal(state.loading,false);
+    assert.deepEqual(JSON.parse(storage.getItem('researchHistory')),legacy);
+    await act(async()=>state.saveResearch('updated','new answer',[],'saved'));
+    assert.equal(state.history[0].answer,'new answer');
+    assert.ok(requests.some(([url,options])=>url==='/api/reports' && options?.method==='POST'));
+    assert.ok(!requests.some(([,options])=>options?.method==='DELETE'));
+  } finally {await act(async()=>root.unmount()); dom.window.close();}
+});
