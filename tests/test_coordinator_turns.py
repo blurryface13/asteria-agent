@@ -116,6 +116,11 @@ async def exercise(monkeypatch):
     monkeypatch.setattr(module, 'get_pool', get_pool)
     from backend.knowledge import managed
     monkeypatch.setattr(managed, 'get_pool', get_pool)
+    from backend.memory import service as memory
+    monkeypatch.setattr(memory, 'get_pool', get_pool)
+    async def empty_memory(*args, **kwargs):
+        return {'project_id': None, 'files': [], 'selection': 'test'}
+    monkeypatch.setattr(memory, 'snapshot', empty_memory)
     monkeypatch.setattr(runs, 'get_pool', get_pool)
     capabilities, histories, configs = [], [], []
     capability = 'general_chat'

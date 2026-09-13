@@ -96,6 +96,8 @@ async def create_chat_completion_with_tools(
             **provider_kwargs
         )
         
+        from .memory_context import inject_memory
+        messages = inject_memory(messages)
         # Convert messages to LangChain format
         lc_messages = []
         for msg in messages:

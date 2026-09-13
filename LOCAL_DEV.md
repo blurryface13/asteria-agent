@@ -74,3 +74,11 @@ bash scripts/start-workspace-frontend.sh
 维护前除活动研究Run和Coordinator turn，还需检查 `knowledge_versions` 的queued/indexing状态。API索引消费者使用数据库锁，不额外启动另一个索引脚本；正常关闭会等待当前索引线程，强制退出则在下次启动标记中断，用户重传。已发布版本不因此撤销。向量清理由 `knowledge_vector_gc` 持久化重试，查询始终受数据库active_version约束。
 
 故障定位顺序：源文件可读 → dora导入chromadb/jieba → PostgreSQL资料状态 → Ollama真实embedding → 配置的精排服务 → 主Chat问答。`ModuleNotFoundError: jieba`不能归因于模型余额或Agent规划；前端历史备份的`QuotaExceededError`也不是SSR文件读取错误，不应为此重装Next或清理运行中的.next。
+
+## 用户工作区记忆
+
+默认记忆目录为 `/Users/dora/Developer/asteria-workspaces`，不在源码仓库或Documents中；部署端可设置 `ASTERIA_WORKSPACES_ROOT`，API与worker必须使用同一个值。保持dora运行用户具有该专用目录的读写权限；不要指向home根目录、公司仓库、云同步位置或将本机免登录部署暴露公网。
+
+Agent → 记忆显示当前作用域的实际路径。用户偏好为profile/preferences.md；项目下为.asteria/PROJECT.md、memory/MEMORY.md和主题Markdown。普通UTF-8编辑器即可修改，无须重启、重新embedding或导入数据库；下一轮读取磁盘快照。网页若有旧版本草稿，保存409后先读取磁盘、比较再保存，不删除文件或清缓存处理冲突。
+
+删除文件移动到同作用域的.trash；停止写入后可手动恢复到原路径。删除项目不自动删除本地工作区。备份需要同时保留工作区与PostgreSQL归属信息，历史快照留在消息/Run事件中；单独删除Markdown不等于擦除这些历史副本。更改根目录不会自动迁移已有workspace_path，须先做受控数据迁移；遇到409路径未授权应核对配置，不绕过owner检查。

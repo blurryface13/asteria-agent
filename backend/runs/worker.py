@@ -60,7 +60,16 @@ def artifact_index(paths):
 async def research(sink, request):
     from backend.server.server_utils import handle_start_command
     from backend.server.websocket_manager import WebSocketManager
-    await handle_start_command(sink, 'start ' + json.dumps(request), WebSocketManager(), asyncio.Queue())
+    from backend.memory.service import snapshot
+    from backend.server.agentic_runner import configured_model
+    from asteria_researcher.utils.memory_context import memory_context
+    memory = await snapshot(sink.run['user_email'], sink.run['conversation_id'], request['task'], configured_model(os.getenv('CONFIG_PATH')))
+    token = memory_context.set(memory)
+    try:
+        await sink.send_json({'type': 'memory_loaded', 'output': memory})
+        await handle_start_command(sink, 'start ' + json.dumps(request), WebSocketManager(), asyncio.Queue())
+    finally:
+        memory_context.reset(token)
     if sink.error:
         raise RuntimeError(sink.error)
     if not sink.paths:

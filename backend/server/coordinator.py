@@ -131,6 +131,9 @@ async def execute_turn(body, email):
         from backend.knowledge import managed
         from asteria_researcher.agentic.intent import Intent
         model = configured_model(config)
+        from backend.memory.service import snapshot
+        memory = await snapshot(email, body.conversation_id, body.message, model)
+        memory_context.set(memory)
         catalog = await managed.libraries(email) if body.knowledge_mode != 'off' else []
         if body.knowledge_mode == 'selected':
             allowed = [k for k in catalog if k['id'] in body.knowledge_ids]
@@ -143,7 +146,7 @@ async def execute_turn(body, email):
                 knowledge_catalog=[{k:item[k] for k in ('id','name','description','ready_documents')} for item in catalog])
         else:
             intent = await analyze_intent(body.message, model, history=history[:-1], report=report)
-        result = {'intent': intent.model_dump(), 'capability': intent.capability}
+        result = {'intent': intent.model_dump(), 'capability': intent.capability, 'memory': memory}
         if intent.capability == 'knowledge_chat':
             allowed_ids = {k['id'] for k in catalog}
             if not intent.knowledge_ids or not set(intent.knowledge_ids) <= allowed_ids:
@@ -177,6 +180,7 @@ async def execute_turn(body, email):
                 return
             if 'response' in result:
                 message = result['response']
+                message['metadata']['memory'] = memory
                 await c.execute('''INSERT INTO workspace_messages(id,conversation_id,role,content,metadata)
                     VALUES($1,$2,'assistant',$3,$4)''', str(uuid4()), body.conversation_id, message['content'], message['metadata'])
             await c.execute('''UPDATE workspace_conversations SET mode=$2,updated_at=now() WHERE id=$1''',
@@ -184,6 +188,8 @@ async def execute_turn(body, email):
             await c.execute("""UPDATE coordinator_turns SET status='completed',result=$3,finished_at=now()
                 WHERE conversation_id=$1 AND request_id=$2""", body.conversation_id, body.request_id, result)
 
+    from asteria_researcher.utils.memory_context import memory_context
+    memory_token = memory_context.set(None)
     token = usage_sink.set(record)
     try:
         await asyncio.wait_for(work(), timeout=240)
@@ -209,6 +215,7 @@ async def execute_turn(body, email):
                 WHERE conversation_id=$1 AND request_id=$2 AND status='running' ''', body.conversation_id, body.request_id, status, error)
     finally:
         usage_sink.reset(token)
+        memory_context.reset(memory_token)
 
 
 @router.post('/route')

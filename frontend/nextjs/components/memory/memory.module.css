@@ -1,0 +1,16 @@
+.editor{display:grid;gap:14px;color:#e7e7e5;font-size:14px;min-width:0}
+.toolbar{display:flex;gap:8px;align-items:end;flex-wrap:wrap}
+.toolbar label,.body{display:grid;gap:6px;flex:1}
+.editor button,.editor select,.editor input{font:inherit;color:inherit;background:#232323;border:1px solid #363636;border-radius:8px;padding:8px 12px}
+.editor button{cursor:pointer;border-radius:18px}
+.editor button:disabled,.editor select:disabled{opacity:.45;cursor:not-allowed}
+.editor :is(button,input,select,textarea):focus-visible{outline:2px solid #b8c8d5;outline-offset:2px}
+.editor small{color:#989896;font-size:12px;overflow-wrap:anywhere}
+.path{font-family:ui-monospace,monospace}
+.tabs{display:flex;gap:6px;flex-wrap:wrap}
+.tabs button[aria-pressed=true]{background:#383838}
+.body textarea{min-height:240px;resize:vertical;width:100%;box-sizing:border-box;border:1px solid #363636;border-radius:8px;padding:12px;background:#171717;color:#e7e7e5;font:13px/1.7 ui-monospace,SFMono-Regular,monospace}
+.error{color:#df8984}
+.editor p{margin:0;overflow-wrap:anywhere}
+.conflict{border:1px solid #363636;border-radius:8px;padding:12px;display:grid;gap:10px}
+.conflict pre{white-space:pre-wrap;max-height:180px;overflow:auto;font-size:12px}

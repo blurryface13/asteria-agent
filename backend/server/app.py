@@ -142,6 +142,8 @@ app.include_router(workspace_router)
 app.include_router(knowledge_router)
 from backend.knowledge.managed_routes import router as managed_knowledge_router
 app.include_router(managed_knowledge_router)
+from backend.memory.routes import router as memory_router
+app.include_router(memory_router)
 from backend.doc_agent.routes import router as doc_agent_router
 app.include_router(doc_agent_router)
 from backend.watermark_lab.routes import router as watermark_lab_router

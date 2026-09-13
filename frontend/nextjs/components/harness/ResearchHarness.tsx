@@ -10,6 +10,7 @@ import s from "./harness.module.css";
 import LatexPreview from "./LatexPreview";
 import SkillBrowser from "./SkillBrowser";
 import KnowledgePicker from "../knowledge/KnowledgePicker";
+import MemoryEditor from "../memory/MemoryEditor";
 import { useWorkspace } from "@/hooks/useWorkspace";
 
 interface Props {
@@ -306,6 +307,8 @@ export default function ResearchHarness(p: Props) {
     </button>
   );
   const selectedProject = projects.find((project) => project.id === activeProjectId);
+  const [memoryDirty, setMemoryDirty] = useState(false);
+  const memoryProjectId = p.selectedId ? conversations.find(item=>item.id===p.selectedId)?.project_id || null : activeProjectId;
   const expandProject = (id: string, expanded: boolean) => {
     setExpandedProjects((current) => {
       const next = { ...current, [id]: expanded };
@@ -874,15 +877,16 @@ export default function ResearchHarness(p: Props) {
         ref={dialog}
         aria-label={modal || "工作台设置"}
         className={s.dialog}
-        onCancel={() => setModal("")}
+        onCancel={(e) => {if(memoryDirty)e.preventDefault();else setModal("");}}
         onClick={(e) => {
-          if (e.target === dialog.current) setModal("");
+          if (e.target === dialog.current && !memoryDirty) setModal("");
         }}
       >
         <div className={s.dialogInner}>
           <button
             className={s.dialogClose}
             aria-label="关闭弹窗"
+            disabled={memoryDirty}
             onClick={() => setModal("")}
           >
             <Icon name="close" />
@@ -896,6 +900,7 @@ export default function ResearchHarness(p: Props) {
               ).map((tab) => (
                 <button
                   key={tab}
+                  disabled={memoryDirty && tab !== section}
                   className={section === tab ? s.selected : ""}
                   onClick={() => setSection(tab)}
                 >
@@ -1102,8 +1107,10 @@ export default function ResearchHarness(p: Props) {
                         ? "按需加载研究方法、工具约束与输出规范。"
                         : "管理授权服务器、允许目录与实验执行权限。"}
                 </p>
-                {section !== "技能" && <div className={s.pendingBadge}>待接入运行时</div>}
-                {section === "技能" ? (
+                {!['技能','记忆'].includes(section) && <div className={s.pendingBadge}>待接入运行时</div>}
+                {section === "记忆" ? (
+                  <MemoryEditor projectId={memoryProjectId} projectName={projects.find(item=>item.id===memoryProjectId)?.name} onDirtyChange={setMemoryDirty}/>
+                ) : section === "技能" ? (
                   <SkillBrowser settings={p.settings} onChange={next => p.setSettings(next)}
                     locked={p.loading || p.chatting} supported={p.skillsSupported !== false && mode === "research"} />
                 ) : (

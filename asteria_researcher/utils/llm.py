@@ -66,6 +66,8 @@ async def create_chat_completion(
     Returns:
         str: The response from the chat completion.
     """
+    from .memory_context import inject_memory
+    messages = inject_memory(messages)
     # validate input
     if model is None:
         raise ValueError("Model cannot be None")
