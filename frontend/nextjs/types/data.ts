@@ -58,6 +58,8 @@ export interface ChatBoxSettings {
   report_source: string;
   search_strategy: SearchStrategy;
   online_rag?: boolean;
+  knowledge_mode?: 'auto' | 'off' | 'selected';
+  knowledge_ids?: string[];
   skill_ids?: string[];
   format_profile?: string | null;
   retrievers?: string;

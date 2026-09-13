@@ -3,7 +3,10 @@ import asyncio
 import hashlib
 import json
 import os
+import logging
+import traceback
 from uuid import uuid4
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -16,6 +19,7 @@ from asteria_researcher.utils.usage_context import usage_sink
 
 router = APIRouter(prefix='/api/coordinator', tags=['coordinator'])
 tasks: set[asyncio.Task] = set()
+logger = logging.getLogger(__name__)
 
 
 def conversation_context(messages, completed_run=None, artifacts=()):
@@ -39,6 +43,8 @@ class TurnRequest(BaseModel):
     request_id: str = Field(min_length=8, max_length=100)
     message: str = Field(min_length=1, max_length=50000)
     research_request: dict | None = None
+    knowledge_mode: Literal['auto','off','selected'] = 'auto'
+    knowledge_ids: list[str] = Field(default_factory=list, max_length=3)
 
     @field_validator('message')
     @classmethod
@@ -66,6 +72,12 @@ async def get_turn(email, conversation_id, request_id=None):
 
 
 async def submit_turn(body, email):
+    if body.knowledge_mode == 'selected':
+        if not body.knowledge_ids:
+            raise HTTPException(422, '请选择知识库')
+        from backend.knowledge.managed import get_library
+        for kb_id in body.knowledge_ids:
+            await get_library(email, kb_id)
     if body.research_request is not None:
         validate_request({**body.research_request, 'task': body.message})
     fingerprint = hashlib.sha256(json.dumps(body.model_dump(), sort_keys=True, ensure_ascii=False).encode()).hexdigest()
@@ -116,9 +128,38 @@ async def execute_turn(body, email):
             artifacts = await c.fetch('SELECT kind,path FROM research_artifacts WHERE run_id=$1', completed_run['id']) if completed_run else []
         history = conversation_context(messages, completed_run, artifacts)
         config = os.getenv('CONFIG_PATH') or None
-        intent = await analyze_intent(body.message, configured_model(config), history=history[:-1], report=report)
+        from backend.knowledge import managed
+        from asteria_researcher.agentic.intent import Intent
+        model = configured_model(config)
+        catalog = await managed.libraries(email) if body.knowledge_mode != 'off' else []
+        if body.knowledge_mode == 'selected':
+            allowed = [k for k in catalog if k['id'] in body.knowledge_ids]
+            if len(allowed) != len(set(body.knowledge_ids)):
+                raise HTTPException(404,'所选知识库不存在')
+            # Explicit library scope is a user command, not a keyword heuristic.
+            intent = Intent(capability='knowledge_chat', reason='用户指定知识库问答',knowledge_ids=body.knowledge_ids)
+        elif catalog:
+            intent = await analyze_intent(body.message, model, history=history[:-1], report=report,
+                knowledge_catalog=[{k:item[k] for k in ('id','name','description','ready_documents')} for item in catalog])
+        else:
+            intent = await analyze_intent(body.message, model, history=history[:-1], report=report)
         result = {'intent': intent.model_dump(), 'capability': intent.capability}
-        if intent.capability == 'general_chat':
+        if intent.capability == 'knowledge_chat':
+            allowed_ids = {k['id'] for k in catalog}
+            if not intent.knowledge_ids or not set(intent.knowledge_ids) <= allowed_ids:
+                raise ValueError('Coordinator selected invalid library scope')
+            query = intent.retrieval_query or body.message
+            if body.knowledge_mode == 'selected' and len(history)>1:
+                query = await model('Rewrite the latest question as a standalone retrieval query using conversation only for references. Do not answer. Return only the query.',json.dumps({'question':body.message,'history':history[:-1][-8:]},ensure_ascii=False))
+            content, sources = await managed.answer(email,intent.knowledge_ids,query,model,history[:-1])
+            citation_lines = [f"[{s['index']}] {s['name']}" + (f" · 第{s['page']}页" if s['page'] else '') + f" · 版本 {s['version_id'][:8]}" for s in sources]
+            # The model may echo an older source footer from conversation history.
+            # Render canonical metadata once, without altering inline references.
+            content = '\n'.join(line for line in content.splitlines() if line.strip() not in citation_lines).rstrip()
+            citations = '\n\n' + '\n'.join(citation_lines) if sources else ''
+            result['response']={'role':'assistant','content':content+citations,'metadata':{
+                'turn_id':body.request_id,'knowledge_ids':intent.knowledge_ids,'sources':sources,'retrieval_query':query}}
+        elif intent.capability == 'general_chat':
             agent = ChatAgentWithMemory(report=report, config_path=config, headers=None)
             content, metadata = await agent.chat(history, None, allow_tools=bool(report))
             if not content or not content.strip():
@@ -139,7 +180,7 @@ async def execute_turn(body, email):
                 await c.execute('''INSERT INTO workspace_messages(id,conversation_id,role,content,metadata)
                     VALUES($1,$2,'assistant',$3,$4)''', str(uuid4()), body.conversation_id, message['content'], message['metadata'])
             await c.execute('''UPDATE workspace_conversations SET mode=$2,updated_at=now() WHERE id=$1''',
-                            body.conversation_id, 'research' if report or intent.capability != 'general_chat' else 'chat')
+                            body.conversation_id, 'research' if report or intent.capability not in {'general_chat','knowledge_chat'} else 'chat')
             await c.execute("""UPDATE coordinator_turns SET status='completed',result=$3,finished_at=now()
                 WHERE conversation_id=$1 AND request_id=$2""", body.conversation_id, body.request_id, result)
 
@@ -149,6 +190,10 @@ async def execute_turn(body, email):
     except BaseException as exc:
         if not isinstance(exc, (Exception, asyncio.CancelledError)):
             raise
+        # Diagnose exact code locations without logging provider exception text,
+        # which may contain credentials, URLs or private request payloads.
+        logger.error('Coordinator turn %s failed: %s; frames=%s', body.request_id,
+                     type(exc).__name__, [(f.filename, f.lineno, f.name) for f in traceback.extract_tb(exc.__traceback__)])
         # Provider exception strings can contain request URLs/credentials.
         status = 'interrupted' if isinstance(exc, asyncio.CancelledError) else 'failed'
         error = '协调请求中断，未自动重试' if status == 'interrupted' else f'协调请求失败（{type(exc).__name__}），请检查模型服务或研究配置后重新提交'

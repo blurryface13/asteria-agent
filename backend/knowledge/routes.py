@@ -11,7 +11,7 @@ import time
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from backend.auth.dependencies import get_current_user_email
 
@@ -19,14 +19,25 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/knowledge", tags=["knowledge"])
 
-class AskRequest(BaseModel):
+class LegacyCollectionRequest(BaseModel):
+    collection: str | None = None
+
+    @field_validator('collection')
+    @classmethod
+    def public_collection_only(cls, value):
+        if value and value.startswith('asteria_'):
+            raise ValueError('用户知识库请通过有归属校验的libraries接口访问')
+        return value
+
+
+class AskRequest(LegacyCollectionRequest):
     question: str = Field(min_length=2, max_length=2000)
     collection: str | None = None
     mode: str = "hybrid_rerank"
     top_k: int = Field(default=5, ge=1, le=10)
 
 
-class TraceRequest(BaseModel):
+class TraceRequest(LegacyCollectionRequest):
     query: str = Field(min_length=2, max_length=2000)
     collection: str | None = None
     mode: str = "hybrid_rerank"
@@ -34,7 +45,7 @@ class TraceRequest(BaseModel):
     candidates_per_retriever: int = Field(default=20, ge=5, le=50)
 
 
-class ModularIngestRequest(BaseModel):
+class ModularIngestRequest(LegacyCollectionRequest):
     path: str = Field(min_length=1, max_length=4000)
     collection: str | None = None
     force: bool = False
@@ -262,7 +273,9 @@ async def list_modular_collections(_email: str = Depends(get_current_user_email)
     from backend.knowledge.modular_rag import get_modular_bridge
 
     try:
-        return await get_modular_bridge().collections()
+        data = await get_modular_bridge().collections()
+        data['collections'] = [c for c in data.get('collections',[]) if not c['collection'].startswith('asteria_')]
+        return data
     except Exception as e:
         logger.error(f"modular rag collections failed: {e}")
         raise HTTPException(status_code=502, detail=str(e))

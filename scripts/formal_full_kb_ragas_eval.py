@@ -26,9 +26,7 @@ from dotenv import load_dotenv
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-MODULAR_ROOT = Path(
-    "/Users/dora/Documents/Codex/2026-07-07/wome/work/MODULAR-RAG-MCP-SERVER"
-)
+MODULAR_ROOT = Path(os.getenv('MODULAR_RAG_MCP_ROOT', str(Path.home() / 'Developer' / 'modular-rag-engine')))
 OUT_DIR = PROJECT_ROOT / "outputs" / "full_kb_rag_eval"
 REPORT_JSON = OUT_DIR / "full_kb_ragas_eval_report.json"
 REPORT_MD = OUT_DIR / "full_kb_ragas_eval_report.md"
@@ -37,7 +35,9 @@ FORMAL_COLLECTION = "cs_research_eval_20260709"
 
 
 def ensure_paths() -> None:
+    global MODULAR_ROOT
     load_dotenv(PROJECT_ROOT / ".env")
+    MODULAR_ROOT = Path(os.getenv('MODULAR_RAG_MCP_ROOT', str(MODULAR_ROOT))).expanduser().resolve()
     os.environ["MODULAR_RAG_MCP_CONFIG"] = str(
         PROJECT_ROOT / "outputs" / "formal_rag_eval" / "modular_rag_eval_settings.yaml"
     )

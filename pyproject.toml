@@ -11,7 +11,7 @@ dependencies = [
     "arxiv>=2.0.0",
     "beautifulsoup4>=4.12.2",
     "brotli>=1.2.0",
-    "chromadb>=0.4.0",
+    "chromadb==1.5.9",
     "datasets>=2.0.0",
     "ddgs>=9.0.0",
     "fastapi>=0.104.1",

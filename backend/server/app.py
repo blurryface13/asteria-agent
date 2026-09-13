@@ -95,10 +95,13 @@ async def lifespan(app: FastAPI):
         logger.warning(f"Frontend directory not found: {frontend_path}")
     
     await initialize_database()
+    from backend.knowledge import managed
+    await managed.start()
     logger.info("Asteria Researcher API ready - PostgreSQL persistence enabled")
     yield
     # Shutdown
     await shutdown_coordinator()
+    await managed.shutdown()
     logger.info("Research API shutting down")
 
 # App initialization
@@ -137,6 +140,8 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(workspace_router)
 app.include_router(knowledge_router)
+from backend.knowledge.managed_routes import router as managed_knowledge_router
+app.include_router(managed_knowledge_router)
 from backend.doc_agent.routes import router as doc_agent_router
 app.include_router(doc_agent_router)
 from backend.watermark_lab.routes import router as watermark_lab_router

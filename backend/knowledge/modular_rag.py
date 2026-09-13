@@ -15,9 +15,7 @@ from pathlib import Path
 from typing import Any
 
 
-DEFAULT_ROOT = Path(
-    "/Users/dora/Documents/Codex/2026-07-07/wome/work/MODULAR-RAG-MCP-SERVER"
-)
+DEFAULT_ROOT = Path.home() / "Developer" / "modular-rag-engine"
 DEFAULT_CONFIG = Path(__file__).resolve().with_name("modular_rag_settings.yaml")
 ASTERIA_ROOT = Path(__file__).resolve().parents[2]
 

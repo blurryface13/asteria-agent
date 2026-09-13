@@ -64,3 +64,13 @@ bash scripts/start-workspace-frontend.sh
 - Ollama、PostgreSQL 和外部模型网络分别诊断；文件可读并不代表这些依赖健康。Git 保持证书验证，本机仓库使用 dora CA，不修改全局代理和信任配置。
 
 旧目录 `/Users/dora/Documents/项目/code/reference-repos/asteria-agent` 暂留作迁移备份，不再编辑或启动。迁移保留全部历史 outputs，并逐文件比对；数据库未迁移或重建。需要回退业务版本时在新目录操作 Git，不能回到已发生云端卸载的旧运行位置。迁移过程与验证边界见 `DEVELOPMENT_LOG.md`、`spec.md` §22.8。
+
+## 知识库与外部 RAG 依赖
+
+当前外部引擎根目录是 `/Users/dora/Developer/modular-rag-engine`，可用 `MODULAR_RAG_MCP_ROOT` 显式覆盖。上游为 `jerry-ai-dev/MODULAR-RAG-MCP-SERVER`，本机固定提交 `f658c5a4011c8b826707a65a3b11ce9301b0626f`。源码、settings和data必须一并留在本地可读位置；只迁移Asteria仓库不能解决外部引擎仍被iCloud卸载的问题。
+
+2026-09-13从旧引擎复制约1.4GB原data（含Chroma、稀疏索引），按大小/mtime复核无差异，旧目录保留。旧索引环境使用Chroma1.5.9，已在dora安装同版并锁定项目依赖，补齐jieba0.42.1；`pip check`通过。不要直接安装另一Chroma版本打开原库，不为修复导入问题新建空库冒充恢复。新资料库与旧research_papers分collection，均依赖当前bge-m3和精排配置。
+
+维护前除活动研究Run和Coordinator turn，还需检查 `knowledge_versions` 的queued/indexing状态。API索引消费者使用数据库锁，不额外启动另一个索引脚本；正常关闭会等待当前索引线程，强制退出则在下次启动标记中断，用户重传。已发布版本不因此撤销。向量清理由 `knowledge_vector_gc` 持久化重试，查询始终受数据库active_version约束。
+
+故障定位顺序：源文件可读 → dora导入chromadb/jieba → PostgreSQL资料状态 → Ollama真实embedding → 配置的精排服务 → 主Chat问答。`ModuleNotFoundError: jieba`不能归因于模型余额或Agent规划；前端历史备份的`QuotaExceededError`也不是SSR文件读取错误，不应为此重装Next或清理运行中的.next。

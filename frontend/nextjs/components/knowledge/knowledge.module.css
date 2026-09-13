@@ -1,0 +1,45 @@
+.page {--bg:#171717;--surface:#232323;--raised:#2c2c2c;--line:#363636;--text:#e7e7e5;--muted:#989896;position:fixed;inset:0;display:flex;background:var(--surface);color:var(--text);color-scheme:dark;font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC",sans-serif}
+.page * {box-sizing:border-box}
+.page button,.page input,.page textarea,.page select,.picker button,.picker select {font:inherit;color:inherit}
+.page button,.page a,.picker button,.picker a {cursor:pointer;text-decoration:none;color:inherit}
+.page button:disabled,.picker button:disabled {opacity:.4;cursor:not-allowed}
+.page button:focus-visible,.page a:focus-visible,.page input:focus-visible,.page textarea:focus-visible,.picker button:focus-visible,.picker select:focus-visible {outline:2px solid #b8c8d5;outline-offset:3px}
+.rail {width:248px;flex-shrink:0;display:flex;flex-direction:column;padding:20px 12px;gap:20px;overflow:auto}
+.brand {display:flex;gap:12px;align-items:center;font-size:17px;padding:0 8px}
+.brand img {width:30px;height:30px;border-radius:8px}
+.rail nav {display:flex;flex-direction:column;gap:4px}
+.rail nav a {display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:20px}
+.rail nav a[aria-current],.rail nav a:hover {background:#383838}
+.footer {margin-top:auto;color:var(--muted);padding:8px}
+.canvas {flex:1;min-width:0;background:var(--bg);margin:5px;border:1px solid var(--line);border-radius:27px;overflow:auto}
+.header {height:66px;padding:0 28px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line)}
+.header h1 {font-size:19px;font-weight:500;margin:0}
+.actions {display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.actions button,.actions a,.page .primary {border:1px solid var(--line,#363636);border-radius:18px;padding:7px 14px;background:transparent}
+.page .primary {background:var(--text);color:var(--bg)}
+.body {display:grid;grid-template-columns:245px minmax(0,1fr);min-height:calc(100% - 66px)}
+.list {padding:20px 12px;border-right:1px solid var(--line)}
+.list>button {width:100%;text-align:left;padding:12px;background:none;border:0;border-radius:12px;margin-bottom:4px}
+.list>button[aria-pressed=true],.list>button:hover {background:var(--raised)}
+.list strong {font-weight:500;display:block}
+.page small,.picker small {display:block;color:var(--muted,#989896);font-size:12px;margin-top:4px}
+.detail {padding:28px;min-width:0}
+.detail h2 {font-size:23px;font-weight:500;margin:0 0 6px}
+.detail p {color:var(--muted);max-width:75ch}
+.form {max-width:620px;display:grid;gap:16px}
+.form label,.picker>label {display:grid;gap:8px}
+.form input,.form textarea,.picker select {width:100%;background:var(--surface,#232323);border:1px solid var(--line,#363636);border-radius:8px;padding:10px 12px}
+.fileInput {display:block;max-width:100%;margin:18px 0;color:var(--muted)}
+.fileInput input {display:block;margin-top:8px;max-width:100%}
+.document {padding:16px 0;border-bottom:1px solid var(--line);display:flex;gap:12px;justify-content:space-between;align-items:start}
+.document strong {font-weight:500;overflow-wrap:anywhere}
+.error {color:#df8984!important;overflow-wrap:anywhere}
+.status {color:#a1b9ab!important}
+.empty {padding:52px 0;color:var(--muted)}
+.picker {display:grid;gap:16px}
+.picker fieldset {border:0;padding:0;margin:0;max-height:300px;overflow:auto}
+.picker legend {color:var(--muted,#989896);font-size:12px;margin-bottom:8px}
+.picker .check {display:flex;align-items:center;gap:12px;padding:8px 0;cursor:pointer}
+.picker .check input {width:16px;height:16px;accent-color:#b8c8d5}
+@media(max-width:1000px){.rail{width:180px}.body{grid-template-columns:200px minmax(0,1fr)}.detail{padding:20px}}
+@media(max-width:760px){.rail{display:none}.canvas{border-radius:18px}.header{padding:0 16px}.body{display:block}.list{border-right:0;border-bottom:1px solid var(--line);display:flex;overflow:auto;gap:4px}.list>button{min-width:150px;width:auto}.detail{padding:20px 16px}.document{flex-wrap:wrap}}

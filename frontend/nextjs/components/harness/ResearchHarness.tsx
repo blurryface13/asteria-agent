@@ -9,6 +9,7 @@ import EntityActions from "./EntityActions";
 import s from "./harness.module.css";
 import LatexPreview from "./LatexPreview";
 import SkillBrowser from "./SkillBrowser";
+import KnowledgePicker from "../knowledge/KnowledgePicker";
 import { useWorkspace } from "@/hooks/useWorkspace";
 
 interface Props {
@@ -694,6 +695,9 @@ export default function ResearchHarness(p: Props) {
                       <Icon name="down" size={13} />
                     </button>
                     <span className={s.spacer} />
+                    <button className={s.modelButton} onClick={() => open("知识库")} aria-label="选择知识库">
+                      <Icon name="folder" size={16}/>{p.settings.knowledge_mode === 'selected' ? `${p.settings.knowledge_ids?.length || 0} 个知识库` : '资料'}
+                    </button>
                     <button className={s.modelButton} onClick={() => open("Agent", "技能")} aria-label="查看和指定技能">
                       <Icon name="skill" size={16} />
                       {p.settings.skill_ids?.length ? `${p.settings.skill_ids.length} 项技能` : "技能"}
@@ -1086,15 +1090,7 @@ export default function ResearchHarness(p: Props) {
                 ))}
               </div>
             ) : modal === "知识库" ? (
-              <>
-                <p>沿用现有知识库与离线 RAG 页面。</p>
-                <Link className={s.outline} href="/knowledge">
-                  管理知识库
-                </Link>
-                <Link className={s.outline} href="/rag-workspace">
-                  进入检索问答
-                </Link>
-              </>
+              <KnowledgePicker settings={p.settings} onChange={values=>p.setSettings(current=>({...current,...values}))} conversationId={p.answer ? p.selectedId : null}/>
             ) : modal === "Agent" ? (
               <>
                 <p>

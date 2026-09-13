@@ -114,6 +114,8 @@ async def exercise(monkeypatch):
     pool = await asyncpg.create_pool(os.environ['DATABASE_URL'], init=init, min_size=1, max_size=5, server_settings={'search_path': schema})
     async def get_pool(): return pool
     monkeypatch.setattr(module, 'get_pool', get_pool)
+    from backend.knowledge import managed
+    monkeypatch.setattr(managed, 'get_pool', get_pool)
     monkeypatch.setattr(runs, 'get_pool', get_pool)
     capabilities, histories, configs = [], [], []
     capability = 'general_chat'
@@ -138,7 +140,7 @@ async def exercise(monkeypatch):
     monkeypatch.setattr(ChatAgentWithMemory, 'chat', chat)
     try:
         async with pool.acquire() as c:
-            for path in ('backend/auth/workspace_schema.sql','backend/auth/reports_schema.sql','backend/runs/schema.sql'):
+            for path in ('backend/auth/workspace_schema.sql','backend/auth/reports_schema.sql','backend/runs/schema.sql','backend/knowledge/schema.sql'):
                 await c.execute(Path(path).read_text())
             await c.execute("INSERT INTO workspace_conversations(id,user_email,title,mode) VALUES('c','owner','test','chat')")
         body = TurnRequest(conversation_id='c', request_id='request-1', message='改写测试用例设计')

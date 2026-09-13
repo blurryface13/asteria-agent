@@ -1,191 +1,73 @@
 "use client";
+import {useCallback,useEffect,useState} from 'react';
+import Link from 'next/link';
+import Icon from '@/components/harness/Icon';
+import {authFetch} from '@/helpers/auth';
+import {knowledgeRequest,Library,LibraryDocument} from '@/components/knowledge/client';
+import s from '@/components/knowledge/knowledge.module.css';
 
-import { useEffect, useState } from "react";
-import Link from "next/link";
-import { authFetch } from "@/helpers/auth";
-
-interface Source {
-  index: number;
-  title: string;
-  page: number | null;
-  content: string;
-  scores: Record<string, number>;
-}
-
-interface CollectionInfo {
-  collection: string;
-  docs: number;
-  chunks: number;
-}
-
-export default function KnowledgePage() {
-  const [question, setQuestion] = useState("");
-  const [collection, setCollection] = useState<string>("");
-  const [collections, setCollections] = useState<CollectionInfo[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [answer, setAnswer] = useState<string>("");
-  const [sources, setSources] = useState<Source[]>([]);
-  const [error, setError] = useState<string>("");
-
-  useEffect(() => {
-    authFetch("/api/knowledge/collections")
-      .then((r) => (r.ok ? r.json() : { collections: [] }))
-      .then((d) => setCollections(d.collections || []))
-      .catch(() => {});
-  }, []);
-
-  const ask = async () => {
-    if (!question.trim() || loading) return;
-    setLoading(true);
-    setError("");
-    setAnswer("");
-    setSources([]);
-    try {
-      const res = await authFetch("/api/knowledge/ask", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          question: question.trim(),
-          collection: collection || null,
-          mode: "hybrid_rerank",
-          top_k: 5,
-        }),
-      });
-      if (!res.ok) {
-        const detail = await res.json().catch(() => ({}));
-        throw new Error(detail?.detail || `请求失败 (${res.status})`);
-      }
-      const data = await res.json();
-      setAnswer(data.answer || "");
-      setSources(data.sources || []);
-    } catch (e: any) {
-      setError(e?.message || "查询失败,请稍后重试");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const totalDocs = collections.reduce((s, c) => s + Number(c.docs), 0);
-
-  return (
-    <main className="min-h-screen bg-white text-gray-900">
-      <div className="mx-auto max-w-3xl px-4 py-8">
-        <div className="mb-6 flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold">📚 Knowledge Hub</h1>
-            <p className="mt-1 text-sm text-gray-500">
-              实验室文献知识库问答 · 混合检索(BM25 + 语义) + 重排
-              {totalDocs > 0 && ` · ${totalDocs} 篇论文`}
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Link
-              href="/rag-workspace"
-              className="rounded-lg border border-teal-200 bg-teal-50 px-3 py-1.5 text-sm font-medium text-teal-700 hover:bg-teal-100"
-            >
-              RAG Workspace
-            </Link>
-            <Link
-              href="/"
-              className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50"
-            >
-              ← 返回调研
-            </Link>
-          </div>
-        </div>
-
-        <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-          <textarea
-            value={question}
-            onChange={(e) => setQuestion(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                ask();
-              }
-            }}
-            placeholder="例如:摩尔纹是怎么产生的?对屏摄水印提取有什么影响?"
-            rows={3}
-            className="w-full resize-none rounded-lg border border-gray-200 p-3 text-sm outline-none focus:border-teal-500"
-          />
-          <div className="mt-3 flex items-center justify-between">
-            <select
-              value={collection}
-              onChange={(e) => setCollection(e.target.value)}
-              className="rounded-lg border border-gray-200 px-2 py-1.5 text-sm text-gray-600"
-            >
-              <option value="">全部集合</option>
-              {collections.map((c) => (
-                <option key={c.collection} value={c.collection}>
-                  {c.collection} ({c.docs} 篇)
-                </option>
-              ))}
-            </select>
-            <button
-              onClick={ask}
-              disabled={loading || !question.trim()}
-              className="rounded-lg bg-teal-600 px-5 py-2 text-sm font-medium text-white hover:bg-teal-700 disabled:opacity-40"
-            >
-              {loading ? "检索与生成中..." : "提问"}
-            </button>
-          </div>
-        </div>
-
-        {error && (
-          <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-            {error}
-          </div>
-        )}
-
-        {answer && (
-          <div className="mt-6 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-            <div className="mb-2 flex items-center justify-between gap-3">
-              <h2 className="text-sm font-semibold uppercase text-gray-500">回答</h2>
-              <Link
-                href={`/rag-workspace?query=${encodeURIComponent(question.trim())}${collection ? `&collection=${encodeURIComponent(collection)}` : ""}`}
-                className="rounded-full border border-gray-200 px-3 py-1 text-xs font-medium text-gray-600 hover:border-teal-200 hover:text-teal-700"
-              >
-                查看检索链路
-              </Link>
-            </div>
-            <div className="whitespace-pre-wrap text-[15px] leading-7 text-gray-800">{answer}</div>
-          </div>
-        )}
-
-        {sources.length > 0 && (
-          <div className="mt-4">
-            <h2 className="mb-2 text-sm font-semibold uppercase text-gray-500">
-              引用来源({sources.length})
-            </h2>
-            <div className="space-y-2">
-              {sources.map((s) => (
-                <details
-                  key={s.index}
-                  className="rounded-lg border border-gray-200 bg-gray-50/60 p-3"
-                >
-                  <summary className="cursor-pointer text-sm text-gray-700">
-                    <span className="font-mono text-teal-700">[{s.index}]</span>{" "}
-                    <span className="font-medium">{s.title}</span>
-                    {s.page != null && <span className="text-gray-400"> · p.{s.page}</span>}
-                  </summary>
-                  <p className="mt-2 text-xs leading-5 text-gray-600">{s.content}</p>
-                  <p className="mt-1 text-[11px] text-gray-400">
-                    {Object.entries(s.scores)
-                      .map(([k, v]) => `${k}=${v}`)
-                      .join("  ")}
-                  </p>
-                </details>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {!answer && !loading && !error && (
-          <p className="mt-10 text-center text-sm text-gray-400">
-            回答完全基于知识库中的论文内容生成,并附带可展开的原文引用。
-          </p>
-        )}
-      </div>
-    </main>
-  );
+export default function KnowledgePage(){
+  const [libraries,setLibraries]=useState<Library[]>([]),[selected,setSelected]=useState('');
+  const [documents,setDocuments]=useState<LibraryDocument[]>([]);
+  const [editing,setEditing]=useState<'new'|'edit'|null>(null),[name,setName]=useState(''),[description,setDescription]=useState('');
+  const [loading,setLoading]=useState(true),[busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
+  const [deleting,setDeleting]=useState<string|null>(null);
+  const current=libraries.find(k=>k.id===selected);
+  const refresh=useCallback(async()=>{const data=await knowledgeRequest();setLibraries(data.libraries);return data.libraries as Library[];},[]);
+  useEffect(()=>{refresh().then(data=>setSelected(data[0]?.id||'')).catch(e=>setError(e.message)).finally(()=>setLoading(false));},[refresh]);
+  useEffect(()=>{
+    if(!selected){setDocuments([]);return;}
+    let cancelled=false;setDocuments([]);
+    const read=async()=>{try{const data=await knowledgeRequest('/'+selected+'/documents');if(!cancelled){setDocuments(data.documents);setLibraries(previous=>previous.map(k=>k.id===selected?{...k,documents:data.documents.length,ready_documents:data.documents.filter((d:LibraryDocument)=>d.active_version).length}:k));}}catch(e){if(!cancelled)setError(e instanceof Error?e.message:'读取失败');}};
+    void read();const timer=setInterval(read,4000);return()=>{cancelled=true;clearInterval(timer);};
+  },[selected]);
+  const begin=(mode:'new'|'edit')=>{setEditing(mode);setName(mode==='edit'?current?.name||'':'');setDescription(mode==='edit'?current?.description||'':'');setError('');};
+  const reloadDocs=async()=>{setDocuments((await knowledgeRequest('/'+selected+'/documents')).documents);await refresh();};
+  return <main className={s.page}>
+    <aside className={s.rail}><Link className={s.brand} href="/"><img src="/img/asteria-logo.png" alt="Asteria"/>个人</Link>
+      <nav><Link href="/"><Icon name="new"/>新任务</Link><Link href="/knowledge" aria-current="page"><Icon name="folder"/>知识库</Link><Link href="/rag-workspace"><Icon name="search"/>检索分析</Link></nav>
+      <div className={s.footer}>Asteria Research</div>
+    </aside>
+    <section className={s.canvas}><header className={s.header}><h1>知识库</h1><div className={s.actions}><Link href="/">返回任务</Link><button className={s.primary} onClick={()=>begin('new')} disabled={busy}>新建知识库</button></div></header>
+      <div className={s.body}><aside className={s.list} aria-label="知识库列表">
+        {loading&&<p>正在读取…</p>}{!loading&&!libraries.length&&<p>创建知识库，添加你的资料。</p>}
+        {libraries.map(k=><button key={k.id} disabled={busy} aria-pressed={selected===k.id&&!editing} onClick={()=>{setSelected(k.id);setEditing(null);setError('');setNotice('');setDeleting(null);}}><strong>{k.name}</strong><small>{k.ready_documents} / {k.documents} 份文档可检索</small></button>)}
+      </aside><div className={s.detail}>
+        {error&&<p role="alert" className={s.error}>{error}</p>}{notice&&<p role="status" className={s.status}>{notice}</p>}
+        {editing?<form className={s.form} onSubmit={async e=>{e.preventDefault();setBusy(true);setError('');try{
+          const k=await knowledgeRequest(editing==='new'?'':'/'+selected,editing==='new'?'POST':'PATCH',{name:name.trim(),description});await refresh();setSelected(k.id);setEditing(null);
+        }catch(e){setError(e instanceof Error?e.message:'保存失败');}finally{setBusy(false);}}}>
+          <h2>{editing==='new'?'新建知识库':'编辑知识库'}</h2>
+          <label>名称<input autoFocus value={name} onChange={e=>setName(e.target.value)} maxLength={120} required/></label>
+          <label>内容简介<textarea value={description} onChange={e=>setDescription(e.target.value)} maxLength={1200} rows={4} placeholder="说明资料主题，帮助 Agent 判断何时检索这个知识库"/></label>
+          <div className={s.actions}><button type="button" disabled={busy} onClick={()=>setEditing(null)}>取消</button><button className={s.primary} disabled={busy||!name.trim()}>{busy?'保存中…':'保存'}</button></div>
+        </form>:current?<>
+          <h2>{current.name}</h2><p>{current.description||'尚未添加内容简介。'}</p>
+          <div className={s.actions}><button onClick={()=>begin('edit')}>编辑资料库</button><button onClick={()=>{
+            localStorage.setItem('asteria.knowledgeSelection',JSON.stringify({knowledge_mode:'selected',knowledge_ids:[current.id]}));window.location.href='/';
+          }}>在主界面提问</button><button onClick={()=>void reloadDocs().catch(e=>setError(e.message))}>刷新</button></div>
+          <label className={s.fileInput}>添加或更新文档
+          <input aria-label="上传知识库文档" type="file" accept=".pdf,.md,.txt" multiple disabled={busy} onChange={async e=>{
+            const files=Array.from(e.target.files||[]);e.target.value='';setBusy(true);setError('');setNotice('');
+            try{for(const file of files){const form=new FormData();form.set('file',file);await knowledgeRequest('/'+selected+'/documents','POST',form);}await reloadDocs();setNotice('已提交，索引完成后即可检索。');}
+            catch(e){setError(e instanceof Error?e.message:'上传失败');}finally{setBusy(false);}
+          }}/></label>
+          <small>PDF、Markdown、TXT，单文件最多64MiB。同名文件更新版本；相同内容跳过，新版本完成前仍可查询旧版。扫描PDF需先OCR。</small>
+          {!documents.length&&<p className={s.empty}>添加第一份资料，或从任务中选择报告入库。</p>}
+          {documents.map(d=><div className={s.document} key={d.id}><div><strong>{d.name}</strong><small>
+            {({queued:'等待索引',indexing:'正在索引',ready:'可检索',failed:'索引失败'} as Record<string,string>)[d.status]||d.status} · {d.chunks} 个片段
+            {' · '}{new Date(d.created_at).toLocaleString()}
+            {d.active_version&&d.active_version!==d.latest_version?' · 旧版仍可用':''}
+          </small>{d.error&&<small className={s.error}>{d.error}</small>}</div>
+            <div className={s.actions}>{d.active_version&&<button disabled={busy} onClick={async()=>{try{
+              const res=await authFetch('/api/knowledge/libraries/'+selected+'/documents/'+d.id+'/source');if(!res.ok)throw new Error('下载失败');
+              const url=URL.createObjectURL(await res.blob());const a=document.createElement('a');a.href=url;a.download=d.name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+            }catch(e){setError(e instanceof Error?e.message:'下载失败');}}}>原文</button>}
+            {deleting===d.id?<><span>删除后无法检索</span><button onClick={()=>setDeleting(null)}>取消</button><button disabled={busy} onClick={async()=>{setBusy(true);setError('');try{await knowledgeRequest('/'+selected+'/documents/'+d.id,'DELETE');await reloadDocs();setDeleting(null);}catch(e){setError(e instanceof Error?e.message:'删除失败');}finally{setBusy(false);}}}>确认删除</button></>
+            :<button disabled={busy||['queued','indexing'].includes(d.status)} onClick={()=>setDeleting(d.id)}>删除</button>}</div>
+          </div>)}
+        </>:<p className={s.empty}>选择或创建一个知识库。</p>}
+      </div></div>
+    </section>
+  </main>;
 }

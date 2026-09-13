@@ -60,6 +60,17 @@ export default function Home() {
     }
     return defaultSettings;
   });
+  useEffect(() => {
+    const selection = localStorage.getItem('asteria.knowledgeSelection');
+    if (!selection) return;
+    localStorage.removeItem('asteria.knowledgeSelection');
+    try {
+      const {knowledge_ids} = JSON.parse(selection);
+      if (Array.isArray(knowledge_ids) && knowledge_ids.length > 0 && knowledge_ids.length <= 3 && knowledge_ids.every(id => typeof id === 'string')) {
+        setChatBoxSettings(settings => ({...settings, knowledge_mode: 'selected', knowledge_ids}));
+      }
+    } catch { toast.error('资料选择未恢复，请重新选择知识库'); }
+  }, []);
   const [question, setQuestion] = useState("");
   const [orderedData, setOrderedData] = useState<Data[]>([]);
   const [showHumanFeedback, setShowHumanFeedback] = useState(false);
@@ -419,6 +430,8 @@ export default function Home() {
       const externalResearch = chatBoxSettings.report_type === 'multi_agents' && Boolean(langgraphHost);
       const body = {
         request_id: uuidv4(), conversation_id: id, message: newQuestion,
+        knowledge_mode: chatBoxSettings.knowledge_mode || 'auto',
+        knowledge_ids: chatBoxSettings.knowledge_ids || [],
         research_request: externalResearch ? null : {
           task: newQuestion, report_type: chatBoxSettings.report_type,
           report_source: chatBoxSettings.report_source, tone: chatBoxSettings.tone,
@@ -440,7 +453,7 @@ export default function Home() {
       if (!result) return;
       // Preserve the explicitly configured external LangGraph transport.
       // Ordinary conversation still exits through the shared Coordinator.
-      if (externalResearch && result.capability !== 'general_chat') {
+      if (externalResearch && !['general_chat','knowledge_chat'].includes(result.capability)) {
         setConversationMode('research'); setIsInChatMode(false); setLoading(true);
         const {streamResponse, host, thread_id} = await startLanggraphResearch(
           newQuestion, chatBoxSettings.report_source, langgraphHost,
