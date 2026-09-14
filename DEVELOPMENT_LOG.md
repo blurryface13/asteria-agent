@@ -433,6 +433,13 @@
 - 当前边界：个人用户级库，未做项目共享；未实现整库删除、OCR、点击引用定位历史原文、批量大库稀疏缓存。历史消息证据快照保留，删除文件不等于擦除所有历史引用。原论文库仍走检索分析入口，不自动归入个人库。
 - 下一步先按spec §23.1完成会话/项目/用户记忆的基础CRUD和统一读取，保持知识库、Skill、记忆职责分离；不在本轮加入自动记忆提取或改变研究Agent闭环。
 
+### 2026-09-15：Agent TestLab 评测合同接入（Codex / GPT-5）
+
+- TestLab 控制面已新增 Catalog、受控 Mock/pytest runner、预检 hash、运行事件、取消、BadCase 候选、Redis 可选镜像和 Prometheus 指标，并提供 Postman、JMeter、Jenkins 与 Docker 部署资产。该仓库已公开为 `blurryface13/agent-testlab`，本地目录不迁移，服务端口和 Asteria 主服务不改变。
+- Asteria 新增 `quality_judge.py` 与 `monitor.py`：四维 Judge 严格解析和结果持久化，缺字段/越界不补默认分；Monitor 从 durable results/traces 聚合调用、成功率、平均/P95 延迟、连续失败和工具错误。样本不足10次为 unknown，当前只观测，不接管 Coordinator 路由。
+- 本轮未执行真实科研请求、Judge provider 或 JMeter 压测，没有新增费用。宿主 TestLab 后端环境缺 Pillow/pytest 等依赖，已在 Docker requirements 和 Jenkinsfile 中补齐；现有 T2I 用户合同测试仍保持未改动。
+- Asteria 侧当前机器没有项目 Python 依赖环境，新增纯函数测试只完成源码/接口层设计，未声称 pytest 通过；必须在项目锁定环境中复测。该适配不改研究编排、数据库业务表或模型配置。
+
 ### 2026-09-13：本地分层Markdown记忆与统一注入（Codex / GPT-5）
 
 #### 开发节点

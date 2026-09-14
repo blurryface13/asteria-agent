@@ -23,7 +23,7 @@ T = TypeVar("T")
 class EvaluationStore:
     COLLECTIONS = (
         "traces", "badcases", "seeds", "cases", "tasks",
-        "generated_cases", "results", "reports",
+        "generated_cases", "results", "quality", "reports",
     )
 
     def __init__(self, root: str | Path | None = None):
@@ -48,7 +48,7 @@ class EvaluationStore:
         names = {
             "traces": "trace_id", "badcases": "badcase_id", "seeds": "seed_id",
             "cases": "case_id", "tasks": "task_id", "generated_cases": "generated_id",
-            "results": "result_id", "reports": "task_id",
+            "results": "result_id", "quality": "quality_id", "reports": "task_id",
         }
         return str(record.get(names[collection], ""))
 

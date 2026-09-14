@@ -15,6 +15,8 @@ from asteria_researcher.evaluation.store import EvaluationStore
 from asteria_researcher.evaluation.trace import TraceIngestor
 from asteria_researcher.evaluation.asteria_executor import build_asteria_executor
 from asteria_researcher.evaluation.runner import EvaluationRunner
+from asteria_researcher.evaluation.monitor import aggregate_monitor
+from asteria_researcher.evaluation.quality_judge import QualityEvaluationRecord, build_judge_prompt, evaluate_provider_output
 from backend.auth.dependencies import get_current_user_email
 
 router = APIRouter(prefix="/api/evaluation", tags=["evaluation"])
@@ -47,6 +49,21 @@ class ReviewRequest(BaseModel):
 
 class TaskGenerateRequest(BaseModel):
     responses: list[str] | None = None
+
+
+class QualityJudgeRequest(BaseModel):
+    question: str = Field(min_length=1)
+    response: str = Field(min_length=1)
+    judge_output: str = Field(min_length=1)
+    task_id: str | None = None
+    case_id: str | None = None
+
+
+class JudgePromptRequest(BaseModel):
+    question: str = Field(min_length=1)
+    response: str = Field(min_length=1)
+    context: str = ""
+    evidence: list[str] = Field(default_factory=list, max_length=100)
 
 
 @router.get("/health")
@@ -240,6 +257,41 @@ async def review_generated_case(generated_id: str, request: ReviewRequest, _emai
 @router.get("/reports")
 async def list_reports(limit: int = 100, _email: str = Depends(get_current_user_email)):
     return {"reports": store.list("reports", limit=max(1, min(limit, 1000)))}
+
+
+@router.post("/quality/prompt")
+async def quality_prompt(request: JudgePromptRequest, _email: str = Depends(get_current_user_email)):
+    """Return the fixed judge prompt without making a provider call."""
+    return {"rubric_version": "research-v1", "prompt": build_judge_prompt(request.question, request.response, request.context, request.evidence)}
+
+
+@router.post("/quality/judge")
+async def quality_judge(request: QualityJudgeRequest, _email: str = Depends(get_current_user_email)):
+    """Ingest and validate an external LLM Judge response.
+
+    Provider calls stay outside this API so a TestLab run can explicitly own
+    model, cost and timeout policy. Invalid output is persisted as judge_error.
+    """
+    record = evaluate_provider_output(
+        request.question, request.response, request.judge_output,
+        task_id=request.task_id, case_id=request.case_id,
+    )
+    store.upsert("quality", record)
+    payload = record.model_dump(mode="json")
+    if record.scores:
+        payload["overall"] = record.scores.overall
+    return payload
+
+
+@router.get("/quality")
+async def list_quality(limit: int = 100, _email: str = Depends(get_current_user_email)):
+    return {"quality": store.list("quality", limit=max(1, min(limit, 1000)))}
+
+
+@router.get("/monitor")
+async def monitor(_email: str = Depends(get_current_user_email)):
+    """Return an observation-only snapshot from durable evaluation records."""
+    return aggregate_monitor(store.list("results", limit=1000), store.list("traces", limit=1000))
 
 
 @router.post("/tasks/{task_id}/run")

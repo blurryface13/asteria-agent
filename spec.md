@@ -1261,15 +1261,23 @@ Agent → 记忆已接入真实CRUD和磁盘版本处理，沿用现有深色设
 
 ## 24. Agent TestLab 评测接入计划（2026-09-15，Codex / GPT-5）
 
-本节仅为设计入口，不代表 Monitor、独立 Judge 或新测试链路已部署。用户确认将原个人 T2I Safety 控制台扩展为 Agent TestLab，GitHub 已更名为 `blurryface13/agent-testlab`，保持私有；本地路径暂不迁移。
+本节记录接入边界与当前实现。用户确认将原个人 T2I Safety 控制台扩展为 Agent TestLab，GitHub 已更名为 `blurryface13/agent-testlab` 并公开；本地路径暂不迁移。
 
 详细规格维护于 TestLab 仓库 `spec.md`、`docs/AGENT_EVALUATION_PLAN.md`、`docs/TEST_CATALOG.md`、`DESIGN.md`。本机可阅读[科研评测计划](/Users/dora/Downloads/GEN/t2i-safety-eval/docs/AGENT_EVALUATION_PLAN.md)。这些文档本轮仅保存本地，尚未推送。
 
-- Asteria 保持被测系统身份，复用 EchoMind evaluator/PerformanceMonitor 的合同接入当前 Coordinator 与 durable Run，不用旧 BasicReport/ChiefEditor 或另一套模型流程代替真实入口。
+- Asteria 保持被测系统身份，复用 EchoMind evaluator/PerformanceMonitor 的合同接入当前 Coordinator 与 durable Run，不用旧 BasicReport/ChiefEditor 或另一套模型流程代替真实入口。2026-09-15 已增加独立 Judge 合同和 durable-result Monitor adapter，默认不改变主编排。
 - 第一批只设计两组：限定单篇原文精读＋报告追问；数字水印方法综述＋受限实验计划。每组包含后续回合，不把回合数冒充组数，不宣称五组已落地。
 - 评测独立于生产审核，保留四维评分、0.75 质量阈值，评分错误独立记录。历史补评不重跑研究；模型/来源/rubric 版本与评分覆盖率必须可查。
-- Monitor 从持久事件增量聚合，进程间共享正确的统计来源。health penalty 仅作用于同能力可替代实例；单实例先做观测，不伪造动态路由效果。人工等待不算工具活跃时延。
+- Monitor 从持久事件/评测结果聚合，进程间共享正确的统计来源。health penalty 仅作用于同能力可替代实例；当前没有足够候选池时只返回 `unknown` 与 `observation_only`，不伪造动态路由效果。人工等待不算工具活跃时延。
 - 历史失败 `review_45a4fe4926464764aa58d60f40532e75`（形式化局限章节误阻塞）及 `review_0f65351bc6f04f31bd4416825a0e0821`（目标 ID 遗漏）来自现有开发日志，本轮未新复现。后续修复记录与原失败分开展示。
 - TestLab 负责 pytest/Requests、Postman/Newman、JMeter、Jenkins 与结果工作台；不复制公司数据或运行环境，不直接共享生产写库权限。全文文档说明范围、来源许可和隔离要求。
 
-本轮未修改 Asteria 代码、模型配置、服务或数据库，未产生付费调用。下一次从测试隔离、来源许可和只读接口冒烟开始，不以简历占位数字作为验收结果。
+本轮 TestLab 控制面和 Asteria 评测合同已分别落地，未修改 Asteria Coordinator、模型配置或业务数据库 schema，未产生付费调用。真实 Coordinator live/rescore、认证接入和历史证据读取仍需在项目运行环境中复测，不以 Mock 运行或简历占位数字作为验收结果。
+
+## 25. EchoMind 风格 Judge 与 Monitor 适配实现（2026-09-15，Codex / GPT-5）
+
+- 新增 `asteria_researcher/evaluation/quality_judge.py`：固定 `research-v1` rubric，保留 relevance、accuracy、completeness、helpfulness 四维和 overall 均值，支持 reasons、evidence_ids、unverifiable_claims。外部模型调用由上层 provider 负责；当前模块只生成提示词、严格解析和持久化记录。
+- 新增 `POST /api/evaluation/quality/prompt`、`POST /api/evaluation/quality/judge`、`GET /api/evaluation/quality`。不完整 JSON、缺维度、越界值或 provider 错误保存为 `judge_error`，不默认补 0.5；同一报告可生成新的 quality_id，不覆盖原结果。
+- 新增 `asteria_researcher/evaluation/monitor.py` 与 `GET /api/evaluation/monitor`，从持久化 results/traces 聚合 Agent/工具调用、成功率、平均/P95 延迟、连续失败与工具错误。样本不足10次返回 `unknown`，有足够数据时只给出 observation-only penalty，当前不接管 Coordinator 路由。
+- 新增纯函数合同测试 `tests/evaluation/test_quality_monitor.py`；由于本机当前没有 Asteria 项目依赖环境，未虚报 pytest 通过，部署/CI 环境需用项目依赖实际执行。
+- TestLab 的 `backend/app/testing` 负责控制面、Mock、工具资产和运行记录；Asteria 负责真实 Coordinator trace 与 Judge/Monitor 语义，二者通过受控 API/Trace 合同衔接，不共享生产数据库凭据。
