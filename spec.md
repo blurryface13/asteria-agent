@@ -1258,3 +1258,18 @@ Markdown是唯一可编辑正文，网页编辑与本地编辑作用于同一文
 Agent → 记忆已接入真实CRUD和磁盘版本处理，沿用现有深色设置界面。本轮实现手动维护、自动选读和共享注入，**不包含Agent自动提取/自动写回、memory_search/read/write动作、语义冲突合并、过期清理或远程工作区同步**。后续先增加带来源的写入提议和人工确认，再按需求补运行中自主查询；与知识库资料索引、Skill方法指导、实验工具授权保持分离。
 
 验证按文件安全/归属、Provider注入、worker上下文、网页编辑冲突和真实模型问答分层进行；完整记录见DEVELOPMENT_LOG.md。此次不改研究工作台设计语言，不清理.next、不升级依赖，必要后端重载前确认无活动任务。
+
+## 24. Agent TestLab 评测接入计划（2026-09-15，Codex / GPT-5）
+
+本节仅为设计入口，不代表 Monitor、独立 Judge 或新测试链路已部署。用户确认将原个人 T2I Safety 控制台扩展为 Agent TestLab，GitHub 已更名为 `blurryface13/agent-testlab`，保持私有；本地路径暂不迁移。
+
+详细规格维护于 TestLab 仓库 `spec.md`、`docs/AGENT_EVALUATION_PLAN.md`、`docs/TEST_CATALOG.md`、`DESIGN.md`。本机可阅读[科研评测计划](/Users/dora/Downloads/GEN/t2i-safety-eval/docs/AGENT_EVALUATION_PLAN.md)。这些文档本轮仅保存本地，尚未推送。
+
+- Asteria 保持被测系统身份，复用 EchoMind evaluator/PerformanceMonitor 的合同接入当前 Coordinator 与 durable Run，不用旧 BasicReport/ChiefEditor 或另一套模型流程代替真实入口。
+- 第一批只设计两组：限定单篇原文精读＋报告追问；数字水印方法综述＋受限实验计划。每组包含后续回合，不把回合数冒充组数，不宣称五组已落地。
+- 评测独立于生产审核，保留四维评分、0.75 质量阈值，评分错误独立记录。历史补评不重跑研究；模型/来源/rubric 版本与评分覆盖率必须可查。
+- Monitor 从持久事件增量聚合，进程间共享正确的统计来源。health penalty 仅作用于同能力可替代实例；单实例先做观测，不伪造动态路由效果。人工等待不算工具活跃时延。
+- 历史失败 `review_45a4fe4926464764aa58d60f40532e75`（形式化局限章节误阻塞）及 `review_0f65351bc6f04f31bd4416825a0e0821`（目标 ID 遗漏）来自现有开发日志，本轮未新复现。后续修复记录与原失败分开展示。
+- TestLab 负责 pytest/Requests、Postman/Newman、JMeter、Jenkins 与结果工作台；不复制公司数据或运行环境，不直接共享生产写库权限。全文文档说明范围、来源许可和隔离要求。
+
+本轮未修改 Asteria 代码、模型配置、服务或数据库，未产生付费调用。下一次从测试隔离、来源许可和只读接口冒烟开始，不以简历占位数字作为验收结果。
