@@ -440,6 +440,13 @@
 - 本轮未执行真实科研请求、Judge provider 或 JMeter 压测，没有新增费用。宿主 TestLab 后端环境缺 Pillow/pytest 等依赖，已在 Docker requirements 和 Jenkinsfile 中补齐；现有 T2I 用户合同测试仍保持未改动。
 - Asteria 侧当前机器没有项目 Python 依赖环境，新增纯函数测试只完成源码/接口层设计，未声称 pytest 通过；必须在项目锁定环境中复测。该适配不改研究编排、数据库业务表或模型配置。
 
+### 2026-09-15：Asteria 主测开工作台接入复验（Codex / GPT-5）
+
+- TestLab 已把 Asteria 设为默认测试对象，T2I 只作为兼容目标；本轮不把文生图、VLM/LLM Judge 或真实付费科研任务作为 Asteria 测试前置条件。
+- Asteria 合同测试 `tests/test_testlab_contract.py` 在当前项目环境通过 `4 passed`；TestLab 工作台合同通过 `12 passed`，前端构建通过。运行中的 Asteria API 通过 Requests 固定读取 OpenAPI 与 Agent Discovery，页面实际完成 Asteria `U-A01` pytest 和 `A-A01` Requests 各 1/1 通过。
+- 新增并固定 Asteria Postman Collection、只读 JMeter JMX 与 Jenkins 合同分支；JMeter/外部 Jenkins 未在本机实际发压或连接，Docker daemon 未启动，因此不把 Compose 配置检查写成镜像部署成功。
+- 文档明确 pytest/Requests、Postman/Newman、JMeter、Jenkins 的学习和使用边界；Charles/Fiddler、Tapd/Jira、Linux/SQL/Docker 作为辅助知识，不新增未实现的连接器。此节点由 Codex（GPT-5）完成并记录。
+
 ### 2026-09-13：本地分层Markdown记忆与统一注入（Codex / GPT-5）
 
 #### 开发节点

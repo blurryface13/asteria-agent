@@ -1263,7 +1263,7 @@ Agent → 记忆已接入真实CRUD和磁盘版本处理，沿用现有深色设
 
 本节记录接入边界与当前实现。用户确认将原个人 T2I Safety 控制台扩展为 Agent TestLab，GitHub 已更名为 `blurryface13/agent-testlab` 并公开；本地路径暂不迁移。
 
-详细规格维护于 TestLab 仓库 `spec.md`、`docs/AGENT_EVALUATION_PLAN.md`、`docs/TEST_CATALOG.md`、`DESIGN.md`。本机可阅读[科研评测计划](/Users/dora/Downloads/GEN/t2i-safety-eval/docs/AGENT_EVALUATION_PLAN.md)。这些文档本轮仅保存本地，尚未推送。
+详细规格维护于 TestLab 仓库 `spec.md`、`docs/AGENT_EVALUATION_PLAN.md`、`docs/TEST_CATALOG.md`、`DESIGN.md`。本机可阅读[科研评测计划](/Users/dora/Downloads/GEN/t2i-safety-eval/docs/AGENT_EVALUATION_PLAN.md)；TestLab 的主目标、工具链和 Asteria runner 以该仓库的最新提交为准。
 
 - Asteria 保持被测系统身份，复用 EchoMind evaluator/PerformanceMonitor 的合同接入当前 Coordinator 与 durable Run，不用旧 BasicReport/ChiefEditor 或另一套模型流程代替真实入口。2026-09-15 已增加独立 Judge 合同和 durable-result Monitor adapter，默认不改变主编排。
 - 第一批只设计两组：限定单篇原文精读＋报告追问；数字水印方法综述＋受限实验计划。每组包含后续回合，不把回合数冒充组数，不宣称五组已落地。
@@ -1273,6 +1273,14 @@ Agent → 记忆已接入真实CRUD和磁盘版本处理，沿用现有深色设
 - TestLab 负责 pytest/Requests、Postman/Newman、JMeter、Jenkins 与结果工作台；不复制公司数据或运行环境，不直接共享生产写库权限。全文文档说明范围、来源许可和隔离要求。
 
 本轮 TestLab 控制面和 Asteria 评测合同已分别落地，未修改 Asteria Coordinator、模型配置或业务数据库 schema，未产生付费调用。真实 Coordinator live/rescore、认证接入和历史证据读取仍需在项目运行环境中复测，不以 Mock 运行或简历占位数字作为验收结果。
+
+## 26. Asteria 主测开工作台接入（2026-09-15，Codex / GPT-5）
+
+- TestLab 本轮将 Asteria 设为默认被测对象，T2I 仅保留兼容入口；新增 Coordinator 请求合同、Judge/Monitor 合同、异步意图路由、只读 API、Agent 行为、只读性能和故障恢复场景目录。
+- Asteria 仓库新增 `tests/test_testlab_contract.py`，只验证路由、请求安全边界、严格评分/观测合同和异步意图结构，不启动研究任务、不访问生产数据库；TestLab 新增固定 Requests 冒烟，只访问 Asteria `/openapi.json` 与 `/.well-known/agent-discovery.json`。
+- 测开工具按学习目标分层：pytest/Requests 是可重复断言主线，Postman/Newman 是接口编排与 CI 重放，JMeter 是隔离控制面性能练习，Jenkins 是回归与报告归档；Charles/Fiddler、Tapd/Jira、Linux/SQL/Docker 作为辅助工具，不冒充已接入的外部连接器。
+- 文生图、VLM/LLM Judge 和真实付费研究请求不属于本轮 Asteria 冒烟前置条件。此次只读 API 验证不等于 Agent 端到端质量验证；E-A01/F-A01 仍需在隔离测试用户和固定 Trace 环境中逐步开启。
+- 本节点由 Codex（GPT-5）完成并记录；未改动 Coordinator 主编排、模型配置或业务数据库 schema。
 
 ## 25. EchoMind 风格 Judge 与 Monitor 适配实现（2026-09-15，Codex / GPT-5）
 
