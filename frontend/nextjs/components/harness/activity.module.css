@@ -20,4 +20,20 @@
 .graph svg { width: 100%; max-height: 400px; }
 .activity a { color: #adc2e0; }
 .edges { max-height: 320px; overflow: auto; }
+.collaboration { color: oklch(84% .009 260); margin: 16px 0; font-size: 13px; line-height: 1.65; }
+.collaboration h3 { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+.collaboration h4 { font-size: 13px; font-weight: 600; }
+.collaboration summary { padding: 8px 0; cursor: pointer; overflow-wrap: anywhere; }
+.collaboration summary:focus-visible { outline: 2px solid oklch(78% .07 255); outline-offset: 3px; border-radius: 3px; }
+.batch { border-bottom: 1px solid oklch(34% .009 260); padding: 14px 0; }
+.batchHeading { display: flex; justify-content: space-between; gap: 8px 18px; flex-wrap: wrap; }
+.batchHeading > span:last-child { color: oklch(73% .01 260); font-size: 12px; }
+.assignments { margin-top: 4px; }
+.assignment { margin: 6px 0 12px; padding-left: 12px; border-left: 2px solid oklch(44% .03 255); }
+.assignment p { margin: 3px 0; overflow-wrap: anywhere; }
+.arrivals { list-style: decimal; padding-left: 20px; margin: 8px 0; }
+.arrivals > li { padding: 8px 0 8px 4px; }
+.finding { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 280px; overflow: auto; padding: 8px 0; }
+.handoffs { margin-top: 16px; }
+.handoffs details { border-bottom: 1px solid oklch(34% .009 260); }
 @media (max-width: 640px) { .action > summary { flex-wrap: wrap; gap: 4px 10px; } .purpose { flex-basis: 75%; } }

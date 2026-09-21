@@ -15,7 +15,7 @@ class Manifest(BaseModel):
     kind: Literal["content", "guidance", "policy", "contract"]
     selectable: bool
     version: str
-    phases: list[Literal["research", "writing", "formatting"]]
+    phases: list[Literal["research", "writing", "formatting", "assistance"]]
     description: str
     source: str
     files: list[str] = Field(min_length=1)

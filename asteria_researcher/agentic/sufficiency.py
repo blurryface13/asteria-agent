@@ -26,12 +26,21 @@ class ProcessRequirement(BaseModel):
     related_goals: list[RequiredGoal] = Field(default_factory=list, max_length=8)
 
 
+class ImplementationGoal(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    id: str = Field(pattern=r"^c[1-9][0-9]*$")
+    kind: Literal["code_analysis", "code_change", "experiment_execution"]
+    description: str = Field(min_length=1, max_length=800)
+    user_quote: str = Field(min_length=2, max_length=600)
+
+
 class ReviewPlan(Plan):
     required_goals: list[RequiredGoal] = Field(min_length=1, max_length=8)
     process_requirements: list[ProcessRequirement] = Field(default_factory=list, max_length=2)
     # Classification preserves moved goals/process quotes as well as original constraints.
     delivery_constraints: list[str] = Field(default_factory=list, max_length=48)
     optional_extensions: list[str] = Field(default_factory=list, max_length=8)
+    implementation_requirements: list[ImplementationGoal] = Field(default_factory=list, max_length=4)
 
 
 class ProcessMove(BaseModel):
@@ -85,7 +94,7 @@ def normalized(text):
 
 
 def validate_contract(plan, user_text):
-    requirements = [*plan.required_goals, *plan.process_requirements,
+    requirements = [*plan.required_goals, *plan.process_requirements, *plan.implementation_requirements,
                     *(g for p in plan.process_requirements for g in p.related_goals)]
     ids = [g.id for g in requirements]
     if len(ids) != len(set(ids)):

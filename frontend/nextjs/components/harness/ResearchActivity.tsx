@@ -1,13 +1,19 @@
 "use client";
 import { useState } from "react";
 import s from "./activity.module.css";
+import CollaborationProgress from "./CollaborationProgress";
 
 const labels: Record<string, string> = {search: "检索论文", read: "读取原文", references: "追踪参考文献",
   retrieve: "检索证据片段", delegate: "委派研究", request_user: "等待确认", finish: "汇总发现",
   agent: "研究任务", skill: "研究规范", plan: "研究计划", write: "综合写作", publish: "编译与交付", dependency_check: "依赖检查",
-  read_passage: "阅读原文页段", sufficiency: "研究充分性审查", assessment_check: "审查证据校验", report_check: "报告校验", run: "研究运行"};
+  read_passage: "阅读原文页段", sufficiency: "研究充分性审查", assessment_check: "审查证据校验", report_check: "报告校验", run: "研究运行",
+  delegation_quality: "分工质量检查", parallel_batch: "并行批次", parallel_result: "阶段结果回传", implementation_review: "代码交付验收",
+  research_handoff: "定向调研求助", research_request: "接收求助", research_response: "调研答复",
+  search_papers: "检索论文", read_paper: "获取论文", read_paper_passage: "核对论文页段",
+  inspect_repository: "调查代码仓库", read_repository_file: "读取仓库文件", read_workspace_file: "读取工作区文件",
+  list_workspace_files: "查找工作区文件", propose_workspace_change: "提交修改提案", preview_code_diff: "预览修改差异", check_python_syntax: "检查 Python 语法"};
 const stateLabels: Record<string, string> = {started: "进行中", completed: "已完成", failed: "失败",
-  incomplete: "带缺口回传", partial: "部分读取失败", waiting: "待确认"};
+  incomplete: "带缺口回传", partial: "部分读取失败", waiting: "等待答复", cancelled: "已取消"};
 function parse(value: any) {
   if (typeof value !== "string") return value;
   try { return JSON.parse(value); } catch { return null; }
@@ -38,7 +44,7 @@ export default function ResearchActivity({logs, done, active}: {logs: any[]; don
   const fatal = [...events].reverse().find(e => e.severity === "fatal");
   const transportFailure = [...logs].reverse().find(l => l.header === "error");
   const taskError = fatal?.error || transportFailure?.text;
-  const childCount = Array.from(groups.keys()).filter(name => name.startsWith("researcher-")).length;
+  const childCount = Array.from(groups.keys()).filter(name => /^(researcher-|coding-|research-help-)/.test(name)).length;
   const nodes: any[] = data?.nodes || [], edges: any[] = data?.edges || [];
   const focus = nodes.find(n => n.id === selected) || nodes.find(n => edges.some(e => e.source === n.id)) || nodes[0];
   const related = focus ? edges.filter(e => e.source === focus.id || e.target === focus.id) : [];
@@ -48,8 +54,9 @@ export default function ResearchActivity({logs, done, active}: {logs: any[]; don
       <span className={taskError ? s.failedDot : done ? s.done : s.dot} />
       <span>{taskError ? "研究任务失败" : done ? "研究与交付已完成" : !active ? "研究已停止，可展开查看执行记录" : latest?.purpose || "正在组织研究"}</span>
     </div>
+    <CollaborationProgress events={events} active={active && !done} />
     <details>
-      <summary>{groups.size > 0 ? `${childCount} 个研究子任务 · ${events.filter(e => e.status === "completed" && e.call_id).length} 次操作完成` : "查看执行过程"}</summary>
+      <summary>{groups.size > 0 ? `${childCount} 个协作子任务 · ${events.filter(e => e.status === "completed" && e.call_id).length} 次操作完成` : "查看执行过程"}</summary>
       {Array.from(groups.entries()).map(([agent, actions]) => <details className={s.agent} key={agent}>
         <summary>{agent === "lead" ? "主 Agent" : agent === "assessor" ? "充分性审查 Agent" : agent.split(":").slice(1).join(":") || agent}<small>{actions.length} 项活动</small></summary>
         {actions.map((event, i) => <details className={s.action} key={event.call_id || `${event.tool}-${i}`}>

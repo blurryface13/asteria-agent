@@ -91,6 +91,21 @@
     ],
     "source": "Asteria"
   },
+  {"id":"learning_assistance","title":"学习指导","kind":"guidance","selectable":false,"version":"1","phases":["assistance"],"description":"学习目标、先修知识、练习与验证","files":["learning_assistance.md"],"source":"Asteria; EchoMind role-contract pattern"},
+  {"id":"submission_assistance","title":"投稿信息核验","kind":"guidance","selectable":false,"version":"1","phases":["assistance"],"description":"官方来源、年份、时区、范围与材料","files":["submission_assistance.md"],"source":"Asteria; EchoMind role-contract pattern"},
+  {"id":"finance_assistance","title":"金融资料研究","kind":"guidance","selectable":false,"version":"1","phases":["assistance"],"description":"公开资料分析与风险边界，不执行交易","files":["finance_assistance.md"],"source":"Asteria; EchoMind role-contract pattern"},
+  {"id":"company_assistance","title":"企业公开信息背调","kind":"guidance","selectable":false,"version":"1","phases":["assistance"],"description":"主体消歧、公开来源、事实与不确定性","files":["company_assistance.md"],"source":"Asteria; EchoMind role-contract pattern"},
+  {
+    "id": "workspace_assistance",
+    "title": "私有文件与代码助手",
+    "kind": "guidance",
+    "selectable": false,
+    "version": "1",
+    "phases": ["assistance"],
+    "description": "MCP读写提案、版本校验、人工确认；不执行代码",
+    "files": ["workspace_assistance.md"],
+    "source": "Asteria"
+  },
   {
     "id": "report_formatting",
     "title": "报告输出契约",
