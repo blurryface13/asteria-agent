@@ -18,11 +18,11 @@ Lead 先给出有区分度的 assignment；运行时检查所有当前目标都�
 | BaseAgent._call_llm | agentic/coding.py · run_coding | 保留角色/工具/观察循环，用现有通用模型接口，不绑定Anthropic；适合研究任务的轮次预算 |
 | AgentOrchestrator.run_parallel | agentic/collaboration.py · run_parallel | as_completed逐项回传，每个角色接不同assignment；最终返回仍保留分工顺序，失败/取消不抹掉早期结果 |
 | ResponseComposer | AutonomousReview 汇总与 write_report | 先独立审查证据/代码交付，再写作，不把拼接回答当作验收 |
-| core/intent_recognizer.py | 当前入口尚未迁移 | 三路融合及LRU仍是下一阶段，不能当成本轮已实现 |
+| core/intent_recognizer.py | agentic/intent_fusion.py、intent.py | 三路融合；实际bge-m3向量；严格LRU＋TTL；完整上下文/用户隔离；冲突先澄清 |
 
 这是参考源码后的模块级适配，不是整包原样复制。学 EchoMind 的角色/循环/并行章节可以对应理解；新增分工审查、c-ID验收和研究求助需看本地代码。
 
-## 3. 两条用户视角指令
+## 3. 用户视角指令
 
 ### A：分工覆盖与区分度
 
@@ -59,12 +59,17 @@ Lead 先给出有区分度的 assignment；运行时检查所有当前目标都�
 
 ```bash
 python -m pytest tests/test_agentic_collaboration.py tests/test_collaboration_streaming.py -q
+python -m pytest tests/test_intent_fusion.py -q
 python -m pytest tests -q
 ASTERIA_RUNS_DB_TESTS=1 python -m pytest tests/test_lab_release.py tests/test_durable_runs.py tests/test_coordinator_turns.py -q
 python scripts/evaluate-collaboration.py --live --case all
+python scripts/evaluate-intent-routing.py --vector-only
+python scripts/evaluate-intent-routing.py --live
 ```
 
 真实模型指令显式使用 --live，最多24次逻辑模型调用；底层SDK可能重试。使用当前环境配置，不自动换供应商；结果写入 outputs/collaboration-eval-*。其中planning仅验收分工与语义审查，不假冒已跑完整调研；coding是只读夹具+实际模型/论文工具，不执行代码。
+
+路由脚本单独提供六条固定输入：代码检查、学习计划、论文综述、投稿查询、金融概念与公司公开资料核查。`--vector-only` 只调用当前 Embedding；`--live` 最多六次逻辑分类调用，遇到模型错误停止，不生成“通过”的替代结果。输出 `outputs/intent-routing-*/summary.json`；两种模式均不执行用户业务任务。七类非研究能力另在替身测试中验证：无论由旧入口现场识别还是作为已有分类传入，都不能误启动研究循环。
 
 前端在frontend/nextjs执行：
 
@@ -76,10 +81,13 @@ node --test tests/collaboration.test.cjs tests/management.test.cjs tests/memory.
 ## 6. 本次结果与未完成项
 
 - 协作专项35条通过：原25条加直接论文工具、静态检查不执行、伪造observation拒绝、快任务先返回、取消保留结果、进度投影和独立代码入口的实时回传。
-- 全量后端166条通过、5条环境条件跳过；另启用真实PG/Redis的指定测试集14条通过，含运行中progress持久化、跨用户读取拒绝、终态保留（与全量有重叠，不相加宣传总数）。
+- 入口专项33条通过，覆盖融合、LLM/向量并行、模板复用、10用户冷启动、上下文与身份缓存隔离、TTL/LRU、降级标注、澄清和旧入口拒绝误启动。语义决策用替身，不把这些测试称为模型准确率评测。
+- 全量后端199条通过、5条环境条件跳过；另启用真实PG/Redis的指定测试集14条通过，含运行中progress持久化、跨用户读取拒绝、终态保留、澄清不启动任务（与全量有重叠，不相加宣传总数）。
+- 上述是当前工作区（含之前的实验室共享版改动）。本轮待提交文件单独导出的干净副本全量195通过/4跳过，另启用真实PG的Coordinator/durable Run集9条通过；证明路由协作增量不依赖未提交的登录/公共库代码。副本测试所需数据库地址仅从本机环境加载，不复制或提交凭据。
 - 前端TypeScript检查通过，8条React/Markdown/历史/记忆测试通过。历史测试补齐新增鉴权辅助函数的Mock，保持旧免登录缓存测试语义，不修改业务实现绕过失败。
 - 浏览器对实际组件的隔离样例检查通过：分工展开、先回传一路、全部回传仍待验收、取消保留结果；未改主站认证，未伪造生产任务。本项是组件视觉与交互验收，不是登录后真实LLM端到端验收。
 - 实际MCP子进程读了隔离测试用户文件，研究/代码决策使用脚本模型和论文替身；不能称为真实模型效果评测。
 - GitHub只读工具真实读取了 psf/requests，固定commit dae7ef63b4df6eded86637f251fc4e3a06c3b479；文件 docs/_themes/flask_theme_support.py，4875字符，未执行。
 - 真实模型首次请求返回HTTP402余额不足；两条真实模型验收未通过验收流程，尤其不能声称“研究分工质量已证实”。失败记录在 outputs/collaboration-eval-0ce962d515/summary.json。
-- 待继续：模型服务可用后按上述用户指令观察真实分工/求助质量；入口融合识别与普通领域主辅路由；授权隔离的实验执行器。语法检查和diff不是完整coding验收，还需测试执行、退出码/日志、修复后重跑与结果比对。
+- 真实Ollama bge-m3的六条向量探针均匹配预期类别，记录在 outputs/intent-routing-aa210d7c51/summary.json；不是融合路由或任务成功率，也不支持“准确率100%”的结论。
+- 待继续：模型服务可用后按上述用户指令观察真实分工/求助质量；普通领域主辅路由；授权隔离的实验执行器。语法检查和diff不是完整coding验收，还需测试执行、退出码/日志、修复后重跑与结果比对。

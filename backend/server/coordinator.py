@@ -22,6 +22,17 @@ tasks: set[asyncio.Task] = set()
 logger = logging.getLogger(__name__)
 
 
+@router.get('/capabilities')
+async def capabilities(_email=Depends(get_current_user_email)):
+    from asteria_researcher.agentic.capabilities import profile_catalog, RESEARCH
+    from asteria_researcher.agentic.intent_fusion import VERSION
+    return {'specialists':profile_catalog(),'research':sorted(RESEARCH),
+            'routing':{'version':VERSION[:12],'strategies':['llm_few_shot','embedding','pattern'],
+                       'vector_fallback':'local_ngram (explicit in each trace)',
+                       'cache':'user/conversation/context scoped LRU, 256 entries, TTL 300s',
+                       'low_confidence':'clarify_without_task_execution'}}
+
+
 def conversation_context(messages, completed_run=None, artifacts=()):
     """A completed research request is history, not an unanswered user turn."""
     history = []
@@ -110,6 +121,19 @@ async def execute_turn(body, email):
 
     pool = await get_pool()
 
+    progress_events = []
+    async def record_progress(event):
+        from backend.server.collaboration_progress import project_event
+        projected = project_event(event)
+        if projected is None:
+            return
+        progress_events.append(projected)
+        del progress_events[:-80]
+        async with pool.acquire() as c:
+            await c.execute('''UPDATE coordinator_turns SET result=COALESCE(result,'{}'::jsonb) || $3::jsonb
+                WHERE conversation_id=$1 AND request_id=$2 AND status='running' ''',
+                body.conversation_id, body.request_id, {'progress': progress_events})
+
     async def record(event):
         if event.get('type') != 'usage':
             return
@@ -140,14 +164,21 @@ async def execute_turn(body, email):
             if len(allowed) != len(set(body.knowledge_ids)):
                 raise HTTPException(404,'所选知识库不存在')
             # Explicit library scope is a user command, not a keyword heuristic.
-            intent = Intent(capability='knowledge_chat', reason='用户指定知识库问答',knowledge_ids=body.knowledge_ids)
+            intent = Intent(capability='knowledge_chat', reason='用户指定知识库问答',knowledge_ids=body.knowledge_ids,
+                            routing_trace={'mode':'explicit_library_selection','cache_hit':False})
         elif catalog:
             intent = await analyze_intent(body.message, model, history=history[:-1], report=report,
-                knowledge_catalog=[{k:item[k] for k in ('id','name','description','ready_documents')} for item in catalog])
+                knowledge_catalog=[{k:item[k] for k in ('id','name','description','ready_documents')} for item in catalog],
+                cache_scope={'email':email,'conversation_id':body.conversation_id})
         else:
-            intent = await analyze_intent(body.message, model, history=history[:-1], report=report)
+            intent = await analyze_intent(body.message, model, history=history[:-1], report=report,
+                                         cache_scope={'email':email,'conversation_id':body.conversation_id})
         result = {'intent': intent.model_dump(), 'capability': intent.capability, 'memory': memory}
-        if intent.capability == 'knowledge_chat':
+        from asteria_researcher.agentic.capabilities import PROFILES, RESEARCH
+        if intent.needs_clarification:
+            result['response'] = {'role':'assistant','content':intent.clarification_question,
+                'metadata':{'turn_id':body.request_id,'needs_clarification':True,'routing':intent.routing_trace}}
+        elif intent.capability == 'knowledge_chat':
             allowed_ids = {k['id'] for k in catalog}
             if not intent.knowledge_ids or not set(intent.knowledge_ids) <= allowed_ids:
                 raise ValueError('Coordinator selected invalid library scope')
@@ -168,12 +199,19 @@ async def execute_turn(body, email):
             if not content or not content.strip():
                 raise ValueError('模型未返回有效回答')
             result['response'] = {'role': 'assistant', 'content': content, 'metadata': {'tool_calls': metadata or [], 'turn_id': body.request_id}}
+        elif intent.capability in PROFILES:
+            from backend.server.specialists import run_specialist
+            content,metadata=await run_specialist(intent.capability,body.message,history[:-1],model,email,body.knowledge_mode,
+                                                progress=record_progress)
+            result['response']={'role':'assistant','content':content,'metadata':{**metadata,'turn_id':body.request_id}}
         elif body.research_request is not None:
             request = {**body.research_request, 'task': body.message, 'coordinator_capability': intent.capability}
             # Request identity survives lost HTTP responses; worker ownership and
             # research lifecycle continue to be enforced by the existing store.
             run = await RunStore().submit(email, body.request_id, body.conversation_id, validate_request(request))
             result['run_id'] = run['id']
+        if progress_events:
+            result['progress'] = progress_events
         async with pool.acquire() as c, c.transaction():
             status = await c.fetchval('SELECT status FROM coordinator_turns WHERE conversation_id=$1 AND request_id=$2 FOR UPDATE', body.conversation_id, body.request_id)
             if status != 'running':
@@ -181,10 +219,11 @@ async def execute_turn(body, email):
             if 'response' in result:
                 message = result['response']
                 message['metadata']['memory'] = memory
+                message['metadata']['routing'] = intent.routing_trace
                 await c.execute('''INSERT INTO workspace_messages(id,conversation_id,role,content,metadata)
                     VALUES($1,$2,'assistant',$3,$4)''', str(uuid4()), body.conversation_id, message['content'], message['metadata'])
             await c.execute('''UPDATE workspace_conversations SET mode=$2,updated_at=now() WHERE id=$1''',
-                            body.conversation_id, 'research' if report or intent.capability not in {'general_chat','knowledge_chat'} else 'chat')
+                            body.conversation_id, 'research' if report or (intent.capability in RESEARCH and not intent.needs_clarification) else 'chat')
             await c.execute("""UPDATE coordinator_turns SET status='completed',result=$3,finished_at=now()
                 WHERE conversation_id=$1 AND request_id=$2""", body.conversation_id, body.request_id, result)
 

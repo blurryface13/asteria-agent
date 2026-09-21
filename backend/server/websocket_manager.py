@@ -140,9 +140,10 @@ async def run_agent(task, report_type, report_source, source_urls, document_urls
 
     # Explicit scientific deliverables opt into the coordinator only on the
     # interactive WebSocket path. REST/mobile contracts stay unchanged.
+    from asteria_researcher.agentic.capabilities import RESEARCH
     capability = coordinator_capability
-    if capability == "general_chat":
-        raise ValueError("general_chat 请求不得创建研究任务")
+    if capability is not None and capability not in RESEARCH:
+        raise ValueError(f"{capability} 请求应通过 Coordinator 处理，不得创建研究任务")
     if coordinator_capability:
         await logs_handler.send_json({
             "type": "logs",
@@ -156,9 +157,11 @@ async def run_agent(task, report_type, report_source, source_urls, document_urls
         from .agentic_runner import configured_model
         await logs_handler.send_json({"type": "logs", "content": "intent_analysis", "output": "分析目标与交付要求"})
         intent = await analyze_intent(task, configured_model(config_path))
-        if intent.capability == "general_chat":
+        if intent.needs_clarification:
+            raise ValueError(intent.clarification_question)
+        if intent.capability not in RESEARCH:
             await logs_handler.send_json({"type": "logs", "content": "intent_resolved", "output": intent.model_dump()})
-            raise ValueError("general_chat 请求应通过 Coordinator 直接回答，不得创建研究任务")
+            raise ValueError(f"{intent.capability} 请求应通过 Coordinator 处理，不得创建研究任务")
         capability = intent.capability if intent.capability not in {"general_research", "general_chat"} else None
         await logs_handler.send_json({"type": "logs", "content": "intent_resolved", "output": intent.model_dump()})
     options = getattr(logs_handler, "skill_options", None)

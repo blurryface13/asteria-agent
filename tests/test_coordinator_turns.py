@@ -193,6 +193,55 @@ async def exercise(monkeypatch):
         await module.execute_turn(failed,'owner')
         assert (await module.get_turn('owner','c'))['status'] == 'failed'
         assert not await module.submit_turn(failed,'owner')
+        # Coding progress is persisted BEFORE final response, scoped to the same
+        # owner, and retained on failure without injecting an assistant answer.
+        from backend.server import specialists
+        capability = 'workspace_coding'
+        async def coding(*args, progress=None, **kwargs):
+            await progress({'tool':'parallel_batch','status':'started','purpose':'代码调查',
+                            'batch_id':'fixture-batch','assignments':[]})
+            current = await module.get_turn('owner','c')
+            assert current['status'] == 'running'
+            assert current['result']['progress'][0]['batch_id'] == 'fixture-batch'
+            with pytest.raises(HTTPException) as denied:
+                await module.get_turn('other-user','c')
+            assert denied.value.status_code == 404
+            return '只读调查完成', {'tool_calls':[]}
+        monkeypatch.setattr(specialists,'run_specialist',coding)
+        coding_body = body.model_copy(update={'request_id':'request-coding','message':'检查代码文件'})
+        await module.submit_turn(coding_body,'owner')
+        await module.execute_turn(coding_body,'owner')
+        done = await module.get_turn('owner','c')
+        assert done['status'] == 'completed' and len(done['result']['progress']) == 1
+        async def interrupted(*args, progress=None, **kwargs):
+            await progress({'tool':'research_handoff','status':'waiting','purpose':'核对公式','request_id':'help-fixture'})
+            raise asyncio.CancelledError()
+        monkeypatch.setattr(specialists,'run_specialist',interrupted)
+        interrupted_body = body.model_copy(update={'request_id':'request-interrupted','message':'核对代码公式'})
+        await module.submit_turn(interrupted_body,'owner')
+        await module.execute_turn(interrupted_body,'owner')
+        stopped = await module.get_turn('owner','c')
+        assert stopped['status'] == 'interrupted'
+        assert stopped['result']['progress'][0]['request_id'] == 'help-fixture'
+        assert 'response' not in stopped['result']
+        # Clarification must complete as a conversation response, never create a
+        # research Run or call a tool-enabled specialist, even with research_request.
+        from asteria_researcher.agentic import intent as intents
+        async def uncertain(*args,**kwargs):
+            return intents.Intent(capability='literature_review',reason='unclear',confidence=.1,
+                needs_clarification=True,clarification_question='是要解释概念，还是新写报告？')
+        monkeypatch.setattr(intents,'analyze_intent',uncertain)
+        async def forbidden(*args,**kwargs): pytest.fail('clarification must not execute specialist')
+        monkeypatch.setattr(specialists,'run_specialist',forbidden)
+        clarify = body.model_copy(update={'request_id':'request-clarify','message':'继续处理一下',
+                                          'research_request':{'report_type':'research_report'}})
+        await module.submit_turn(clarify,'owner')
+        await module.execute_turn(clarify,'owner')
+        clarified = await module.get_turn('owner','c')
+        assert clarified['status']=='completed' and 'run_id' not in clarified['result']
+        assert clarified['result']['response']['metadata']['needs_clarification'] is True
+        async with pool.acquire() as c:
+            assert await c.fetchval('SELECT count(*) FROM research_runs') == 1
     finally:
         await pool.close()
         await admin.execute(f'DROP SCHEMA "{schema}" CASCADE')

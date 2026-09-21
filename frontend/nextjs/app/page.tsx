@@ -17,6 +17,7 @@ import { authFetch } from "@/helpers/auth";
 import { getRetrieversForStrategy } from "@/utils/searchStrategy";
 import ResearchHarness from '@/components/harness/ResearchHarness';
 import { ResearchResults } from '@/components/ResearchResults';
+import CollaborationProgress from '@/components/harness/CollaborationProgress';
 
 export default function Home() {
   const router = useRouter();
@@ -378,6 +379,7 @@ export default function Home() {
 
   const coordinatorBusy = useRef(false);
   const [conversationMode, setConversationMode] = useState<'research' | 'chat'>('research');
+  const [turnProgress, setTurnProgress] = useState<any[]>([]);
 
   const coordinatorRequest = async (path: string, body?: unknown) => {
     const response = await authFetch('/api/coordinator' + path, body === undefined ? {cache: 'no-store'} : {
@@ -391,12 +393,15 @@ export default function Home() {
   const waitForTurn = async (id: string, initial: any, selection: number) => {
     let turn = initial;
     while (turn?.status === 'running') {
+      if (selection !== selectionGeneration.current) return null;
+      setTurnProgress(Array.isArray(turn.result?.progress) ? turn.result.progress : []);
       await new Promise(resolve => setTimeout(resolve, 800));
       if (selection !== selectionGeneration.current) return null;
       turn = (await coordinatorRequest(`?conversation_id=${encodeURIComponent(id)}&request_id=${encodeURIComponent(turn.request_id)}`)).turn;
     }
     if (selection !== selectionGeneration.current) return null;
     if (!turn) throw new Error('未找到协调请求');
+    setTurnProgress(Array.isArray(turn.result?.progress) ? turn.result.progress : []);
     if (turn.status !== 'completed') throw new Error(turn.error || '协调请求未完成');
     return turn.result;
   };
@@ -405,6 +410,7 @@ export default function Home() {
     const newQuestion = rawQuestion.trim();
     if (!newQuestion || coordinatorBusy.current || loading) return;
     coordinatorBusy.current = true;
+    setTurnProgress([]);
     setIsProcessingChat(true);
     const selection = ++selectionGeneration.current;
     clearTimeout(selectionRetry.current);
@@ -453,7 +459,7 @@ export default function Home() {
       if (!result) return;
       // Preserve the explicitly configured external LangGraph transport.
       // Ordinary conversation still exits through the shared Coordinator.
-      if (externalResearch && !['general_chat','knowledge_chat'].includes(result.capability)) {
+      if (externalResearch && !result.intent?.needs_clarification && ['literature_review','experiment_design','general_research'].includes(result.capability)) {
         setConversationMode('research'); setIsInChatMode(false); setLoading(true);
         const {streamResponse, host, thread_id} = await startLanggraphResearch(
           newQuestion, chatBoxSettings.report_source, langgraphHost,
@@ -644,6 +650,7 @@ export default function Home() {
    * - Closes any existing WebSocket connections
    */
   const handleStartNewResearch = () => {
+    setTurnProgress([]);
     setChatBoxSettings(v => ({...v, skill_ids: [], format_profile: null}));
     reset();
     setSidebarOpen(false);
@@ -731,6 +738,7 @@ export default function Home() {
 
   // Handle selecting a research from history
   const handleSelectResearch = async (id: string) => {
+    setTurnProgress([]);
     const selection = ++selectionGeneration.current;
     clearTimeout(selectionRetry.current);
     let retryObservation = true;
@@ -760,6 +768,7 @@ export default function Home() {
         if (selection !== selectionGeneration.current) return;
         const turn = (await coordinatorRequest(`?conversation_id=${encodeURIComponent(id)}`)).turn;
         if (selection !== selectionGeneration.current) return;
+        setTurnProgress(Array.isArray(turn?.result?.progress) ? turn.result.progress : []);
         if (turn?.status === 'running') {
           setIsProcessingChat(true);
           try {
@@ -934,6 +943,7 @@ export default function Home() {
       settings={chatBoxSettings} setSettings={setChatBoxSettings} logCount={allLogs.length}
       artifactPaths={preprocessOrderedData(orderedData).filter((item: any) => item.type === 'path').at(-1)?.output}
     >
+      <CollaborationProgress events={turnProgress} active={isProcessingChat} />
       <ResearchResults compact isResearchRunning={loading} orderedData={orderedData} answer={answer} allLogs={allLogs}
         chatBoxSettings={chatBoxSettings} handleClickSuggestion={handleClickSuggestion}
         currentResearchId={currentResearchId || undefined} isProcessingChat={isProcessingChat}

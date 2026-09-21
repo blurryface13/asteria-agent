@@ -33,6 +33,8 @@ Python · LangGraph · FastAPI · Next.js · PostgreSQL · Ollama
 - [后台任务与服务启动](docs/durable-runs.md)
 - [评测工作台与评分策略](docs/evaluation-workspace.md)
 - [自主实验与评测路线](docs/experiment-evaluation-roadmap.md)
+- [Lead 分工与代码调研协作](docs/agentic-collaboration-plan.md)
+- [协作验收、测试指令与当前限制](docs/agentic-collaboration-acceptance.md)
 
 调研引擎位于 `asteria_researcher/`，API 与持久化位于 `backend/`，Web 工作台位于 `frontend/nextjs/`。既有 LangGraph 工作流保留在 `multi_agents/`，与自主研究运行时分开维护。
 

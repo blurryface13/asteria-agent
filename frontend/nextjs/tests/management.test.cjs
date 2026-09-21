@@ -63,7 +63,8 @@ test('stale report cache is preserved as backup, never uploaded after server del
   localStorage.setItem('researchHistory',JSON.stringify(legacy));
   const requests = [];
   const box = {exports:{},console,window,localStorage,require: name => {
-    if (name === '@/helpers/auth') return {authFetch:async (url, options) => {requests.push([url,options]); return {ok:true,json:async()=>({reports:[]})};}};
+    if (name === '@/helpers/auth') return {isLocalAuthBypassEnabled:()=>true,getAuthEmail:()=>null,
+      authFetch:async (url, options) => {requests.push([url,options]); return {ok:true,json:async()=>({reports:[]})};}};
     return require(name);
   }};
   vm.runInNewContext(ts.transpileModule(fs.readFileSync('hooks/useResearchHistory.ts','utf8'),{
@@ -96,7 +97,7 @@ test('full browser storage cannot hide server history or undo a saved report', a
   const requests=[];
   const box={exports:{},console,window,Event:dom.window.Event,localStorage:storage,require:name=>{
     if(name==='react-hot-toast') return {toast:{error:()=>{},success:()=>{}}};
-    if(name==='@/helpers/auth') return {authFetch:async(url,options)=>{
+    if(name==='@/helpers/auth') return {isLocalAuthBypassEnabled:()=>true,getAuthEmail:()=>null,authFetch:async(url,options)=>{
       requests.push([url,options]);
       return {ok:true,json:async()=>({reports:server})};
     }};

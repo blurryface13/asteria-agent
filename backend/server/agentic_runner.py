@@ -6,6 +6,18 @@ def configured_model(config_path=None):
     from asteria_researcher.config.config import Config
     from asteria_researcher.utils.llm import create_chat_completion
     cfg = Config(config_path or None)
+    import hashlib
+    import json
+    import os
+    embedding_instance = None
+    async def intent_embeddings(texts):
+        nonlocal embedding_instance
+        import asyncio
+        if embedding_instance is None:
+            from asteria_researcher.memory.embeddings import Memory
+            embedding_instance = await asyncio.to_thread(
+                lambda: Memory(cfg.embedding_provider, cfg.embedding_model, **cfg.embedding_kwargs).get_embeddings())
+        return await embedding_instance.aembed_documents(texts)
 
     async def model(system, user):
         import asyncio
@@ -26,6 +38,14 @@ def configured_model(config_path=None):
                     raise RuntimeError("模型服务余额不足（HTTP 402），请充值或明确配置其他模型后重试；未生成报告。") from error
                 cause = cause.__cause__
             raise
+    # Only a hash is exposed to the process-local cache, not credentials/config values.
+    model.routing_identity = hashlib.sha256(json.dumps({
+        'provider':cfg.smart_llm_provider,'model':cfg.smart_llm_model,'kwargs':cfg.llm_kwargs,
+        'embedding_provider':cfg.embedding_provider,'embedding_model':cfg.embedding_model,
+        'embedding_kwargs':cfg.embedding_kwargs,
+        'endpoints':{key:os.getenv(key) for key in ('OLLAMA_BASE_URL','OPENAI_BASE_URL','DEEPSEEK_BASE_URL')}
+        },sort_keys=True,default=str).encode()).hexdigest()
+    model.intent_embeddings = intent_embeddings
     return model
 
 
@@ -139,10 +159,14 @@ async def run_autonomous_review(query, logs_handler, research_kwargs):
     online_rag = getattr(logs_handler, "online_rag", True)
     async def emit(kind, payload):
         await logs_handler.send_json({"type": "logs", "content": kind, "output": payload})
+    from backend.server.coding_tools import build_coding_tools
+    # Identity belongs to the durable server Run, never research_kwargs/model arguments.
+    server_run = getattr(getattr(logs_handler, "websocket", None), "run", {})
+    owner = server_run.get("user_email") if isinstance(server_run, dict) else None
     runtime = AutonomousReview(configured_model(research_kwargs.get("config_path")),
         Memory(cfg.embedding_provider, cfg.embedding_model, **cfg.embedding_kwargs).get_embeddings() if online_rag else None,
         emit, logs_handler.request_feedback, online_rag=online_rag,
-        skill_options=getattr(logs_handler, "skill_options", None))
+        skill_options=getattr(logs_handler, "skill_options", None), coding_tools=build_coding_tools(owner))
     report = await runtime.run(query)
     await runtime.event("lead", "publish", "started", "编译 LaTeX 与 PDF")
     artifacts = await publish(report, Path("outputs"), profile=runtime.format_profile)
@@ -153,6 +177,10 @@ async def run_autonomous_review(query, logs_handler, research_kwargs):
                       "run_metadata": str(runtime.folder / "run.json"),
                       "review_plan": str(runtime.folder / "plan.json"),
                       "sufficiency": str(runtime.folder / "sufficiency.json")})
+    for key, filename in (("delegations", "delegations.json"), ("coding_results", "coding-results.json"),
+                          ("research_requests", "research-requests.json"), ("implementation_review", "implementation-review.json")):
+        if (runtime.folder / filename).is_file():
+            artifacts[key] = str(runtime.folder / filename)
     logs_handler.artifact_paths = artifacts
     await runtime.event("lead", "publish", "completed", "源码、PDF、引用图与研究轨迹已保存")
     await logs_handler.send_json({"type": "report", "output": report})
