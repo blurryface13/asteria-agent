@@ -17,6 +17,7 @@ from .library import PaperLibrary, canonical
 from .report_tools import validate_report_draft
 from .skill_catalog import SkillOptions, SkillSession, select_writing
 from .runtime import urls
+from .coding_contract import passages
 from .collaboration import (Assignment, allocation_report, AUDIT_PROMPT,
                             DelegationAudit, validate_audit, run_parallel, ArtifactReview)
 from .sufficiency import (ASSESSOR_PROMPT, ASSESSOR_REVIEW_PROMPT, ReviewPlan, SufficiencyReport, evidence_catalog,
@@ -607,7 +608,7 @@ class AutonomousReview:
         try:
             result = await self.loop("research-help-" + request_id[:8], request.question, steps=7,
                                      assignment_context={"request": request.model_dump(), "parent_task": assignment.model_dump(),
-                                                         "instruction": "只回答此知识障碍；不得接管代码任务，不得再次委派。"})
+                                                         "instruction": "只回答此知识障碍；不得接管代码任务，不得再次委派。expected_answer描述期望交付而不是证据；独立核对其中的猜测，不得迎合预设答案。"})
             record.update(status=result["status"], response=result)
             await self.event("lead", "research_response", result["status"], "定向调研回传代码任务",
                              request_id=request_id, requester=requester, result=result)
@@ -812,6 +813,7 @@ class AutonomousReview:
                     if not action.summary.strip():
                         raise ValueError("finish 必须说明研究发现、覆盖与未解决项")
                     result = {"status": action.outcome, "agent": agent, "summary": action.summary,
+                              "evidence": passages(local_evidence),
                               "unread_candidates": sorted(summary_sources - self.library.papers.keys())}
                     await self.event(agent, "finish", action.outcome, "研究结果已回传", call_id=call_id, result=result)
                     await self.event(agent, "agent", action.outcome, "研究结果已回传", result=result)
@@ -850,7 +852,8 @@ class AutonomousReview:
                     if not self.online_rag:
                         raise ValueError("用户关闭在线 RAG，请自主选择 read_passage 阅读原文，不可切换检索模式")
                     result = await self.library.retrieve(action.query or objective, action.paper_ids)
-                    local_evidence.append(result)
+                    if passages([result]):
+                        local_evidence.append(result)
                     self.evidence.append({"agent": agent, "query": action.query, "passages": json.loads(result)})
                     (self.folder / "evidence.json").write_text(json.dumps(self.evidence, ensure_ascii=False))
                 elif action.tool == "read_passage":

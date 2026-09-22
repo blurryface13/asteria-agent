@@ -139,7 +139,9 @@ def test_coding_reads_then_requests_research_then_resumes():
         return {"name": "loss.py", "content": "loss = reconstruction + 0.1 * watermark"}
     async def help(req, request_id, requester):
         asked.append(req.question)
-        return {"status": "completed", "summary": "论文的默认权重为0.1，消融实验需保持其他变量不变"}
+        return {"status": "completed", "summary": "论文的默认权重为0.1，消融实验需保持其他变量不变",
+                "evidence": [{"source": "https://arxiv.org/abs/1706.03762", "page": 1,
+                              "text": "Synthetic test fixture: default weight 0.1; other variables fixed."}]}
     responses = [
         {"tool": "read_workspace_file", "purpose": "核对当前实现", "arguments": {"name": "loss.py"}},
         {"tool": "request_research", "purpose": "确认论文的默认配置", "arguments": {

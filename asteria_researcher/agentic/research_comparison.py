@@ -121,7 +121,7 @@ class ScriptedModel:
 
 
 async def run_arm(mode, model, folder, original, *, model_mode, unavailable=False,
-                  max_calls=16, deadline=180):
+                  max_calls=16, deadline=180, enforce_path_policy=True):
     if mode not in MODES:
         raise ValueError('Unknown comparison arm')
     folder = Path(folder)
@@ -132,7 +132,7 @@ async def run_arm(mode, model, folder, original, *, model_mode, unavailable=Fals
         if len(calls) >= max_calls:
             raise RuntimeError('Comparison model-call budget exhausted')
         role='coding' if 'tools' in json.loads(payload) else 'research'
-        if role=='coding':
+        if role=='coding' and enforce_path_policy:
             # Policy is an explicit experimental variable. Never feed the answer.
             system += ('\nControlled evidence-access comparison: the context evidence_scope is only a label, '
                 'NOT supplied evidence. You must acquire the actual material using tools. '
@@ -197,6 +197,7 @@ async def run_arm(mode, model, folder, original, *, model_mode, unavailable=Fals
     observed_evidence = any(e['passages'] for e in runtime.evidence)
     # Structural observations only; semantic correctness is deliberately not inferred.
     report = {'arm':mode,'model_mode':model_mode,'status':'blocked' if failure else result['status'],
+        'enforce_path_policy':enforce_path_policy,
         'limits':{'model_calls':max_calls,'deadline_seconds':deadline,
                   'provider_retries':'disabled by live CLI'},
         'failure':failure,'calls':calls,'model_calls':len(calls),

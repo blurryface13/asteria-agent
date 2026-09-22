@@ -5,6 +5,7 @@ import difflib
 import hashlib
 
 from pydantic import BaseModel, ConfigDict, Field
+from .coding_contract import result_success
 
 
 class SyntaxCheck(BaseModel):
@@ -20,6 +21,8 @@ def source_observation(results, identifier):
     item = next((r for r in results if r["id"] == identifier), None)
     if not item or item["tool"] not in {"read_workspace_file", "read_repository_file"}:
         raise ValueError("必须引用本轮实际读取的代码 observation_id")
+    if result_success(item["result"]) is False:
+        raise ValueError("读取失败的结果不能作为代码诊断依据")
     values = item["result"] if isinstance(item["result"], list) else [item["result"]]
     value = next((v for v in values if isinstance(v, dict) and isinstance(v.get("content"), str)), None)
     if value is None or value.get("exists") is False:

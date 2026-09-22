@@ -34,7 +34,8 @@ async def main(args):
             'arms':[],'status':'finished','equivalent_inputs':True}
     for arm in arms:
         result=await run_arm(arm,live_model if args.live else ScriptedModel(arm,original),
-                             folder,original,model_mode=mode,unavailable=args.evidence_unavailable)
+                             folder,original,model_mode=mode,unavailable=args.evidence_unavailable,
+                             enforce_path_policy=not args.native_policy)
         report['arms'].append(result)
         if result['status']=='blocked':
             report['status']='blocked';break
@@ -57,4 +58,6 @@ if __name__=='__main__':
     modes.add_argument('--live',action='store_true')
     parser.add_argument('--order',choices=('direct,delegated','delegated,direct'),default='direct,delegated')
     parser.add_argument('--evidence-unavailable',action='store_true')
+    parser.add_argument('--native-policy',action='store_true',
+                        help='Keep arm tool scopes but omit extra experimental instructions; exercise production contracts.')
     raise SystemExit(asyncio.run(main(parser.parse_args())))
