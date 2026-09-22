@@ -53,7 +53,8 @@ def parse_action(raw):
 
 
 async def run_coding(assignment, model, tools, request_research, emit, *,
-                     consume_action=lambda: True, max_turns=CODING.max_turns, context=None, agent_id=None):
+                     consume_action=lambda: True, max_turns=CODING.max_turns, context=None, agent_id=None,
+                     allow_research_request=True):
     """No arbitrary shell. Unknown/failed tools cannot become successful evidence."""
     agent = agent_id or "coding-" + uuid4().hex[:8]
     observations, tool_results, requests, sources = [], [], [], []
@@ -62,7 +63,8 @@ async def run_coding(assignment, model, tools, request_research, emit, *,
     skills = SkillSession("assistance")
     skills.load("workspace_assistance", origin="capability")
     schemas = {name: spec[0] for name, spec in tools.items() if name in CODING.tool_scope}
-    schemas["request_research"] = ResearchRequest.model_json_schema()
+    if allow_research_request:
+        schemas["request_research"] = ResearchRequest.model_json_schema()
     schemas["finish"] = {"description": "Return summary and outcome; incomplete for blocked/unexecuted work."}
     system = (
         f"You are {CODING.role}. {CODING.mission} Input: {CODING.input_contract}. Output: {CODING.output_contract}. "
