@@ -46,3 +46,7 @@ python scripts/compare-coding-research.py --live --native-policy --order delegat
 ```
 
 真实模式调用现有配置模型、产生费用；单组最多16次模型调用/180秒，不下载运行任何代码。下一步仍是授权隔离的执行器和运行结果验收，不把本轮的证据治理当成完整实验执行闭环。
+
+## 本地部署
+
+实现提交 `3cba3bd`。重载前数据库检查：研究、Coordinator、知识库索引活动数均为0；已重载8018 API与科研Worker，健康接口返回 `ok/shared_mode=true`，3023登录页HTTP 200。未重启前端、未迁移数据库、未覆盖此前未提交的登录/共享库工作。
