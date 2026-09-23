@@ -1,4 +1,4 @@
-"""Conversation-scoped, persisted intent turns. Research still runs in its worker."""
+"""Persisted HTTP transport (legacy module name); policy is AgentOrchestrator."""
 import asyncio
 import hashlib
 import json
@@ -14,7 +14,6 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from backend.auth.db import get_pool
 from backend.auth.dependencies import get_current_user_email
 from backend.runs.routes import validate_request
-from backend.runs.store import RunStore
 from asteria_researcher.utils.usage_context import usage_sink
 
 router = APIRouter(prefix='/api/coordinator', tags=['coordinator'])
@@ -27,6 +26,9 @@ async def capabilities(_email=Depends(get_current_user_email)):
     from asteria_researcher.agentic.capabilities import profile_catalog, RESEARCH
     from asteria_researcher.agentic.intent_fusion import VERSION
     return {'specialists':profile_catalog(),'research':sorted(RESEARCH),
+            'architecture':{'entry':'AgentOrchestrator','loop':'BaseAgent',
+                            'research_roles':['lead','researcher','coding','reviewer'],
+                            'review_trigger':'delivery_attempt_or_budget_exit'},
             'routing':{'version':VERSION[:12],'strategies':['llm_few_shot','embedding','pattern'],
                        'vector_fallback':'local_ngram (explicit in each trace)',
                        'cache':'user/conversation/context scoped LRU, 256 entries, TTL 300s',
@@ -94,6 +96,7 @@ async def submit_turn(body, email):
     fingerprint = hashlib.sha256(json.dumps(body.model_dump(), sort_keys=True, ensure_ascii=False).encode()).hexdigest()
     pool = await get_pool()
     async with pool.acquire() as c, c.transaction():
+        await c.execute("SELECT pg_advisory_xact_lock(hashtextextended(current_schema() || ':coordinator-admission',0))")
         conversation = await c.fetchrow('SELECT * FROM workspace_conversations WHERE id=$1 AND user_email=$2 FOR UPDATE', body.conversation_id, email)
         if not conversation:
             raise HTTPException(404, 'Conversation not found')
@@ -102,6 +105,12 @@ async def submit_turn(body, email):
             if previous['request_hash'] != fingerprint:
                 raise HTTPException(409, '同一请求标识不能用于不同内容')
             return False
+        # Stale API calls have a five-minute deadline; they must not exhaust quota.
+        await c.execute("UPDATE coordinator_turns SET status='interrupted',finished_at=now(),error='协调请求已中断' WHERE status='running' AND started_at<now()-interval '5 minutes'")
+        total=await c.fetchval("SELECT count(*) FROM coordinator_turns WHERE status='running'")
+        active=await c.fetchval("SELECT count(*) FROM coordinator_turns t JOIN workspace_conversations w ON w.id=t.conversation_id WHERE w.user_email=$1 AND t.status='running'",email)
+        if total>=int(os.getenv('ASTERIA_MAX_CHAT_ACTIVE','12')) or active>=2:
+            raise HTTPException(429,'对话处理名额已满，请等待当前请求完成',headers={'Retry-After':'5'})
         if await c.fetchval("SELECT 1 FROM coordinator_turns WHERE conversation_id=$1 AND status='running'", body.conversation_id):
             raise HTTPException(409, '当前对话仍在处理上一条消息')
         if await c.fetchval("SELECT 1 FROM research_runs WHERE conversation_id=$1 AND status IN ('queued','running','waiting_approval','cancel_requested')", body.conversation_id):
@@ -115,9 +124,9 @@ async def submit_turn(body, email):
 
 
 async def execute_turn(body, email):
-    from asteria_researcher.agentic.intent import analyze_intent
+    from asteria_researcher.agentic.agent_orchestrator import AgentOrchestrator, Request
+    from backend.server.orchestrator_handlers import executors
     from backend.server.agentic_runner import configured_model
-    from backend.chat.chat import ChatAgentWithMemory
 
     pool = await get_pool()
 
@@ -143,9 +152,9 @@ async def execute_turn(body, email):
                 WHERE conversation_id=$1 AND request_id=$2''', body.conversation_id, body.request_id, [event])
 
     async def work():
+        from backend.memory.working import recent
+        messages=await recent(pool,email,body.conversation_id)
         async with pool.acquire() as c:
-            messages = await c.fetch('''SELECT role,content,created_at FROM workspace_messages
-                WHERE conversation_id=$1 ORDER BY sequence_no''', body.conversation_id)
             report = await c.fetchval('SELECT answer FROM reports WHERE id=$1 AND user_email=$2', body.conversation_id, email) or ''
             completed_run = await c.fetchrow('''SELECT id,finished_at FROM research_runs
                 WHERE conversation_id=$1 AND status='completed' ORDER BY finished_at DESC LIMIT 1''', body.conversation_id) if report else None
@@ -159,57 +168,22 @@ async def execute_turn(body, email):
         memory = await snapshot(email, body.conversation_id, body.message, model)
         memory_context.set(memory)
         catalog = await managed.libraries(email) if body.knowledge_mode != 'off' else []
+        selected_intent = None
         if body.knowledge_mode == 'selected':
             allowed = [k for k in catalog if k['id'] in body.knowledge_ids]
             if len(allowed) != len(set(body.knowledge_ids)):
                 raise HTTPException(404,'所选知识库不存在')
             # Explicit library scope is a user command, not a keyword heuristic.
-            intent = Intent(capability='knowledge_chat', reason='用户指定知识库问答',knowledge_ids=body.knowledge_ids,
+            selected_intent = Intent(capability='knowledge_chat', reason='用户指定知识库问答',knowledge_ids=body.knowledge_ids,
                             routing_trace={'mode':'explicit_library_selection','cache_hit':False})
-        elif catalog:
-            intent = await analyze_intent(body.message, model, history=history[:-1], report=report,
-                knowledge_catalog=[{k:item[k] for k in ('id','name','description','ready_documents')} for item in catalog],
-                cache_scope={'email':email,'conversation_id':body.conversation_id})
-        else:
-            intent = await analyze_intent(body.message, model, history=history[:-1], report=report,
-                                         cache_scope={'email':email,'conversation_id':body.conversation_id})
-        result = {'intent': intent.model_dump(), 'capability': intent.capability, 'memory': memory}
-        from asteria_researcher.agentic.capabilities import PROFILES, RESEARCH
-        if intent.needs_clarification:
-            result['response'] = {'role':'assistant','content':intent.clarification_question,
-                'metadata':{'turn_id':body.request_id,'needs_clarification':True,'routing':intent.routing_trace}}
-        elif intent.capability == 'knowledge_chat':
-            allowed_ids = {k['id'] for k in catalog}
-            if not intent.knowledge_ids or not set(intent.knowledge_ids) <= allowed_ids:
-                raise ValueError('Coordinator selected invalid library scope')
-            query = intent.retrieval_query or body.message
-            if body.knowledge_mode == 'selected' and len(history)>1:
-                query = await model('Rewrite the latest question as a standalone retrieval query using conversation only for references. Do not answer. Return only the query.',json.dumps({'question':body.message,'history':history[:-1][-8:]},ensure_ascii=False))
-            content, sources = await managed.answer(email,intent.knowledge_ids,query,model,history[:-1])
-            citation_lines = [f"[{s['index']}] {s['name']}" + (f" · 第{s['page']}页" if s['page'] else '') + f" · 版本 {s['version_id'][:8]}" for s in sources]
-            # The model may echo an older source footer from conversation history.
-            # Render canonical metadata once, without altering inline references.
-            content = '\n'.join(line for line in content.splitlines() if line.strip() not in citation_lines).rstrip()
-            citations = '\n\n' + '\n'.join(citation_lines) if sources else ''
-            result['response']={'role':'assistant','content':content+citations,'metadata':{
-                'turn_id':body.request_id,'knowledge_ids':intent.knowledge_ids,'sources':sources,'retrieval_query':query}}
-        elif intent.capability == 'general_chat':
-            agent = ChatAgentWithMemory(report=report, config_path=config, headers=None)
-            content, metadata = await agent.chat(history, None, allow_tools=bool(report))
-            if not content or not content.strip():
-                raise ValueError('模型未返回有效回答')
-            result['response'] = {'role': 'assistant', 'content': content, 'metadata': {'tool_calls': metadata or [], 'turn_id': body.request_id}}
-        elif intent.capability in PROFILES:
-            from backend.server.specialists import run_specialist
-            content,metadata=await run_specialist(intent.capability,body.message,history[:-1],model,email,body.knowledge_mode,
-                                                progress=record_progress)
-            result['response']={'role':'assistant','content':content,'metadata':{**metadata,'turn_id':body.request_id}}
-        elif body.research_request is not None:
-            request = {**body.research_request, 'task': body.message, 'coordinator_capability': intent.capability}
-            # Request identity survives lost HTTP responses; worker ownership and
-            # research lifecycle continue to be enforced by the existing store.
-            run = await RunStore().submit(email, body.request_id, body.conversation_id, validate_request(request))
-            result['run_id'] = run['id']
+        result = await AgentOrchestrator(model, executors(model,config,record_progress)).run(Request(
+            message=body.message,user_id=email,conv_id=body.conversation_id,request_id=body.request_id,
+            history=history[:-1],report=report,knowledge_mode=body.knowledge_mode,
+            knowledge_catalog=[{k:item[k] for k in ('id','name','description','ready_documents')} for item in catalog],
+            research_request=body.research_request,intent=selected_intent))
+        result['memory'] = memory
+        intent = Intent.model_validate(result['intent'])
+        from asteria_researcher.agentic.capabilities import RESEARCH
         if progress_events:
             result['progress'] = progress_events
         async with pool.acquire() as c, c.transaction():
@@ -237,7 +211,7 @@ async def execute_turn(body, email):
             raise
         # Diagnose exact code locations without logging provider exception text,
         # which may contain credentials, URLs or private request payloads.
-        logger.error('Coordinator turn %s failed: %s; frames=%s', body.request_id,
+        logger.error('AgentOrchestrator turn %s failed: %s; frames=%s', body.request_id,
                      type(exc).__name__, [(f.filename, f.lineno, f.name) for f in traceback.extract_tb(exc.__traceback__)])
         # Provider exception strings can contain request URLs/credentials.
         status = 'interrupted' if isinstance(exc, asyncio.CancelledError) else 'failed'

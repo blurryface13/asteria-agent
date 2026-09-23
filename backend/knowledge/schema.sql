@@ -7,6 +7,8 @@ CREATE TABLE IF NOT EXISTS knowledge_bases (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS knowledge_bases_owner ON knowledge_bases(owner);
+ALTER TABLE knowledge_bases ADD COLUMN IF NOT EXISTS visibility TEXT NOT NULL DEFAULT 'private'
+    CHECK (visibility IN ('private','lab'));
 CREATE TABLE IF NOT EXISTS knowledge_documents (
     id TEXT PRIMARY KEY,
     kb_id TEXT NOT NULL REFERENCES knowledge_bases(id) ON DELETE CASCADE,

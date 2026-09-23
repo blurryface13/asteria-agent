@@ -6,29 +6,34 @@ use case, unlike the rest of the app's module-level singletons).
 """
 import os
 
-from fastapi import Header, HTTPException
+from fastapi import Depends, Header, HTTPException, Request
+from backend.auth.lab import COOKIE, admin_email, session_email, shared_mode
 
 
 def _local_auth_bypass_enabled() -> bool:
     """Enable auth-free local smoke tests only when explicitly configured."""
-    return os.environ.get("ASTERIA_DEV_AUTH_BYPASS", "0").lower() in {"1", "true", "yes"}
+    return not shared_mode() and os.environ.get("ASTERIA_DEV_AUTH_BYPASS", "0").lower() in {"1", "true", "yes"}
 
 
 def _local_auth_email() -> str:
     return os.environ.get("ASTERIA_DEV_AUTH_EMAIL", "local@asteria.dev")
 
 
-async def get_current_user_email(authorization: str | None = Header(default=None)) -> str:
+async def get_current_user_email(authorization: str | None = Header(default=None), request: Request = None) -> str:
     if _local_auth_bypass_enabled():
         return _local_auth_email()
 
+    cookie = request.cookies.get(COOKIE) if request else None
+    if not authorization and cookie:
+        authorization = 'Bearer ' + cookie
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing or malformed Authorization header")
 
     token = authorization.removeprefix("Bearer ").strip()
     from backend.auth.jwt_utils import decode_access_token
 
-    email = decode_access_token(token)
+    # Old JWTs are only accepted in non-shared development for compatibility.
+    email = decode_access_token(token) if token.count('.') == 2 and not shared_mode() else await session_email(token)
     if email is None:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
@@ -46,4 +51,10 @@ async def get_current_user_email_from_query(token: str | None = None) -> str | N
         return None
     from backend.auth.jwt_utils import decode_access_token
 
-    return decode_access_token(token)
+    return decode_access_token(token) if token.count('.') == 2 and not shared_mode() else await session_email(token)
+
+
+async def require_admin(email: str = Depends(get_current_user_email)):
+    if not admin_email(email) and not _local_auth_bypass_enabled():
+        raise HTTPException(403, '此操作仅限实验室管理员')
+    return email

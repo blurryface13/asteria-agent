@@ -1,136 +1,47 @@
 "use client";
+import {useEffect,useState} from 'react';
+import {useRouter} from 'next/navigation';
+import {getHost} from '@/helpers/getHost';
+import {isLocalAuthBypassEnabled,setAuth} from '@/helpers/auth';
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { getHost } from "@/helpers/getHost";
-import { isLocalAuthBypassEnabled, setAuth } from "@/helpers/auth";
-
-type Step = "email" | "code";
-
-export default function LoginPage() {
-  const router = useRouter();
-  const [step, setStep] = useState<Step>("email");
-  const [email, setEmail] = useState("");
-  const [code, setCode] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [info, setInfo] = useState("");
-
-  const apiBase = getHost();
-
-  useEffect(() => {
-    // A stale tab can remain on /login after the dev server is restarted with
-    // the explicit local bypass. Move it back to the app instead of making
-    // the user refresh or enter a fake OTP.
-    if (isLocalAuthBypassEnabled()) {
-      router.replace("/");
-    }
-  }, [router]);
-
-  const handleSendCode = async () => {
-    if (!email.trim()) return;
-    setLoading(true);
-    setError("");
-    try {
-      const res = await fetch(`${apiBase}/api/auth/send-code`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "发送失败");
-      setInfo(data.message);
-      setStep("code");
-    } catch (e: any) {
-      setError(e.message || "发送失败,请稍后重试");
-    } finally {
-      setLoading(false);
-    }
+export default function LoginPage(){
+  const router=useRouter();
+  const [email,setEmail]=useState(''),[password,setPassword]=useState(''),[code,setCode]=useState('');
+  const [mode,setMode]=useState<'password'|'code'>('password');
+  const [emailEnabled,setEmailEnabled]=useState(false),[sent,setSent]=useState(false);
+  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
+  useEffect(()=>{
+    if(isLocalAuthBypassEnabled()){router.replace('/');return;}
+    fetch(getHost()+'/api/auth/config').then(r=>r.json()).then(d=>setEmailEnabled(d.email_login===true)).catch(()=>{});
+  },[router]);
+  const submit=async()=>{
+    setBusy(true);setError('');setNotice('');
+    const sending=mode==='code'&&!sent;
+    try{
+      const response=await fetch(getHost()+'/api/auth/'+(mode==='password'?'login':sending?'send-code':'verify-code'),{
+        method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({email:email.trim().toLowerCase(),...(mode==='password'?{password}:sending?{}:{code})})});
+      const data=await response.json();
+      if(!response.ok)throw new Error(typeof data.detail==='string'?data.detail:'请检查邮箱及输入格式后重试');
+      if(sending){setSent(true);setNotice(data.message);}
+      else{setAuth(data.access_token,data.email);setPassword('');window.location.assign('/');}
+    }catch(e){setError(e instanceof Error?e.message:'连接失败，请检查服务是否运行');}finally{setBusy(false);}
   };
-
-  const handleVerify = async () => {
-    if (!code.trim()) return;
-    setLoading(true);
-    setError("");
-    try {
-      const res = await fetch(`${apiBase}/api/auth/verify-code`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, code }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "验证码错误");
-      setAuth(data.access_token, data.email);
-      router.push("/");
-    } catch (e: any) {
-      setError(e.message || "验证失败,请重试");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="min-h-screen w-full flex items-center justify-center bg-white px-4">
-      <div className="w-full max-w-sm">
-        <div className="flex flex-col items-center mb-8">
-          <img src="/img/asteria-logo.png?v=bunny1" alt="Asteria Agent" width={64} height={64} className="rounded-xl mb-3" />
-          <h1 className="text-2xl font-bold text-gray-900">Asteria Agent</h1>
-          <p className="text-sm text-gray-500 mt-1">组内专用,请用邮箱登录</p>
-        </div>
-
-        <div className="bg-white border border-gray-200 rounded-xl shadow-lg p-6">
-          {step === "email" ? (
-            <>
-              <label className="block text-sm font-medium text-gray-700 mb-2">邮箱地址</label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500/50 focus:border-teal-500 transition-all"
-                onKeyDown={(e) => e.key === "Enter" && handleSendCode()}
-              />
-              <button
-                onClick={handleSendCode}
-                disabled={loading || !email.trim()}
-                className="w-full mt-4 px-4 py-2.5 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors"
-              >
-                {loading ? "发送中..." : "发送验证码"}
-              </button>
-            </>
-          ) : (
-            <>
-              <p className="text-sm text-gray-500 mb-3">{info}</p>
-              <label className="block text-sm font-medium text-gray-700 mb-2">验证码</label>
-              <input
-                type="text"
-                inputMode="numeric"
-                maxLength={6}
-                value={code}
-                onChange={(e) => setCode(e.target.value)}
-                placeholder="6 位数字"
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-gray-900 placeholder-gray-400 tracking-widest text-center text-lg focus:outline-none focus:ring-2 focus:ring-teal-500/50 focus:border-teal-500 transition-all"
-                onKeyDown={(e) => e.key === "Enter" && handleVerify()}
-              />
-              <button
-                onClick={handleVerify}
-                disabled={loading || !code.trim()}
-                className="w-full mt-4 px-4 py-2.5 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors"
-              >
-                {loading ? "验证中..." : "登录"}
-              </button>
-              <button
-                onClick={() => { setStep("email"); setCode(""); setError(""); }}
-                className="w-full mt-2 px-4 py-2 text-sm text-gray-500 hover:text-gray-700 transition-colors"
-              >
-                换个邮箱
-              </button>
-            </>
-          )}
-
-          {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
-        </div>
-      </div>
-    </div>
-  );
+  const field='w-full rounded-lg border border-white/20 bg-white/5 px-3 py-3 text-white focus:outline-none focus:ring-2 focus:ring-white/50';
+  return <main className="min-h-screen bg-[#171717] text-white flex items-center justify-center px-6">
+    <section className="w-full max-w-sm py-12" aria-labelledby="login-title">
+      <img src="/img/asteria-logo.png" alt="" width={48} height={48} className="mb-6 rounded-xl"/>
+      <h1 id="login-title" className="text-2xl font-semibold">登录 Asteria</h1>
+      <p className="mt-3 mb-8 text-sm text-white/65 leading-6">实验室共享资料，个人独立工作区。<br/>请使用管理员为你创建的账号。</p>
+      <form className="space-y-5" onSubmit={e=>{e.preventDefault();void submit();}}>
+        <label className="block text-sm">邮箱<input className={field+' mt-2'} type="email" autoComplete="username" required value={email} onChange={e=>{setEmail(e.target.value);setSent(false);}} disabled={busy}/></label>
+        {mode==='password'?<label className="block text-sm">密码<input className={field+' mt-2'} type="password" autoComplete="current-password" minLength={12} maxLength={128} required value={password} onChange={e=>setPassword(e.target.value)} disabled={busy}/></label>
+          :sent&&<label className="block text-sm">验证码<input className={field+' mt-2'} inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} required value={code} onChange={e=>setCode(e.target.value)}/></label>}
+        {error&&<p role="alert" className="text-sm text-red-300">{error}</p>}{notice&&<p role="status" className="text-sm text-white/70">{notice}</p>}
+        <button disabled={busy} className="w-full rounded-lg bg-white px-4 py-3 text-sm font-medium text-black hover:bg-white/85 disabled:opacity-50">{busy?'请稍候…':mode==='code'&&!sent?'发送验证码':'登录'}</button>
+      </form>
+      {emailEnabled&&<button className="mt-5 text-sm text-white/70 underline" onClick={()=>{setMode(mode==='password'?'code':'password');setError('');}}>{mode==='password'?'使用邮箱验证码':'使用密码登录'}</button>}
+      <p className="mt-6 text-xs leading-5 text-white/50">没有账号或忘记密码？请联系实验室管理员。退出登录会立即注销当前会话。</p>
+    </section>
+  </main>;
 }

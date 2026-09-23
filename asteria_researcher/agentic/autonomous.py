@@ -18,8 +18,9 @@ from .report_tools import validate_report_draft
 from .skill_catalog import SkillOptions, SkillSession, select_writing
 from .runtime import urls
 from .coding_contract import passages
+from .base_agent import BaseAgent, AgentFinish, AgentStop
 from .collaboration import (Assignment, allocation_report, AUDIT_PROMPT,
-                            DelegationAudit, validate_audit, run_parallel, ArtifactReview)
+                            DelegationAudit, validate_audit, run_parallel, ArtifactReview, LEAD, RESEARCHER)
 from .sufficiency import (ASSESSOR_PROMPT, ASSESSOR_REVIEW_PROMPT, ReviewPlan, SufficiencyReport, evidence_catalog,
                           process_checks, validate_contract, validate_report, ScopePartition, partition_contract)
 
@@ -93,9 +94,13 @@ def _normalize_plan_ids(payload):
 
 
 class AutonomousReview:
-    def __init__(self, model, embeddings, emit, approve, root=Path("outputs"), *, max_actions=None, online_rag=True, skill_options=None, coding_tools=None):
+    def __init__(self, model, embeddings, emit, approve, root=Path("outputs"), *, max_actions=None, online_rag=True, skill_options=None, coding_tools=None, capability='literature_review'):
         if type(online_rag) is not bool:
             raise ValueError("online_rag must be a boolean")
+        if capability not in {'literature_review','experiment_design'}:
+            raise ValueError('Unsupported scientific capability')
+        self.capability = capability
+        self.research_skill = 'experiment_research' if capability == 'experiment_design' else 'literature_review'
         self.online_rag, self.started_at = online_rag, time.monotonic()
         self.input_chars, self.output_chars = 0, 0
         self.direct_passages, self.direct_chars = set(), 0
@@ -123,7 +128,7 @@ class AutonomousReview:
         self.successful_searches = 0
         self.skill_options = skill_options or SkillOptions()
         self.research_skills = SkillSession("research", self.skill_options)
-        self.research_skills.load("literature_review", origin="system")
+        self.research_skills.load(self.research_skill, origin="system")
         self.skill = self.research_skills.prompt()
         self.format_profile = "academic"
         async def bibliography_model(system, payload):
@@ -454,8 +459,9 @@ class AutonomousReview:
         return result
 
     async def lead_checkpoint(self):
-        assessment = await self.assess_sufficiency()
-        implementation = await self.review_implementation()
+        from .reviewer import ReviewerAgent
+        assessment, implementation = await ReviewerAgent(
+            self.assess_sufficiency, self.review_implementation, self.event).run()
         if assessment["ready"] and all(f["supported"] for f in implementation):
             result = {"status": "completed", "agent": "lead", "summary": assessment["synthesis"]}
             await self.event("lead", "agent", "completed", "充分性审查通过，结束补研", result=result)
@@ -678,12 +684,14 @@ class AutonomousReview:
     async def loop(self, agent, objective, *, lead=False, steps=16, assignment_context=None):
         observations, seen, local_evidence = [], set(), []
         skills = SkillSession("research", self.skill_options)
-        skills.load("literature_review", origin="system")
+        skills.load(self.research_skill, origin="system")
         await self.event(agent, "skill", "completed", "加载本研究会话的技能", skills=skills.trace(), phase="research")
         await self.event(agent, "agent", "started", objective)
         system = (
             "You are the lead research agent. Delegate complementary objectives to independent researchers "
             "in parallel when useful, inspect their findings and gaps, then choose next actions. "
+            "When ready to deliver, choose finish to ask the independent Reviewer for acceptance. "
+            "If rejected, use its concrete gaps to choose your next action; review is NOT periodic. "
             if lead else "You are an independent research subagent with your own objective and action loop. "
         ) + (
             "At each turn select ONE action, based on observations, not a preset sequence. "
@@ -733,25 +741,19 @@ class AutonomousReview:
             + "\nload_skill(query=skill ID) loads optional guidance from available_skills. "
               "Load only if useful to your assigned objective; it grants no additional tools."
         )
-        for turn in range(steps):
-            if lead and self.plan.get("required_goals") and self.evidence and self.actions - self.last_assessment_action >= 3:
-                completed = await self.lead_checkpoint()
-                if completed:
-                    return completed
+        async def decide(turn, allowed):
             action_limit = self.max_actions if lead else max(0, self.max_actions - 5)
             if self.actions >= action_limit or self.model_calls >= self.max_actions + 15:
-                break
+                return None
             handoff_now = steps - turn == 1 or action_limit - self.actions == 1
             schema = Action.model_json_schema()
-            if handoff_now:
-                schema["properties"]["tool"]["enum"] = ["finish"]
+            schema["properties"]["tool"]["enum"] = sorted(allowed)
             decision_system = system + "\n" + skills.prompt() + "\nReturn ONLY JSON " + json.dumps(schema)
             if handoff_now:
                 decision_system += ("\nThis is the reserved handoff turn, NOT another research turn. Only finish is available. "
                                     "Return evidence-supported findings and specific gaps; choose completed or incomplete honestly. "
                                     "Use source URLs from the shared evidence index. Do not request new tools.")
-            try:
-                action = Action.model_validate_json(await self.llm(decision_system, {
+            return await self.llm(decision_system, {
                     "task": self.query, "approved_plan": self.plan, "objective": objective,
                     "assignment_context": assignment_context or {},
                     "pending_goals": self.pending_goals() if lead else [],
@@ -769,26 +771,26 @@ class AutonomousReview:
                                        for e in self.evidence],
                     "catalog": [{k: n.get(k) for k in ("id", "title", "published", "status")}
                                 for n in list(self.library.nodes.values())[-100:]],
-                    "observations": observations[-10:]}))
-            except (ValueError, TypeError) as error:
-                observations.append({"error": "Invalid action schema: " + str(error)[:1200]})
-                continue
-            if not lead and action.tool in {"delegate", "replan", "request_user"}:
-                observations.append({"error": "Tool is outside this subagent's permissions"})
-                continue
-            if handoff_now and action.tool != "finish":
-                observations.append({"error": "Only finish is available on the reserved handoff turn"})
-                break
+                    "observations": observations[-10:]})
+
+        async def observe_error(message, error):
+            if not self.online_rag:
+                message += '；用户关闭在线 RAG，请使用 read_passage，不得调用 retrieve'
+            observations.append({"error": message})
+
+        async def execute_action(action, turn):
+            action_limit = self.max_actions if lead else max(0, self.max_actions - 5)
+            handoff_now = steps - turn == 1 or action_limit - self.actions == 1
             signature = action.model_dump(exclude={"purpose", "summary"})
             key = json.dumps(signature, sort_keys=True)
             if key in seen and action.tool not in {"retrieve", "finish"}:
                 observations.append({"error": "Identical action already attempted; use its observation or change the action"})
-                continue
+                return None
             seen.add(key)
             # Model calls await concurrently; another child may have consumed
             # the remaining shared budget while this action was being chosen.
             if self.actions >= action_limit:
-                break
+                raise AgentStop()
             self.actions += 1
             call_id, started = uuid4().hex, time.monotonic()
             await self.event(agent, action.tool, "started", action.purpose, call_id=call_id, arguments=signature)
@@ -798,7 +800,7 @@ class AutonomousReview:
                         completed = await self.lead_checkpoint()
                         if completed:
                             await self.event(agent, "finish", completed["status"], "研究充分性已核对", call_id=call_id, result=completed)
-                            return completed
+                            return AgentFinish(completed)
                         gaps = self.assessment_gaps(self.assessments[-1])
                         if not handoff_now:
                             raise ValueError("核心证据仍不足，只补充以下缺口：" + "；".join(gaps))
@@ -817,7 +819,7 @@ class AutonomousReview:
                               "unread_candidates": sorted(summary_sources - self.library.papers.keys())}
                     await self.event(agent, "finish", action.outcome, "研究结果已回传", call_id=call_id, result=result)
                     await self.event(agent, "agent", action.outcome, "研究结果已回传", result=result)
-                    return result
+                    return AgentFinish(result)
                 if action.tool == "load_skill":
                     if action.query.strip() not in {e["id"] for e in skills.discover()}:
                         raise ValueError("该技能不属于当前 Agent 可发现的指导")
@@ -895,6 +897,17 @@ class AutonomousReview:
                 result = {"tool": action.tool, "error": f"{type(error).__name__}: {error}"[:2000]}
                 observations.append(result)
                 await self.event(agent, action.tool, "failed", action.purpose, call_id=call_id, error=result["error"], severity="attempt")
+        profile = LEAD if lead else RESEARCHER
+        def available(turn):
+            limit = self.max_actions if lead else max(0, self.max_actions - 5)
+            if limit - self.actions <= 1:
+                return {'finish'}
+            return set(profile.tool_scope) - (set() if self.online_rag else {'retrieve'})
+        completed = await BaseAgent(profile, max_turns=steps).run(
+            decide=decide, parse=Action.model_validate_json, execute=execute_action,
+            observe_error=observe_error, available=available)
+        if completed is not None:
+            return completed
         if lead and self.plan.get("required_goals"):
             completed = await self.lead_checkpoint()
             if completed:
@@ -941,7 +954,10 @@ class AutonomousReview:
                            t for result in self.coding_results for t in result.get("tool_results", [])),
                        implementation_review=self.artifact_review,
                        read_sources=sorted(allowed_report_sources))
-        report = await self.llm("Write a Chinese Markdown literature review grounded in the supplied page-level "
+        report = await self.llm(("Write a Chinese Markdown experiment protocol; include 基线、数据、指标、环境、验收; "
+            "explicitly state experiments have NOT been executed. Ground it in the supplied page-level "
+            if self.capability == 'experiment_design' else
+            "Write a Chinese Markdown literature review grounded in the supplied page-level ") +
             "evidence. Cite only read_sources, using Markdown links near factual claims. "
             "Preserve scope/date limits and material research gaps. Do not claim exhaustive coverage, "
             "verified experiments, or factual certainty based only on citation membership. "
@@ -955,6 +971,9 @@ class AutonomousReview:
             (self.folder / f"draft-{attempt + 1}.md").write_text(report)
             validation = validate_report_draft(report, allowed_report_sources,
                                                target_chars=target_chars)
+            if self.capability == 'experiment_design':
+                validation['issues'].extend('缺失实验方案部分：' + word for word in ('基线','数据','指标','环境','验收') if word not in report)
+                validation['ok'] = not validation['issues']
             cited = validation["citation_urls"]
             unknown = validation["invalid_urls"]
             actual_chars = validation["chinese_chars"]

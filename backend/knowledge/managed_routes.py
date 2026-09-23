@@ -1,10 +1,12 @@
 """Authenticated, user-facing knowledge library management."""
 from uuid import uuid4
+from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Response
 from pydantic import BaseModel, Field, field_validator
 from backend.auth.dependencies import get_current_user_email
 from backend.auth.db import get_pool
 from backend.knowledge import managed
+from backend.auth.lab import admin_email
 
 router = APIRouter(prefix='/api/knowledge/libraries', tags=['knowledge libraries'])
 
@@ -12,6 +14,7 @@ router = APIRouter(prefix='/api/knowledge/libraries', tags=['knowledge libraries
 class LibraryRequest(BaseModel):
     name: str = Field(min_length=1,max_length=120)
     description: str = Field(default='',max_length=1200)
+    visibility: Literal['private','lab'] = 'private'
 
     @field_validator('name')
     @classmethod
@@ -28,15 +31,19 @@ async def list_libraries(email=Depends(get_current_user_email)):
 
 @router.post('',status_code=201)
 async def create_library(body: LibraryRequest, email=Depends(get_current_user_email)):
+    if body.visibility=='lab' and not admin_email(email):
+        raise HTTPException(403,'公共知识库仅限管理员创建')
     pool = await get_pool()
-    return dict(await pool.fetchrow('INSERT INTO knowledge_bases(id,owner,name,description) VALUES($1,$2,$3,$4) RETURNING *',str(uuid4()), email, body.name, body.description))
+    return dict(await pool.fetchrow('INSERT INTO knowledge_bases(id,owner,name,description,visibility) VALUES($1,$2,$3,$4,$5) RETURNING *',str(uuid4()), email, body.name, body.description, body.visibility))
 
 
 @router.patch('/{kb_id}')
 async def edit_library(kb_id: str, body: LibraryRequest, email=Depends(get_current_user_email)):
-    await managed.get_library(email,kb_id)
+    await managed.get_library(email,kb_id,write=True)
+    if body.visibility=='lab' and not admin_email(email):
+        raise HTTPException(403,'发布公共知识库需要管理员权限')
     pool = await get_pool()
-    return dict(await pool.fetchrow('UPDATE knowledge_bases SET name=$2,description=$3,updated_at=now() WHERE id=$1 RETURNING *',kb_id,body.name,body.description))
+    return dict(await pool.fetchrow('UPDATE knowledge_bases SET name=$2,description=$3,visibility=$4,updated_at=now() WHERE id=$1 RETURNING *',kb_id,body.name,body.description,body.visibility))
 
 
 @router.get('/{kb_id}/documents')
@@ -46,7 +53,7 @@ async def list_documents(kb_id: str,email=Depends(get_current_user_email)):
 
 @router.post('/{kb_id}/documents',status_code=202)
 async def upload_document(kb_id: str,file: UploadFile=File(...),email=Depends(get_current_user_email)):
-    await managed.get_library(email,kb_id)
+    await managed.get_library(email,kb_id,write=True)
     try:
         payload=await file.read(64*1024*1024+1)
         return await managed.upload(email,kb_id,file.filename or '',payload)
@@ -69,7 +76,7 @@ async def source(kb_id: str,document_id: str,email=Depends(get_current_user_emai
 
 @router.delete('/{kb_id}/documents/{document_id}',status_code=204)
 async def delete_document(kb_id: str,document_id: str,email=Depends(get_current_user_email)):
-    await managed.get_library(email,kb_id)
+    await managed.get_library(email,kb_id,write=True)
     pool=await get_pool()
     async with pool.acquire() as c,c.transaction():
         await c.execute('SELECT id FROM knowledge_bases WHERE id=$1 FOR UPDATE',kb_id)
@@ -90,7 +97,7 @@ class ReportImport(BaseModel):
 
 @router.post('/{kb_id}/report',status_code=202)
 async def import_report(kb_id: str,body: ReportImport,email=Depends(get_current_user_email)):
-    await managed.get_library(email,kb_id)
+    await managed.get_library(email,kb_id,write=True)
     pool=await get_pool()
     report=await pool.fetchrow('SELECT id,answer FROM reports WHERE id=$1 AND user_email=$2',body.conversation_id,email)
     if not report:

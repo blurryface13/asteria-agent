@@ -1,5 +1,7 @@
 # Asteria Agent 开发规格
 
+> 2026-09-18 当前增量规格见 [`docs/lab-release-plan.md`](docs/lab-release-plan.md)：独立账号、私有任务、公共资料与注册式能力扩展。下方历史阶段状态和简历指标不能替代当前验收。记录：Codex / GPT-5。
+
 > 本文档用于记录项目目标、架构约束、接口契约和设计决策。开发节点、真实运行记录、额度统计与可执行任务计划统一维护在 [`DEVELOPMENT_LOG.md`](DEVELOPMENT_LOG.md)；实现过程中如果实际约束发生变化，先更新对应文档，再调整代码。
 
 ## 1. 项目目标

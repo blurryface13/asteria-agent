@@ -143,15 +143,13 @@ async def run_agent(task, report_type, report_source, source_urls, document_urls
     from asteria_researcher.agentic.capabilities import RESEARCH
     capability = coordinator_capability
     if capability is not None and capability not in RESEARCH:
-        raise ValueError(f"{capability} 请求应通过 Coordinator 处理，不得创建研究任务")
+        raise ValueError(f"{capability} 请求应通过 AgentOrchestrator（旧 Coordinator 入口）处理，不得创建研究任务")
     if coordinator_capability:
         await logs_handler.send_json({
             "type": "logs",
             "content": "intent_resolved",
             "output": json.dumps({"capability": coordinator_capability, "source": "coordinator"}, ensure_ascii=False),
         })
-    if capability == "general_research":
-        capability = None
     if not return_researcher and coordinator_capability is None and capability is None and getattr(logs_handler, "feedback_queue", None) is not None:
         from asteria_researcher.agentic.intent import analyze_intent
         from .agentic_runner import configured_model
@@ -161,8 +159,8 @@ async def run_agent(task, report_type, report_source, source_urls, document_urls
             raise ValueError(intent.clarification_question)
         if intent.capability not in RESEARCH:
             await logs_handler.send_json({"type": "logs", "content": "intent_resolved", "output": intent.model_dump()})
-            raise ValueError(f"{intent.capability} 请求应通过 Coordinator 处理，不得创建研究任务")
-        capability = intent.capability if intent.capability not in {"general_research", "general_chat"} else None
+            raise ValueError(f"{intent.capability} 请求应通过 AgentOrchestrator（旧 Coordinator 入口）处理，不得创建研究任务")
+        capability = intent.capability
         await logs_handler.send_json({"type": "logs", "content": "intent_resolved", "output": intent.model_dump()})
     options = getattr(logs_handler, "skill_options", None)
     if not capability and options and (options.skill_ids or options.format_profile):

@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
 import PlausibleProvider from "next-plausible";
 import { GoogleAnalytics } from '@next/third-parties/google'
-import { ResearchHistoryProvider } from "@/hooks/ResearchHistoryContext";
 import AuthGuard from "@/components/AuthGuard";
 import "./globals.css";
 import 'katex/dist/katex.min.css';
 import Script from 'next/script';
+import {Toaster} from 'react-hot-toast';
 
 let title = "Asteria Research";
 let description =
@@ -71,11 +71,8 @@ export default function RootLayout({
         className="app-container flex min-h-screen flex-col justify-between"
         suppressHydrationWarning
       >
-        <ResearchHistoryProvider>
-          <AuthGuard>
-            {children}
-          </AuthGuard>
-        </ResearchHistoryProvider>
+        <AuthGuard>{children}</AuthGuard>
+        <Toaster position="bottom-center"/>
       </body>
     </html>
   );

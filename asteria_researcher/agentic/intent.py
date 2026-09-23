@@ -14,12 +14,21 @@ class SemanticIntent(BaseModel):
     confidence: float = Field(default=.85, ge=0, le=1, allow_inf_nan=False)
     needs_clarification: bool = False
     clarification_question: str = Field(default='', max_length=500)
+    supporting_agents: list[str] = Field(default_factory=list, max_length=2)
 
     @field_validator('capability')
     @classmethod
     def registered(cls,value):
         if value not in CAPABILITIES:
             raise ValueError('Unregistered capability')
+        return value
+
+    @field_validator('supporting_agents')
+    @classmethod
+    def readonly_support(cls, value):
+        allowed = {'learning_guidance','submission_consulting','financial_research','company_research'}
+        if len(value) != len(set(value)) or not set(value) <= allowed:
+            raise ValueError('Supporting agents must be distinct read-only domain roles')
         return value
 
 
@@ -59,6 +68,12 @@ async def analyze_intent(query, model, history=None, report='', knowledge_catalo
         "or experiment-protocol deliverables. Explicit stored-document questions still use knowledge_chat. "
         "For a compound paper review plus implementation analysis, keep the requested research deliverable; "
         "the research Lead can delegate coding. Plain file work goes to workspace_coding. "
+        "For a compound request needing complementary domain perspectives, optionally set supporting_agents "
+        "(at most two) from learning_guidance/submission_consulting/financial_research/company_research. "
+        "Use this ONLY when the primary capability is one of those four, exclude the primary itself, "
+        "and default to []. They receive the same request with different role contracts. "
+        "Never parallel-route coding, knowledge_chat, general_chat or research deliverables; "
+        "research Lead owns distinct subgoal delegation. "
         "If the intended deliverable is unclear, set needs_clarification and a short clarification_question. "
         "Confidence represents your semantic classification estimate, not task completion. "
         "Available specialist contracts: " + json.dumps(profile_catalog(),ensure_ascii=False) +

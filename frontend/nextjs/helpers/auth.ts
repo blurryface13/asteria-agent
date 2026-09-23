@@ -19,6 +19,10 @@ export function getToken(): string | null {
 
 export function setAuth(token: string, email: string) {
   try {
+    if(getAuthEmail()!==email){
+      // Only transient UI selections; preserve legacy reports/drafts untouched.
+      for(const key of ['asteria.activeProjectId','asteria.knowledgeSelection','chatBoxSettings','apiVariables','domainFilters'])window.localStorage?.removeItem(key);
+    }
     window.localStorage?.setItem(TOKEN_KEY, token);
     window.localStorage?.setItem(EMAIL_KEY, email);
   } catch {
@@ -63,7 +67,7 @@ export async function authFetch(input: RequestInfo | URL, init: RequestInit = {}
   if (token) {
     headers.set('Authorization', `Bearer ${token}`);
   }
-  const response = await fetch(input, { ...init, headers });
+  const response = await fetch(input, { credentials: 'include', ...init, headers });
   if (response.status === 401 && typeof window !== 'undefined' && window.location.pathname !== '/login') {
     if (isLocalAuthBypassEnabled()) {
       const target = typeof input === 'string' ? input : input.toString();

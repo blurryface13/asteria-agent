@@ -4,7 +4,15 @@
 set -euo pipefail
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_dir/frontend/nextjs"
+if [[ -f "$repo_dir/.env.lab" ]]; then
+  set -a
+  source "$repo_dir/.env.lab"
+  set +a
+fi
 node_bin="${ASTERIA_NODE_BIN:-/opt/homebrew/opt/node@22/bin/node}"
+if [[ ! -x "$node_bin" ]] && command -v node >/dev/null 2>&1; then
+  node_bin="$(command -v node)"
+fi
 if [[ ! -x "$node_bin" ]]; then
   echo "Node 22 not found; set ASTERIA_NODE_BIN to its executable." >&2
   exit 1
@@ -21,4 +29,4 @@ export NEXT_PUBLIC_ASTERIA_API_URL="${NEXT_PUBLIC_ASTERIA_API_URL:-http://127.0.
 export NEXT_PUBLIC_BACKEND_URL="${NEXT_PUBLIC_BACKEND_URL:-$NEXT_PUBLIC_ASTERIA_API_URL}"
 # Authentication is configured by the caller/.env.local, never disabled here.
 "$node_bin" ../../scripts/check-frontend-files.cjs
-exec "$node_bin" node_modules/next/dist/bin/next dev --hostname 127.0.0.1 --port "${ASTERIA_FRONTEND_PORT:-3023}"
+exec "$node_bin" node_modules/next/dist/bin/next dev --hostname "${ASTERIA_FRONTEND_HOST:-127.0.0.1}" --port "${ASTERIA_FRONTEND_PORT:-3023}"

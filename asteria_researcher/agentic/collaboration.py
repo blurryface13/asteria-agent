@@ -8,27 +8,21 @@ from __future__ import annotations
 import asyncio
 import re
 import time
-from dataclasses import dataclass
 from difflib import SequenceMatcher
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
-
-
-@dataclass(frozen=True)
-class AgentProfile:
-    role: str
-    mission: str
-    input_contract: str
-    output_contract: str
-    tool_scope: tuple[str, ...]
-    max_turns: int = 8
+from .base_agent import AgentProfile
 
 
 RESEARCHER = AgentProfile(
     "researcher", "调查分配的研究问题，不重复其他角色的调查范围。",
     "子目标、调查角度、排除范围、来源限制", "原文依据、发现、未解决问题",
-    ("search", "read", "retrieve", "read_passage", "references", "finish"), 16)
+    ("search", "read", "retrieve", "read_passage", "references", "load_skill", "finish"), 16)
+LEAD = AgentProfile(
+    "lead", "按独立子目标组织研究；选择自行调查或并行派发，准备交付时请 Reviewer 验收。",
+    "用户确认的研究目标、子任务结果、共享依据与验收缺口", "有依据的综合结果或明确未完成项",
+    (*RESEARCHER.tool_scope, "delegate", "replan", "request_user"), 18)
 CODING = AgentProfile(
     "coding", "调查代码和实验准备条件；遇到知识障碍时提出具体调研请求。",
     "子目标、工作区/仓库范围、已知依据、交付条件",
@@ -36,7 +30,7 @@ CODING = AgentProfile(
     ("list_workspace_files", "read_workspace_file", "propose_workspace_change",
      "inspect_repository", "read_repository_file", "search_papers", "read_paper", "read_paper_passage",
      "check_python_syntax", "preview_code_diff", "request_research", "finish"), 12)
-PROFILES = {p.role: p for p in (RESEARCHER, CODING)}
+PROFILES = {p.role: p for p in (LEAD, RESEARCHER, CODING)}
 
 
 class Assignment(BaseModel):

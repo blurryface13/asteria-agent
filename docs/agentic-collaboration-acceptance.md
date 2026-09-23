@@ -2,6 +2,8 @@
 
 日期：2026-09-22。本轮落地的是科研自主协作关键路径，不是整个 EchoMind 替换。
 
+**当前架构更新**：后续已完成入口 AgentOrchestrator、共享 BaseAgent、领域主辅并行和交付时 Reviewer 的骨架适配。下文旧映射与计数保留为阶段记录；当前映射、真实探针及兼容边界统一见 [骨架对齐记录](echomind-alignment-plan.md)。
+
 后续更新：本机模型服务已可用，完成了单例冻结材料上的真实 Coding 直接阅读/科研求助对照，见 [Coding 调研路径实验](coding-research-comparison.md)。下文HTTP402是此前验收的历史结果；新的局部对照不代表完整分工质量、在线调研或执行调试已经验收。
 
 工具闭环进一步对齐 EchoMind 的结果/Trace 边界，生产 Coding 已加入实际片段完成检查与重复请求保护，参见 [工具契约](coding-tool-contract.md)；不强制通过科研子 Agent 取得证据。

@@ -215,18 +215,20 @@ def runtime(tmp_path, model):
     return review
 
 
-def test_independent_assessor_stops_lead_before_optional_delegation(tmp_path):
+def test_independent_assessor_accepts_when_lead_requests_delivery(tmp_path):
     seen = []
     async def model(system, payload):
         data = json.loads(payload)
         seen.append(data)
+        if 'objective' in data:
+            return json.dumps({'tool':'finish','purpose':'核心目标已有证据，准备交付','summary':'提交验收'})
         assert "objective" not in data and "observations" not in data
         assert "independent research sufficiency assessor" in system
         return json.dumps(finding({e["id"]: e for e in data["evidence"]}))
     review = runtime(tmp_path, model)
     result = asyncio.run(review.loop("lead", "再研究额外方向", lead=True))
     assert result["status"] == "completed" and review.children == 0
-    assert len(seen) == 1 and (review.folder / "sufficiency.json").exists()
+    assert len(seen) == 2 and (review.folder / "sufficiency.json").exists()
 
 
 def test_no_new_evidence_stops_repeated_followups_and_caches_assessment(tmp_path):

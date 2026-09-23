@@ -5,6 +5,7 @@ automatically retried: the external side effect of an in-flight tool is unknown.
 """
 import hashlib
 import json
+import os
 from uuid import uuid4
 
 from fastapi import HTTPException
@@ -39,6 +40,7 @@ class RunStore:
         digest = hashlib.sha256(json.dumps(request, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
         pool = await get_pool()
         async with pool.acquire() as c, c.transaction():
+            await c.execute("SELECT pg_advisory_xact_lock(hashtextextended(current_schema() || ':research-admission',0))")
             # Serialize same key and same conversation even across API processes.
             await c.execute('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', email + ':' + key)
             prior = await c.fetchrow('SELECT * FROM research_runs WHERE user_email=$1 AND request_key=$2', email, key)
@@ -46,6 +48,10 @@ class RunStore:
                 if prior['request_hash'] != digest or prior['conversation_id'] != conversation_id:
                     raise HTTPException(409, 'request_id already used for a different request')
                 return dict(prior)
+            counts=await c.fetchrow("""SELECT count(*) AS total,count(*) FILTER (WHERE user_email=$1) AS owned
+                FROM research_runs WHERE status IN ('queued','running','waiting_approval','cancel_requested')""",email)
+            if counts['total']>=int(os.getenv('ASTERIA_MAX_RESEARCH_PENDING','40')) or counts['owned']>=int(os.getenv('ASTERIA_MAX_USER_RESEARCH','2')):
+                raise HTTPException(429,'研究任务额度已满，请等待或取消已有任务',headers={'Retry-After':'10'})
             conversation = await c.fetchrow('SELECT id FROM workspace_conversations WHERE id=$1 AND user_email=$2 FOR UPDATE', conversation_id, email)
             if not conversation:
                 raise HTTPException(404, 'conversation not found')

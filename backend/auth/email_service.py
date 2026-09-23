@@ -6,7 +6,7 @@ project (spring.mail in application.yaml) - same account, different client
 (aiosmtplib instead of Spring's JavaMailSender).
 """
 import os
-import random
+import secrets
 import logging
 from email.mime.text import MIMEText
 from email.header import Header
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 def generate_code() -> str:
-    return f"{random.randint(0, 999999):06d}"
+    return f"{secrets.randbelow(1000000):06d}"
 
 
 async def send_verification_code(to_email: str, code: str, expire_minutes: int):
@@ -27,7 +27,7 @@ async def send_verification_code(to_email: str, code: str, expire_minutes: int):
     username = os.environ["SMTP_USERNAME"]
     password = os.environ["SMTP_PASSWORD"]
 
-    subject = "Bunny Research 登录验证码"
+    subject = "Asteria Agent 登录验证码"
     body = (
         f"你的登录验证码是: {code}\n\n"
         f"{expire_minutes} 分钟内有效,请勿泄露给他人。\n"

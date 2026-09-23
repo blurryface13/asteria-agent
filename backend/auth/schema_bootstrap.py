@@ -24,6 +24,7 @@ async def initialize_database() -> None:
             schema_dir / "workspace_schema.sql",
             schema_dir.parent / "runs" / "schema.sql",
             schema_dir.parent / "knowledge" / "schema.sql",
+            schema_dir.parent / 'files' / 'schema.sql',
         )
         pool = await get_pool()
         async with pool.acquire() as conn, conn.transaction():

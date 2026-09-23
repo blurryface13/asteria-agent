@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { getToken, isLocalAuthBypassEnabled } from "@/helpers/auth";
+import { getToken, getAuthEmail, isLocalAuthBypassEnabled, authFetch } from "@/helpers/auth";
+import {getHost} from '@/helpers/getHost';
+import {ResearchHistoryProvider} from '@/hooks/ResearchHistoryContext';
 
 // Wraps the whole app (mounted from layout.tsx). Redirects to /login when
 // there's no token in localStorage. The /login page itself is excluded so
@@ -26,12 +28,13 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
     try {
       const token = getToken();
       if (!token) {
-        setChecked(true);
+        setChecked(false);
         router.replace("/login");
         return;
       }
 
-      setChecked(true);
+      setChecked(false);
+      authFetch(getHost()+'/api/auth/me').then(r=>setChecked(r.ok)).catch(()=>setChecked(false));
     } catch (error) {
       console.error("Auth check failed:", error);
       setChecked(true);
@@ -39,6 +42,7 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
     }
   }, [pathname, router]);
 
+  if(pathname==='/login')return <>{children}</>;
   if (!checked) {
     return (
       <div className="flex min-h-screen w-full items-center justify-center bg-white text-sm text-gray-500">
@@ -47,5 +51,5 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
     );
   }
 
-  return <>{children}</>;
+  return <ResearchHistoryProvider key={getAuthEmail()||'local'}>{children}</ResearchHistoryProvider>;
 }

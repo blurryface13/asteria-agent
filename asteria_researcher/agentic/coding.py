@@ -14,6 +14,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from .collaboration import CODING, normalize
+from .base_agent import BaseAgent, AgentFinish, AgentStop
 from .skill_catalog import SkillSession
 from .runtime import urls
 from .code_diagnostics import build_diagnostic_tools
@@ -98,24 +99,21 @@ async def run_coding(assignment, model, tools, request_research, emit, *,
         "On finish explicitly state unresolved work. Return ONLY JSON matching "
         + json.dumps(CodingAction.model_json_schema()) + "\n" + skills.prompt())
     await emit(agent, "agent", "started", assignment.objective, assignment=assignment.model_dump())
-    for turn in range(max_turns):
-        available = schemas if turn < max_turns - 1 else {"finish": schemas["finish"]}
-        raw = await model(system, {"assignment": assignment.model_dump(), "context": context or {},
+    async def decide(turn, allowed):
+        available = {name: schema for name, schema in schemas.items() if name in allowed}
+        return await model(system, {"assignment": assignment.model_dump(), "context": context or {},
                                   "tools": available, "observations": observations[-8:],
                                   "evidence_index": evidence_index(tool_results, requests),
                                   "completion_contract": completion_check(evidence_required, evidence_index(tool_results, requests)),
                                   "remaining_turns": max_turns - turn,
                                   "remaining_research_requests": 2 - len(requests)})
-        try:
-            action = parse_action(raw)
-        except (ValueError, TypeError):
-            observations.append({"error": "Invalid action JSON/schema; repair the structure, do not execute tools."})
-            continue
-        if action.tool not in available:
-            observations.append({"error": "Tool unavailable or outside role permissions"})
-            continue
+
+    async def observe_error(message, error):
+        observations.append({"error": message})
+
+    async def execute_action(action, turn):
         if not consume_action():
-            break
+            raise AgentStop()
         call_id, started = uuid4().hex, time.monotonic()
         trace = {"tool_name": action.tool, "tool_use_id": call_id,
                  "success": False, "result_success": None, "executed": False}
@@ -147,7 +145,7 @@ async def run_coding(assignment, model, tools, request_research, emit, *,
                           "sources": sorted(allowed_urls), "execution_performed": False, "pending_approval": bool(pending)}
                 result["summary"] = summary
                 await emit(agent, "finish", action.outcome, action.purpose, call_id=call_id, result=result)
-                return result
+                return AgentFinish(result)
             if action.tool == "request_research":
                 req = ResearchRequest.model_validate(action.arguments)
                 signature = normalize(req.question)
@@ -212,6 +210,11 @@ async def run_coding(assignment, model, tools, request_research, emit, *,
             if action.tool != "finish":
                 trace["latency_ms"] = round((time.monotonic() - started) * 1000, 2)
                 tool_traces.append(trace)
+    completed = await BaseAgent(CODING, max_turns=max_turns).run(
+        decide=decide, parse=parse_action, execute=execute_action, observe_error=observe_error,
+        available=lambda turn: schemas)
+    if completed is not None:
+        return completed
     result = {"agent": agent, "status": "incomplete", "summary": "代码任务预算耗尽或仍有未解决问题",
               "tool_results": tool_results, "research_requests": requests, "sources": sources,
               "tool_traces": tool_traces, "evidence_index": evidence_index(tool_results, requests),

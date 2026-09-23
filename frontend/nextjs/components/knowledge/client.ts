@@ -1,5 +1,5 @@
 import {authFetch} from '@/helpers/auth';
-export interface Library {id:string;name:string;description:string;documents:number;ready_documents:number;updated_at:string}
+export interface Library {id:string;name:string;description:string;documents:number|null;ready_documents:number|null;updated_at:string;visibility:'private'|'lab';can_manage:boolean;built_in?:boolean}
 export interface LibraryDocument {id:string;name:string;active_version:string|null;latest_version:string;status:string;error:string|null;chunks:number;created_at:string}
 export async function knowledgeRequest(path='',method='GET',body?:object|FormData) {
   const form=body instanceof FormData;

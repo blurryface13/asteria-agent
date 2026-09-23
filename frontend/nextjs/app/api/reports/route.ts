@@ -33,6 +33,7 @@ export async function GET(request: Request) {
     console.log(`GET ${endpoint} - Proxying request to backend`);
     
     const response = await fetch(`${backendUrl}${endpoint}`, {
+      cache:'no-store',
       headers: request.headers.get('authorization')
         ? { Authorization: request.headers.get('authorization')! }
         : {},
@@ -116,4 +117,4 @@ export async function POST(request: Request) {
       { status: 500 }
     );
   }
-} 
+}

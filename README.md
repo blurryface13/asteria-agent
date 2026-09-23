@@ -2,7 +2,9 @@
 
 面向文献调研、综述写作和实验设计的科研智能体工作台。用自然语言描述目标，Agent 自主规划、委派研究、阅读与追踪论文，在证据充分后交付带引用的报告。
 
-Python · LangGraph · FastAPI · Next.js · PostgreSQL · Ollama
+Python · AgentOrchestrator / BaseAgent · FastAPI · Next.js · PostgreSQL · Redis · ChromaDB · Ollama
+
+当前主入口按 EchoMind 的角色编排方式适配：`AgentOrchestrator` 负责意图与主辅路由，工作角色共享 `BaseAgent` 工具循环；科研支路额外提供 Lead 分工并行与交付时 Reviewer 验收。不是原样复制 EchoMind，也不是把旧 LangGraph 节点全部串行跑一遍。具体映射与测试见 [骨架对齐记录](docs/echomind-alignment-plan.md)。
 
 ## ✨ 能做什么
 
@@ -10,6 +12,8 @@ Python · LangGraph · FastAPI · Next.js · PostgreSQL · Ollama
 - **按需使用 Skill**：Agent 发现技能并按阶段加载，用户也可查看、指定技能。内容写作指导、格式契约、LaTeX 模板和编译工具分别维护。
 - **报告交付**：生成 Markdown、LaTeX 与 PDF，在工作台检查报告、源码、研究轨迹和引用关系；支持围绕报告继续问答。
 - **项目与知识库**：项目组织多轮对话，历史内容持久化到 PostgreSQL。离线 RAG 保留独立入口，支持混合检索与重排；在线研究可选择启用 RAG。
+- **分层记忆**：PostgreSQL 保存会话原始记录，Redis 缓存近期上下文；用户偏好和项目主题以可编辑 Markdown 保存，并由独立 ChromaDB 集合索引主题记忆，按用户、项目与当前问题做语义召回。论文知识库的向量索引与个人记忆隔离。
+- **实验室账号**：管理员创建邮箱账号并设置密码，成员的项目、对话、任务和记忆各自隔离；知识库可设置为实验室共享。邮件验证码仅在单独配置 SMTP 后启用。
 - **后台运行**：桌面研究由独立 worker 执行，刷新或关闭页面不终止任务；进度、人工确认、模型用量与交付产物持久保存，重新打开即可继续查看。
 - **评测工作台**：查看研究历史、导入 Trace、展开父子调用、检查规则报告；对 BadCase 质检并回流种子题库。当前自主运行时的语义评分与版本对比正在接入。
 
@@ -35,6 +39,8 @@ Python · LangGraph · FastAPI · Next.js · PostgreSQL · Ollama
 - [自主实验与评测路线](docs/experiment-evaluation-roadmap.md)
 - [Lead 分工与代码调研协作](docs/agentic-collaboration-plan.md)
 - [协作验收、测试指令与当前限制](docs/agentic-collaboration-acceptance.md)
+- [EchoMind 骨架对齐与真实请求验收](docs/echomind-alignment-plan.md)
+- [实验室部署与登录排查](docs/lab-deployment.md)
 
 调研引擎位于 `asteria_researcher/`，API 与持久化位于 `backend/`，Web 工作台位于 `frontend/nextjs/`。既有 LangGraph 工作流保留在 `multi_agents/`，与自主研究运行时分开维护。
 

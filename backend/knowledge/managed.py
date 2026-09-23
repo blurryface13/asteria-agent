@@ -8,25 +8,36 @@ from uuid import uuid4
 
 from fastapi import HTTPException
 from backend.auth.db import get_pool
+from backend.auth.lab import admin_email
 
 logger = logging.getLogger(__name__)
 _worker = None
 
 
-async def get_library(email, kb_id):
+async def get_library(email, kb_id, *, write=False):
+    from backend.knowledge.shared_corpus import catalog
+    for library in catalog():
+        if kb_id==library['id']:
+            if write:
+                raise HTTPException(403,'此库复用既有论文索引；请在新的公共资料库中上传补充资料')
+            return library
     pool = await get_pool()
-    row = await pool.fetchrow('SELECT * FROM knowledge_bases WHERE id=$1 AND owner=$2', kb_id, email)
+    row = await pool.fetchrow("SELECT * FROM knowledge_bases WHERE id=$1 AND (owner=$2 OR visibility='lab')", kb_id, email)
     if not row:
         raise HTTPException(404, '知识库不存在')
+    if write and not (admin_email(email) if row['visibility']=='lab' else row['owner']==email):
+        raise HTTPException(403, '公共知识库仅限管理员维护')
     return dict(row)
 
 
 async def libraries(email):
     pool = await get_pool()
-    return [dict(row) for row in await pool.fetch('''SELECT k.*,
+    rows = await pool.fetch('''SELECT k.*,
         (SELECT count(*) FROM knowledge_documents d WHERE d.kb_id=k.id) AS documents,
         (SELECT count(*) FROM knowledge_documents d WHERE d.kb_id=k.id AND active_version IS NOT NULL) AS ready_documents
-        FROM knowledge_bases k WHERE owner=$1 ORDER BY updated_at DESC''', email)]
+        FROM knowledge_bases k WHERE owner=$1 OR visibility='lab' ORDER BY updated_at DESC''', email)
+    from backend.knowledge.shared_corpus import catalog
+    return catalog()+[dict(row,can_manage=admin_email(email) if row['visibility']=='lab' else row['owner']==email) for row in rows]
 
 
 async def documents(email, kb_id):
@@ -40,7 +51,7 @@ async def documents(email, kb_id):
 
 
 async def upload(email, kb_id, name, payload):
-    await get_library(email, kb_id)
+    await get_library(email, kb_id, write=True)
     name = Path(name).name.strip()
     if not name or Path(name).suffix.lower() not in {'.pdf', '.md', '.txt'}:
         raise HTTPException(422, '支持 PDF、Markdown 和 TXT 文件')
@@ -174,11 +185,14 @@ async def retrieve(email, kb_ids, query, top_k=6):
         return []
     for kb_id in kb_ids:
         await get_library(email, kb_id)
+    from backend.knowledge import shared_corpus
+    shared=await shared_corpus.retrieve(query,top_k) if shared_corpus.ID in kb_ids else []
+    kb_ids=[k for k in kb_ids if k!=shared_corpus.ID]
     pool = await get_pool()
     rows = await pool.fetch('''SELECT c.*,d.name,d.kb_id FROM knowledge_chunks c
         JOIN knowledge_documents d ON d.active_version=c.version_id WHERE d.kb_id=ANY($1::text[])''', kb_ids)
     if not rows:
-        return []
+        return [dict(row,index=i+1) for i,row in enumerate(shared)]
     rows = [dict(r) for r in rows]
     def search():
         import numpy as np
@@ -207,7 +221,12 @@ async def retrieve(email, kb_ids, query, top_k=6):
             candidates = RerankerFactory.create(settings).rerank(query, candidates, top_k=top_k)
         return candidates[:top_k]
     sources = await asyncio.to_thread(search)
-    return [dict(row,index=i+1) for i,row in enumerate(sources)]
+    # Scores from independent rankers are not comparable. Interleave ranks.
+    merged=[]
+    for i in range(max(len(shared),len(sources))):
+        if i<len(sources): merged.append(sources[i])
+        if i<len(shared): merged.append(shared[i])
+    return [dict(row,index=i+1) for i,row in enumerate(merged[:top_k])]
 
 
 async def answer(email, kb_ids, query, model, history=None):

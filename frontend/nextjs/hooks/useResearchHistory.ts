@@ -2,11 +2,13 @@ import { useState, useEffect, useRef } from 'react';
 import { toast } from 'react-hot-toast';
 import { v4 as uuidv4 } from 'uuid';
 import { ResearchHistoryItem, Data, ChatMessage } from '../types/data';
-import { authFetch } from "@/helpers/auth";
+import { authFetch, getAuthEmail, isLocalAuthBypassEnabled } from "@/helpers/auth";
+
+function historyCacheKey(){return isLocalAuthBypassEnabled()?'researchHistory':'researchHistory:'+encodeURIComponent(getAuthEmail()||'anonymous');}
 
 // A cache write must never roll back an already persisted server operation.
 function cacheServerHistory(reports: ResearchHistoryItem[]) {
-  try { localStorage.setItem('researchHistory', JSON.stringify(reports)); }
+  try { localStorage.setItem(historyCacheKey(), JSON.stringify(reports)); }
   catch { /* Keep the existing local copy; PostgreSQL remains authoritative. */ }
 }
 
@@ -97,7 +99,8 @@ export const useResearchHistory = () => {
     
     // Helper to load from localStorage
     const loadFromLocalStorage = () => {
-      const localHistoryStr = localStorage.getItem('researchHistory');
+      if(!isLocalAuthBypassEnabled()) return []; // Authenticated server data only on initial display.
+      const localHistoryStr = localStorage.getItem(historyCacheKey());
       if (localHistoryStr) {
         try {
           const parsedHistory = JSON.parse(localHistoryStr);
@@ -203,7 +206,7 @@ export const useResearchHistory = () => {
         setHistory(prev => [newResearch, ...prev]);
         
         // Also save to localStorage as fallback
-        const localHistory = localStorage.getItem('researchHistory');
+        const localHistory = localStorage.getItem(historyCacheKey());
         const parsedHistory = localHistory ? JSON.parse(localHistory) : [];
         cacheServerHistory([newResearch, ...parsedHistory]);
         
@@ -236,10 +239,10 @@ export const useResearchHistory = () => {
       setHistory(prev => [newResearch, ...prev]);
       
       // Save to localStorage
-      const localHistory = localStorage.getItem('researchHistory');
+      const localHistory = localStorage.getItem(historyCacheKey());
       const parsedHistory = localHistory ? JSON.parse(localHistory) : [];
       localStorage.setItem(
-        'researchHistory',
+        historyCacheKey(),
         JSON.stringify([newResearch, ...parsedHistory])
       );
       
@@ -274,7 +277,7 @@ export const useResearchHistory = () => {
       );
       
       // Also update localStorage as fallback
-      const localHistory = localStorage.getItem('researchHistory');
+      const localHistory = localStorage.getItem(historyCacheKey());
       if (localHistory) {
         const parsedHistory = JSON.parse(localHistory);
         const updatedHistory = parsedHistory.map((item: any) => 
@@ -295,13 +298,13 @@ export const useResearchHistory = () => {
       );
       
       // Update localStorage
-      const localHistory = localStorage.getItem('researchHistory');
+      const localHistory = localStorage.getItem(historyCacheKey());
       if (localHistory) {
         const parsedHistory = JSON.parse(localHistory);
         const updatedHistory = parsedHistory.map((item: any) => 
           item.id === id ? { ...item, answer, orderedData, timestamp: Date.now() } : item
         );
-        localStorage.setItem('researchHistory', JSON.stringify(updatedHistory));
+        localStorage.setItem(historyCacheKey(), JSON.stringify(updatedHistory));
       }
       
       return false;
@@ -331,7 +334,7 @@ export const useResearchHistory = () => {
         }
         if (conversationResponse.status !== 404) throw new Error(`Conversation API error: ${conversationResponse.status}`);
         // Pre-migration local records have no server conversation.
-        const localHistory = localStorage.getItem('researchHistory');
+        const localHistory = localStorage.getItem(historyCacheKey());
         if (localHistory) {
           const parsedHistory = JSON.parse(localHistory);
           return parsedHistory.find((item: any) => item.id === id) || null;
@@ -343,7 +346,7 @@ export const useResearchHistory = () => {
       console.error('Error getting research by ID:', error);
       
       // Try localStorage as fallback
-      const localHistory = localStorage.getItem('researchHistory');
+      const localHistory = localStorage.getItem(historyCacheKey());
       if (localHistory) {
         const parsedHistory = JSON.parse(localHistory);
         return parsedHistory.find((item: any) => item.id === id) || null;
@@ -379,7 +382,7 @@ export const useResearchHistory = () => {
       setHistory(prev => prev.filter(item => item.id !== id));
       
       // Also update localStorage
-      const localHistory = localStorage.getItem('researchHistory');
+      const localHistory = localStorage.getItem(historyCacheKey());
       if (localHistory) {
         const parsedHistory = JSON.parse(localHistory);
         const filteredHistory = parsedHistory.filter((item: any) => item.id !== id);
@@ -434,7 +437,7 @@ export const useResearchHistory = () => {
       );
       
       // Also update localStorage
-      const localHistory = localStorage.getItem('researchHistory');
+      const localHistory = localStorage.getItem(historyCacheKey());
       if (localHistory) {
         const parsedHistory = JSON.parse(localHistory);
         const updatedHistory = parsedHistory.map((item: any) => {
@@ -463,7 +466,7 @@ export const useResearchHistory = () => {
       );
       
       // Update localStorage
-      const localHistory = localStorage.getItem('researchHistory');
+      const localHistory = localStorage.getItem(historyCacheKey());
       if (localHistory) {
         const parsedHistory = JSON.parse(localHistory);
         const updatedHistory = parsedHistory.map((item: any) => {
@@ -473,7 +476,7 @@ export const useResearchHistory = () => {
           }
           return item;
         });
-        localStorage.setItem('researchHistory', JSON.stringify(updatedHistory));
+        localStorage.setItem(historyCacheKey(), JSON.stringify(updatedHistory));
       }
       
       return false;
@@ -494,7 +497,7 @@ export const useResearchHistory = () => {
     }
     
     // Fallback to localStorage
-    const localHistory = localStorage.getItem('researchHistory');
+    const localHistory = localStorage.getItem(historyCacheKey());
     if (localHistory) {
       try {
         const parsedHistory = JSON.parse(localHistory);
@@ -523,7 +526,7 @@ export const useResearchHistory = () => {
       
       // Just clear local state and storage
       setHistory([]);
-      localStorage.removeItem('researchHistory');
+      localStorage.removeItem(historyCacheKey());
       
       return true;
     } catch (error) {

@@ -2,7 +2,8 @@ import React from 'react';
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChatBoxSettings } from '@/types/data';
-import { getAuthEmail, clearAuth } from '@/helpers/auth';
+import { getAuthEmail, clearAuth, authFetch } from '@/helpers/auth';
+import {getHost} from '@/helpers/getHost';
 
 interface FooterProps {
   chatBoxSettings: ChatBoxSettings;
@@ -13,7 +14,9 @@ const Footer: React.FC<FooterProps> = ({ chatBoxSettings, setChatBoxSettings }) 
   const router = useRouter();
   const email = typeof window !== 'undefined' ? getAuthEmail() : null;
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    const response=await authFetch(getHost()+'/api/auth/logout',{method:'POST'});
+    if(!response.ok){window.alert('注销失败，请稍后重试');return;}
     clearAuth();
     router.push('/login');
   };

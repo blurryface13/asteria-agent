@@ -1,5 +1,6 @@
-"""Role contracts extend the Coordinator, not the existing research workflow."""
+"""AgentOrchestrator role registry and its shared BaseAgent contracts."""
 from dataclasses import asdict, dataclass
+from .base_agent import AgentProfile
 
 
 @dataclass(frozen=True)
@@ -9,6 +10,11 @@ class Profile:
     description: str
     skill_id: str
     tools: tuple[str, ...]
+
+    @property
+    def agent_profile(self):
+        return AgentProfile(self.id, self.description, '用户需求、历史与授权上下文',
+                            '回答或澄清、工具观察与未解决项', (*self.tools, 'answer', 'clarify'), 5)
 
 
 PROFILES = {

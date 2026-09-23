@@ -60,3 +60,5 @@ CURSOR_RULES.md
 data/
 outputs/full_kb_rag_eval/
 memory.md
+.env.lab
+workspaces/

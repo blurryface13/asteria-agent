@@ -28,7 +28,7 @@
 .detail p {color:var(--muted);max-width:75ch}
 .form {max-width:620px;display:grid;gap:16px}
 .form label,.picker>label {display:grid;gap:8px}
-.form input,.form textarea,.picker select {width:100%;background:var(--surface,#232323);border:1px solid var(--line,#363636);border-radius:8px;padding:10px 12px}
+.form input,.form textarea,.form select,.picker select {width:100%;background:var(--surface,#232323);border:1px solid var(--line,#363636);border-radius:8px;padding:10px 12px}
 .fileInput {display:block;max-width:100%;margin:18px 0;color:var(--muted)}
 .fileInput input {display:block;margin-top:8px;max-width:100%}
 .document {padding:16px 0;border-bottom:1px solid var(--line);display:flex;gap:12px;justify-content:space-between;align-items:start}

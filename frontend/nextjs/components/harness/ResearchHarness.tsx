@@ -477,6 +477,8 @@ export default function ResearchHarness(p: Props) {
             </summary>
             {[
               ["/knowledge", "知识库"],
+              ["/workspace-files", "文件提案"],
+              ["/accounts", "实验室账号"],
               ["/rag-workspace", "离线 RAG"],
               ["/doc-agent", "文档编辑"],
               ["/evaluation", "评测中心"],
@@ -930,6 +932,7 @@ export default function ResearchHarness(p: Props) {
             ) : modal === "个人设置" ? (
               <>
                 <p>显示名称仅保存在此浏览器，不改变登录账号。</p>
+                <Link href="/accounts">实验室账号与退出登录 →</Link>
                 <label>
                   用户名
                   <input

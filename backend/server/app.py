@@ -72,18 +72,20 @@ class ChatRequest(BaseModel):
 
 
 from backend.server.coordinator import router as coordinator_router, shutdown as shutdown_coordinator
+from backend.server.orchestrator import router as orchestrator_router
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
     os.makedirs("outputs", exist_ok=True)
-    app.mount("/outputs", StaticFiles(directory="outputs"), name="outputs")
+    from backend.auth.lab import check_shared_config
+    await check_shared_config()
     
     # Mount frontend static files
     frontend_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "frontend")
     if os.path.exists(frontend_path):
-        app.mount("/site", StaticFiles(directory=frontend_path), name="frontend")
+        # Only public assets are mounted, never Next source/configuration files.
         logger.debug(f"Frontend mounted from: {frontend_path}")
         
         # Also mount the static directory directly for assets referenced as /static/
@@ -108,6 +110,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 app.include_router(runs_router)
 app.include_router(coordinator_router)
+app.include_router(orchestrator_router)
 
 # Configure allowed origins for CORS
 allowed_origins_env = os.getenv("CORS_ALLOW_ORIGINS")
@@ -144,6 +147,8 @@ from backend.knowledge.managed_routes import router as managed_knowledge_router
 app.include_router(managed_knowledge_router)
 from backend.memory.routes import router as memory_router
 app.include_router(memory_router)
+from backend.files.routes import router as workspace_files_router
+app.include_router(workspace_files_router)
 from backend.doc_agent.routes import router as doc_agent_router
 app.include_router(doc_agent_router)
 from backend.watermark_lab.routes import router as watermark_lab_router
@@ -157,7 +162,47 @@ frontend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..
 
 # Mount static directories
 app.mount("/static", StaticFiles(directory=os.path.join(frontend_dir, "static")), name="static")
-app.mount("/site", StaticFiles(directory=frontend_dir), name="site")
+from backend.auth.artifacts import router as artifacts_router
+app.include_router(artifacts_router)
+
+
+@app.middleware('http')
+async def lab_boundaries(request, call_next):
+    from backend.auth.lab import shared_mode, COOKIE
+    from backend.auth.dependencies import require_admin
+    if shared_mode():
+        # Cookie-authenticated writes and login need explicit same-origin proof.
+        # API clients instead send Authorization and are not vulnerable to CSRF.
+        if request.method not in {'GET','HEAD','OPTIONS'} and not request.headers.get('authorization'):
+            origin = request.headers.get('origin')
+            expected = str(request.base_url).rstrip('/')
+            if (origin or request.cookies.get(COOKIE)) and origin not in {*ALLOWED_ORIGINS, expected}:
+                return JSONResponse({'detail':'跨站写请求被拒绝'}, status_code=403)
+        path = request.url.path
+        admin_paths = ('/api/evaluation','/api/doc-agent','/api/watermark','/files','/upload', '/site')
+        legacy_write = path in {'/report/','/api/multi_agents','/api/knowledge/modular/ingest','/api/knowledge/modular/evaluation','/api/knowledge/modular/ragas'}
+        if path.startswith(admin_paths) or legacy_write:
+            try:
+                email = await get_current_user_email(request.headers.get('authorization'),request)
+                await require_admin(email)
+            except HTTPException as exc:
+                return JSONResponse({'detail':exc.detail}, status_code=exc.status_code)
+    return await call_next(request)
+
+
+@app.get('/health')
+async def health():
+    from backend.auth.db import get_pool
+    from backend.auth.lab import shared_mode, redis_connection
+    try:
+        pool = await get_pool()
+        await pool.fetchval('SELECT 1')
+        if shared_mode():
+            async with redis_connection() as r:
+                await r.ping()
+        return {'status':'ok','shared_mode':shared_mode()}
+    except Exception:
+        return JSONResponse({'status':'unavailable'}, status_code=503)
 
 # WebSocket manager
 manager = WebSocketManager()
@@ -203,10 +248,8 @@ async def agent_discovery(request: Request):
 
 @app.get("/report/{research_id}")
 async def read_report(request: Request, research_id: str, _email: str = Depends(get_current_user_email)):
-    docx_path = os.path.join('outputs', f"{research_id}.docx")
-    if not os.path.exists(docx_path):
-        return {"message": "Report not found."}
-    return FileResponse(docx_path)
+    from backend.auth.artifacts import output
+    return await output(f'{research_id}.docx',_email)
 
 
 # Simplified API routes - no database persistence
@@ -395,10 +438,17 @@ async def delete_file(filename: str, _email: str = Depends(get_current_user_emai
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket, token: str | None = Query(default=None)):
+    from backend.auth.lab import shared_mode,COOKIE
+    # Legacy socket executes global filesystem tools and has no durable owner.
+    # Shared deployments use authenticated /api/runs events instead.
+    if shared_mode():
+        await websocket.accept()
+        await websocket.close(code=4403,reason='Shared mode requires the durable task API')
+        return
     # Browsers can't set custom headers on a WebSocket handshake, so the JWT
     # travels as a query param instead (?token=...) and gets validated
     # before we accept the connection.
-    email = await get_current_user_email_from_query(token)
+    email = await get_current_user_email_from_query(token or websocket.cookies.get(COOKIE))
     if email is None:
         # Accept before closing: closing an un-accepted socket surfaces as a
         # plain HTTP 403 handshake failure, which browsers report as close
@@ -476,6 +526,9 @@ async def research_report_chat(research_id: str, request: Request, _email: str =
     """Handle chat requests for a specific research report.
     Directly processes the raw request data to avoid validation errors.
     """
+    owned_report=await report_store.get_report(research_id,_email)
+    if owned_report is None:
+        raise HTTPException(404,'Report not found')
     try:
         from chat.chat import ChatAgentWithMemory
 
@@ -484,7 +537,7 @@ async def research_report_chat(research_id: str, request: Request, _email: str =
         
         # Create chat agent with the report
         chat_agent = ChatAgentWithMemory(
-            report=data.get("report", ""),
+            report=owned_report.get("answer", ""),
             config_path="default",
             headers=None
         )
@@ -509,15 +562,3 @@ async def research_report_chat(research_id: str, request: Request, _email: str =
     except Exception as e:
         logger.error(f"Error in research report chat: {str(e)}", exc_info=True)
         return {"error": str(e)}
-
-@app.put("/api/reports/{research_id}")
-async def update_report(research_id: str, request: Request):
-    """Update a specific research report by ID - no database configured."""
-    logger.debug(f"Update requested for report {research_id} - no database configured, not persisted")
-    return {"success": True, "id": research_id}
-
-@app.delete("/api/reports/{research_id}")
-async def delete_report(research_id: str):
-    """Delete a specific research report by ID - no database configured."""
-    logger.debug(f"Delete requested for report {research_id} - no database configured, nothing to delete")
-    return {"success": True, "id": research_id}

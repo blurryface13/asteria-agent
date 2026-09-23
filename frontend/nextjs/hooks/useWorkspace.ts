@@ -44,6 +44,8 @@ export function useWorkspace() {
         projectsResponse.json(),
         conversationsResponse.json(),
       ]);
+      const selected=localStorage.getItem('asteria.activeProjectId');
+      if(selected&&!projectsData.projects?.some((p:WorkspaceProject)=>p.id===selected))localStorage.removeItem('asteria.activeProjectId');
       setProjects(Array.isArray(projectsData.projects) ? projectsData.projects : []);
       setConversations(
         Array.isArray(conversationsData.conversations) ? conversationsData.conversations : [],

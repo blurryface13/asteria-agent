@@ -377,12 +377,12 @@ export default function Home() {
     return id;
   };
 
-  const coordinatorBusy = useRef(false);
+  const orchestratorBusy = useRef(false);
   const [conversationMode, setConversationMode] = useState<'research' | 'chat'>('research');
   const [turnProgress, setTurnProgress] = useState<any[]>([]);
 
-  const coordinatorRequest = async (path: string, body?: unknown) => {
-    const response = await authFetch('/api/coordinator' + path, body === undefined ? {cache: 'no-store'} : {
+  const orchestratorRequest = async (path: string, body?: unknown) => {
+    const response = await authFetch('/api/orchestrator' + path, body === undefined ? {cache: 'no-store'} : {
       method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body),
     });
     const data = await response.json();
@@ -397,7 +397,7 @@ export default function Home() {
       setTurnProgress(Array.isArray(turn.result?.progress) ? turn.result.progress : []);
       await new Promise(resolve => setTimeout(resolve, 800));
       if (selection !== selectionGeneration.current) return null;
-      turn = (await coordinatorRequest(`?conversation_id=${encodeURIComponent(id)}&request_id=${encodeURIComponent(turn.request_id)}`)).turn;
+      turn = (await orchestratorRequest(`?conversation_id=${encodeURIComponent(id)}&request_id=${encodeURIComponent(turn.request_id)}`)).turn;
     }
     if (selection !== selectionGeneration.current) return null;
     if (!turn) throw new Error('未找到协调请求');
@@ -408,8 +408,8 @@ export default function Home() {
 
   const handleDisplayResult = async (rawQuestion: string, continueConversation = false) => {
     const newQuestion = rawQuestion.trim();
-    if (!newQuestion || coordinatorBusy.current || loading) return;
-    coordinatorBusy.current = true;
+    if (!newQuestion || orchestratorBusy.current || loading) return;
+    orchestratorBusy.current = true;
     setTurnProgress([]);
     setIsProcessingChat(true);
     const selection = ++selectionGeneration.current;
@@ -418,7 +418,7 @@ export default function Home() {
     setShowHumanFeedback(false);
     try {
       const id = continueConversation && currentResearchId
-        ? currentResearchId : await prepareWorkspaceConversation(newQuestion, 'chat', 'coordinator');
+        ? currentResearchId : await prepareWorkspaceConversation(newQuestion, 'chat', 'orchestrator');
       if (selection !== selectionGeneration.current) return;
       setCurrentResearchId(id);
       linkedConversation.current = id;
@@ -450,15 +450,15 @@ export default function Home() {
       };
       // Reuse the request identity if the POST response was lost.
       let turn;
-      try { turn = await coordinatorRequest('', body); }
+      try { turn = await orchestratorRequest('', body); }
       catch (error) {
         if (!(error instanceof TypeError)) throw error;
-        turn = await coordinatorRequest('', body);
+        turn = await orchestratorRequest('', body);
       }
       const result = await waitForTurn(id, turn, selection);
       if (!result) return;
       // Preserve the explicitly configured external LangGraph transport.
-      // Ordinary conversation still exits through the shared Coordinator.
+      // Ordinary conversation still exits through the shared AgentOrchestrator.
       if (externalResearch && !result.intent?.needs_clarification && ['literature_review','experiment_design','general_research'].includes(result.capability)) {
         setConversationMode('research'); setIsInChatMode(false); setLoading(true);
         const {streamResponse, host, thread_id} = await startLanggraphResearch(
@@ -487,7 +487,7 @@ export default function Home() {
         toast.error(error instanceof Error ? error.message : '请求失败，重新打开对话可恢复已保存进度');
       }
     } finally {
-      coordinatorBusy.current = false;
+      orchestratorBusy.current = false;
       setIsProcessingChat(false);
     }
   };
@@ -766,7 +766,7 @@ export default function Home() {
       if (conversationResponse.ok) {
         const conversation = await conversationResponse.json();
         if (selection !== selectionGeneration.current) return;
-        const turn = (await coordinatorRequest(`?conversation_id=${encodeURIComponent(id)}`)).turn;
+        const turn = (await orchestratorRequest(`?conversation_id=${encodeURIComponent(id)}`)).turn;
         if (selection !== selectionGeneration.current) return;
         setTurnProgress(Array.isArray(turn?.result?.progress) ? turn.result.progress : []);
         if (turn?.status === 'running') {
@@ -827,7 +827,7 @@ export default function Home() {
         const messages = (await response.json()).messages || [];
         if (selection !== selectionGeneration.current) return;
         // Research source messages are already represented in orderedData.
-        // Only append persisted Coordinator chat turns after the report.
+        // Only append persisted AgentOrchestrator chat turns after the report.
         const lastResearchTime = snapshot.run?.finished_at ? Date.parse(snapshot.run.finished_at) : 0;
         const followups = messages.filter((m: any) => m.metadata?.turn_id && Date.parse(m.created_at) > lastResearchTime);
         setOrderedData([...(research.orderedData || []), ...followups.map((m: any) =>

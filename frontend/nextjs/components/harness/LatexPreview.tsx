@@ -1,4 +1,5 @@
 "use client";
+import {authFetch} from '@/helpers/auth';
 import { useEffect, useState } from "react";
 import { getHost } from "@/helpers/getHost";
 import s from "./harness.module.css";
@@ -25,7 +26,7 @@ export default function LatexPreview({
     setSource("");
     setError("");
     if (tex)
-      fetch(tex, { signal: controller.signal })
+      authFetch(tex, { signal: controller.signal })
         .then((r) => {
           if (!r.ok) throw Error(`读取源码失败 (${r.status})`);
           return r.text();

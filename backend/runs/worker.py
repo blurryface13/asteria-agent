@@ -20,8 +20,9 @@ logger = logging.getLogger(__name__)
 
 
 class DurableSink:
-    def __init__(self, store, run, worker_id):
+    def __init__(self, store, run, worker_id, slot=None):
         self.store, self.run, self.worker_id = store, run, worker_id
+        self.slot=slot
         self.paths = {}
         self.error = None
 
@@ -34,12 +35,34 @@ class DurableSink:
 
     async def request_feedback(self, question):
         approval = await self.store.ask(self.run['id'], self.worker_id, question)
-        # Approval remains durable until answered or explicit cancellation.
-        while True:
-            answered, response = await self.store.response(self.run['id'], self.worker_id, approval)
-            if answered:
-                return response
-            await asyncio.sleep(1)
+        if self.slot:
+            self.slot.release()
+        async def wait():
+            while True:
+                answered, response = await self.store.response(self.run['id'], self.worker_id, approval)
+                if answered:
+                    return response
+                await asyncio.sleep(1)
+        response=await asyncio.wait_for(wait(),float(os.getenv('ASTERIA_APPROVAL_TIMEOUT_SECONDS','3600')))
+        if self.slot:
+            await self.slot.acquire()
+        return response
+
+
+class ExecutionSlot:
+    """One running compute slot, temporarily yielded while waiting for a human."""
+    def __init__(self,semaphore):
+        self.semaphore,self.held=semaphore,False
+
+    async def acquire(self):
+        if not self.held:
+            await self.semaphore.acquire()
+            self.held=True
+
+    def release(self):
+        if self.held:
+            self.held=False
+            self.semaphore.release()
 
 
 def artifact_index(paths):
@@ -76,9 +99,9 @@ async def research(sink, request):
         raise RuntimeError('Research returned without deliverable artifacts')
 
 
-async def execute(store, run, worker_id, execute_research=research):
+async def execute(store, run, worker_id, execute_research=research, slot=None):
     from asteria_researcher.utils.usage_context import usage_sink
-    sink = DurableSink(store, run, worker_id)
+    sink = DurableSink(store, run, worker_id,slot)
     token = usage_sink.set(sink.send_json)
     async def work():
         await execute_research(sink, run['request'])
@@ -110,6 +133,8 @@ async def execute(store, run, worker_id, execute_research=research):
         monitor.cancel()
         await asyncio.gather(task, monitor, return_exceptions=True)
         usage_sink.reset(token)
+        if slot:
+            slot.release()
     try:
         await store.finish(run['id'], worker_id, state, error, artifacts)
     except Exception as exc:
@@ -121,6 +146,7 @@ async def execute(store, run, worker_id, execute_research=research):
 async def main():
     from backend.auth.schema_bootstrap import initialize_database
     from backend.auth.db import close_pool
+    from backend.auth.db import get_pool
     # Fail before claiming a paid research job, not at final publication.
     if not shutil.which('xelatex'):
         raise RuntimeError('xelatex is missing from worker PATH; configure the existing TeX installation before starting the worker')
@@ -131,22 +157,48 @@ async def main():
     for sig in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(sig, stop.set)
     logger.info('Research worker ready: %s', worker_id)
-    # Graceful shutdown drains the current job. Hard death expires its lease.
+    # A single deployment worker owns the configured compute budget. Additional
+    # processes wait for its DB lock rather than multiplying paid concurrency.
+    pool=await get_pool()
+    limit=max(1,min(8,int(os.getenv('ASTERIA_RESEARCH_CONCURRENCY','2'))))
+    semaphore=asyncio.Semaphore(limit)
+    pending=set()
+    def finished(task):
+        pending.discard(task)
+        if not task.cancelled() and task.exception():
+            logger.error('Research execution finalization failed; lease reaper will retain failure state')
     try:
-        while not stop.is_set():
+        async with pool.acquire() as lease:
+            while not stop.is_set() and not await lease.fetchval("SELECT pg_try_advisory_lock(hashtextextended(current_schema() || ':research-worker',0))"):
+                await asyncio.sleep(1)
             try:
-                await store.reap()
-                run = await store.claim(worker_id)
-                if run:
-                    await execute(store, run, worker_id)
-                else:
+                while not stop.is_set():
                     try:
-                        await asyncio.wait_for(stop.wait(), 1)
-                    except asyncio.TimeoutError:
-                        pass
-            except Exception:
-                logger.exception('Worker iteration failed; no job will be blindly retried')
-                await asyncio.sleep(2)
+                        await store.reap()
+                        if not semaphore.locked() and len(pending)<max(limit,8):
+                            slot=ExecutionSlot(semaphore)
+                            await slot.acquire()
+                            try:
+                                run=await store.claim(worker_id)
+                            except BaseException:
+                                slot.release()
+                                raise
+                            if run:
+                                task=asyncio.create_task(execute(store,run,worker_id,slot=slot))
+                                pending.add(task)
+                                task.add_done_callback(finished)
+                            else:
+                                slot.release()
+                        try:
+                            await asyncio.wait_for(stop.wait(),.5)
+                        except asyncio.TimeoutError:
+                            pass
+                    except Exception:
+                        logger.exception('Worker iteration failed; no job will be blindly retried')
+                        await asyncio.sleep(2)
+                await asyncio.gather(*pending,return_exceptions=True)
+            finally:
+                await lease.execute("SELECT pg_advisory_unlock(hashtextextended(current_schema() || ':research-worker',0))")
     finally:
         await close_pool()
 
@@ -157,5 +209,6 @@ if __name__ == '__main__':
     os.chdir(root)
     sys.path.insert(0, str(root / 'backend'))
     load_dotenv(root / '.env')
+    load_dotenv(root / '.env.lab',override=True)
     logging.basicConfig(level=logging.INFO)
     asyncio.run(main())

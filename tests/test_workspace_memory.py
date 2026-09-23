@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -71,6 +72,75 @@ def test_injection_is_scoped_and_does_not_mutate_messages():
     finally: memory_context.reset(token)
 
 
+def test_chroma_memory_recall_is_scoped_and_tracks_external_edits(tmp_path, monkeypatch):
+    from backend.memory import vector_index
+
+    class Embeddings:
+        @staticmethod
+        def vector(text):
+            return [float(text.count(term)) for term in ('水印', '投稿', '实验')]
+
+        def embed_documents(self, texts):
+            return [self.vector(text) for text in texts]
+
+        def embed_query(self, text):
+            return self.vector(text)
+
+    monkeypatch.setattr(vector_index, '_embedder', lambda *args: Embeddings())
+    monkeypatch.setenv('ASTERIA_MEMORY_EMBEDDING', 'ollama:bge-m3')
+    directory = str(tmp_path / 'chroma')
+
+    def topic(name, text):
+        return {'name': name, 'content': text,
+                'version': hashlib.sha256(text.encode()).hexdigest()}
+
+    own = [topic('memory/watermark.md', '水印研究进展：水印实验正在进行'),
+           topic('memory/submission.md', '投稿计划与目标期刊')]
+    assert vector_index.recall('a@example.org', 'project-a', '水印实验', own, directory) == [own[0]['name'], own[1]['name']]
+    other = [topic('memory/private.md', '水印未公开结果')]
+    vector_index.recall('b@example.org', 'project-a', '水印', other, directory)
+    assert 'memory/private.md' not in vector_index.recall('a@example.org', 'project-a', '水印', own, directory)
+    assert 'memory/private.md' not in vector_index.recall('b@example.org', 'project-b', '水印', [], directory)
+
+    # Simulate a user editing the Markdown directly, then removing it.
+    updated = [topic('memory/watermark.md', '实验变更记录'), own[1]]
+    assert vector_index.recall('a@example.org', 'project-a', '投稿', updated, directory)[0] == 'memory/submission.md'
+    collection = vector_index._collection(directory, *vector_index._embedding_spec())
+    assert '水印研究进展' not in str(collection.get(include=['documents'])['documents'])
+    assert vector_index.recall('a@example.org', 'project-a', '投稿', [updated[0]], directory) == ['memory/watermark.md']
+
+
+def test_snapshot_uses_chroma_topic_selection(tmp_path, monkeypatch):
+    from backend.memory import vector_index
+
+    class Pool:
+        async def fetchrow(self, *args):
+            return {'project_id': 'project-a'}
+
+    async def list_files(email, project_id=None):
+        if project_id:
+            return {'files': [
+                {'name': 'PROJECT.md', 'content': '课题组研究', 'version': 'v1', 'exists': True},
+                {'name': 'memory/watermark.md', 'content': '水印实验记录', 'version': 'v2', 'exists': True},
+            ]}
+        return {'files': [{'name': 'preferences.md', 'content': '中文', 'version': 'v1', 'exists': True}]}
+
+    async def never_called(*args):
+        raise AssertionError('Vector recall should not call the model topic selector')
+
+    async def get_pool():
+        return Pool()
+
+    monkeypatch.setattr(service, 'get_pool', get_pool)
+    monkeypatch.setattr(service, 'list_files', list_files)
+    monkeypatch.setattr(vector_index, 'recall', lambda *args: ['memory/watermark.md'])
+    monkeypatch.setenv('ASTERIA_MEMORY_CHROMA_DIR', str(tmp_path / 'chroma'))
+    monkeypatch.setenv('ASTERIA_MEMORY_CHROMA_ENABLED', '1')
+    result = asyncio.run(service.snapshot('owner', 'conversation', '水印', never_called))
+    assert result['selection'] == 'chroma_semantic_topics'
+    assert [f['name'] for f in result['files']] == ['preferences.md', 'PROJECT.md', 'memory/watermark.md']
+
+
 def test_both_llm_entrypoints_inject_same_memory_once(monkeypatch):
     from types import SimpleNamespace
     from langchain_core.messages import AIMessage
@@ -139,6 +209,7 @@ def test_research_worker_loads_owner_snapshot_and_resets_context(monkeypatch):
 @pytest.mark.skipif(os.getenv('ASTERIA_RUNS_DB_TESTS') != '1', reason='requires PostgreSQL')
 def test_scopes_snapshot_topic_selection_and_delete(directory, monkeypatch):
     async def exercise():
+        monkeypatch.setenv('ASTERIA_MEMORY_CHROMA_ENABLED', '0')
         import asyncpg
         from dotenv import load_dotenv
         load_dotenv('.env')

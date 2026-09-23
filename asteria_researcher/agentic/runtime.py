@@ -1,4 +1,7 @@
-"""Evidence-driven coordinator. All effects are injected and budgeted.
+"""Historical research workflow and compatibility utilities; NOT the entry.
+
+The active entry is agent_orchestrator.AgentOrchestrator. The historical
+Coordinator below has no production caller; retained for earlier replay tests.
 
 The LLM can delegate research, request additional evidence, or finish. It cannot
 execute arbitrary code. Existing research engines remain the implementation of

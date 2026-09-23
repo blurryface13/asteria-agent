@@ -63,6 +63,7 @@ htmldocx>=0.0.6
 
 # MCP Support (optional)
 mcp>=1.9.1
+redis==5.2.1
 langchain-mcp-adapters>=0.1.0
 streamlit>=1.30.0
 

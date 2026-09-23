@@ -15,10 +15,10 @@ export default function KnowledgePicker({settings,onChange,conversationId}:{sett
     {settings.knowledge_mode==='selected'&&<fieldset><legend>选择知识库（最多3个）</legend>{libraries.map(k=><label className={s.check} key={k.id}>
       <input type="checkbox" checked={settings.knowledge_ids?.includes(k.id)||false} disabled={!settings.knowledge_ids?.includes(k.id)&&(settings.knowledge_ids?.length||0)>=3}
         onChange={e=>onChange({knowledge_ids:e.target.checked?[...(settings.knowledge_ids||[]),k.id]:settings.knowledge_ids?.filter(id=>id!==k.id)})}/>
-      <span>{k.name}<small>{k.ready_documents} 份可检索文档</small></span></label>)}</fieldset>}
+      <span>{k.name}<small>{k.visibility==='lab'?'实验室共享':'个人私有'} · {k.built_in?'既有论文索引':`${k.ready_documents} 份可检索文档`}</small></span></label>)}</fieldset>}
     {loading&&<p>正在读取知识库…</p>}{!loading&&!libraries.length&&!error&&<p>还没有个人知识库，可以先创建并上传资料。</p>}
     {error&&<p role="alert">{error}</p>}{message&&<p role="status">{message}</p>}
-    <div className={s.actions}><Link href="/knowledge">管理知识库</Link>{conversationId&&<button disabled={busy||settings.knowledge_ids?.length!==1} onClick={async()=>{
+    <div className={s.actions}><Link href="/knowledge">管理知识库</Link>{conversationId&&<button disabled={busy||settings.knowledge_ids?.length!==1||!libraries.find(k=>k.id===settings.knowledge_ids?.[0])?.can_manage} onClick={async()=>{
       setBusy(true);setError('');setMessage('');try{await knowledgeRequest('/'+settings.knowledge_ids![0]+'/report','POST',{conversation_id:conversationId});setMessage('报告已提交索引，可在知识库查看进度。');}
       catch(e){setError(e instanceof Error?e.message:'入库失败');}finally{setBusy(false);}
     }}>{busy?'提交中…':'将当前报告存入所选库'}</button>}</div>

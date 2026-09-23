@@ -44,17 +44,17 @@ def test_intent_receives_conversation_context():
 def test_supplied_general_research_is_not_reclassified(monkeypatch):
     from backend.server import websocket_manager as module
     from asteria_researcher.agentic import intent
-    class Report:
-        def __init__(self, **kwargs): pass
-        async def run(self): return 'result'
     class Sink:
         feedback_queue = object()
         skill_options = None
         async def send_json(self, data): pass
     async def forbidden(*args, **kwargs):
         pytest.fail('must not classify twice')
-    import backend.report_type
-    monkeypatch.setattr(backend.report_type, 'BasicReport', Report)
+    from backend.server import agentic_runner
+    async def run(task, capability, *args):
+        assert capability == 'general_research'
+        return 'result'
+    monkeypatch.setattr(agentic_runner, 'run_agentic_task', run)
     monkeypatch.setattr(intent, 'analyze_intent', forbidden)
     assert asyncio.run(module.run_agent('task', 'research_report', 'web', [], [], 'Objective', None,
         logs_handler=Sink(), coordinator_capability='general_research')) == 'result'
@@ -103,7 +103,7 @@ async def exercise(monkeypatch):
     from backend.server import coordinator as module
     from backend.runs import store as runs
     from backend.server import agentic_runner
-    from backend.chat.chat import ChatAgentWithMemory
+    from backend.server import specialists
     from asteria_researcher.utils.usage_context import record_usage
     load_dotenv()
     schema = 'test_coordinator_' + uuid4().hex
@@ -133,16 +133,12 @@ async def exercise(monkeypatch):
         return model
     monkeypatch.setattr(agentic_runner, 'configured_model', configured)
     monkeypatch.setenv('CONFIG_PATH', 'test-config')
-    def constructor(self, report, config_path, headers):
-        self.report = report
-        assert config_path == 'test-config'
-    async def chat(self, messages, websocket, allow_tools):
+    async def chat(message, history, model, report):
+        messages = [*history, {'role':'user','content':message}]
         histories.append(messages)
-        assert allow_tools == bool(self.report)
         await record_usage('test', 'test', 1, {'input_tokens': 10, 'output_tokens': 2, 'total_tokens': 12})
-        return ('Design test cases' if len(messages) > 1 else '设计测试用例'), []
-    monkeypatch.setattr(ChatAgentWithMemory, '__init__', constructor)
-    monkeypatch.setattr(ChatAgentWithMemory, 'chat', chat)
+        return ('Design test cases' if len(messages) > 1 else '设计测试用例'), {'tool_calls':[]}
+    monkeypatch.setattr(specialists, 'run_general', chat)
     try:
         async with pool.acquire() as c:
             for path in ('backend/auth/workspace_schema.sql','backend/auth/reports_schema.sql','backend/runs/schema.sql','backend/knowledge/schema.sql'):
@@ -187,7 +183,7 @@ async def exercise(monkeypatch):
         # A failed generation keeps the user message and never fabricates an answer.
         async def failing(*args, **kwargs): raise ValueError('failed fixture')
         capability = 'general_chat'
-        monkeypatch.setattr(ChatAgentWithMemory, 'chat', failing)
+        monkeypatch.setattr(specialists, 'run_general', failing)
         failed = body.model_copy(update={'request_id':'request-5'})
         await module.submit_turn(failed,'owner')
         await module.execute_turn(failed,'owner')
