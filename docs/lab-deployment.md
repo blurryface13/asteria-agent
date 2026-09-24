@@ -47,3 +47,9 @@ curl -fsS http://127.0.0.1:8018/api/auth/config
 更新时先确认无运行或等待审批的研究任务，再重启 API 与 worker，最后确认前端类型检查和页面可访问。不要在长任务进行中重启 worker。真实验收入口 `python scripts/accept-research-chain.py --approve-plan` 创建专用测试账号，经登录、意图路由、研究审批、并行调研、引用核对到 PDF 发布，结果保存于 `outputs/acceptance_*/`。未完成任务保留诊断产物，不计为通过；测试账号可由管理员在账号页禁用。
 
 模型服务返回 HTTP 402 时，先补充模型账户余额或明确更换配置，不反复提交完整科研任务。研究目录中的草稿、证据、子任务汇报和决策日志会保留，失败任务保持失败状态；草稿不等于通过引用核验的正式报告。当前没有承诺整个 Run 的自动断点续跑。2026-09-24 余额恢复后，新建指定来源综述请求已完成引文核对、PDF 发布及认证下载验收，原 402 失败记录保留，详见 `docs/anthropic-research-alignment.md` 第四轮。该请求采用 `--direct-read`，不代表知识库 MCP 全链路或生产容量已验收。
+
+### 中文 PDF 交付要求
+
+PDF 发布不只检查 XeLaTeX 返回码。部分 XeTeX/Fandol 产物虽嵌入字形，却省略 Adobe-GB1 的 ToUnicode 映射，缺少外部 CMap 资源的阅读器会整段丢失中文。发布器现在用 PyMuPDF 将 TeX 自带的 `Adobe-GB1-UCS2` 映射嵌入 PDF（保留原资源版权说明），不改变字形或把正文转成图片。部署机需要 `xelatex`、`kpsewhich` 和 TeX 的 CMap 资源；预检会检查 `kpsewhich --format=cmap Adobe-GB1-UCS2`。无需要求用户电脑安装字体或语言包。
+
+回归 `tests/test_report_delivery.py` 包括真实 XeLaTeX 编译、ToUnicode 检查及 Poppler 渲染。阅读器检查不可因 MuPDF 正常而忽略 Poppler 缺字。旧 Run 文件与 SHA-256 不会自动覆盖；新任务生成 v3 导出，历史文件如需重导应保留版本与归属记录，不直接修改已归档产物。

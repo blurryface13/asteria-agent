@@ -107,7 +107,7 @@ def test_report_export_renders_union_links_and_single_section_number():
     tex = render_tex(text)
     assert r"A\ensuremath{\cup}L" in tex
     assert r"\section{方法比较}" in tex
-    assert r"\href{https://example.org/paper?id=1\&v=2}{来源}" in tex
+    assert r"\href{https://example.org/paper?id=1\&v=2}{[1]}" in tex
     assert r"\section{一、方法比较}" in render_tex(text, "brief")
     assert r"\section{10 人实验室}" in render_tex("## 10 人实验室")
     assert r"\section{2026 年进展}" in render_tex("## 2026 年进展")
@@ -158,4 +158,9 @@ def test_real_chinese_pdf_compilation(tmp_path):
     assert pdf.read_bytes().startswith(b"%PDF")
     assert Path(paths["latex_pdf"]).resolve() == pdf.resolve()
     assert all(Path(path).is_file() for path in paths.values())
+    import pymupdf
+    with pymupdf.open(pdf) as doc:
+        for font in doc[0].get_fonts():
+            if "Fandol" in font[3]:
+                assert doc.xref_get_key(font[0], "ToUnicode")[0] == "xref"
     assert paths["tex"].endswith("/report.tex")

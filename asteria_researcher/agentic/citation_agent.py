@@ -22,7 +22,9 @@ class CitationFinding(BaseModel):
     line_id: int
     supported: bool
     evidence_ids: list[str] = Field(default_factory=list, max_length=5)
-    reason: str = Field(min_length=1, max_length=500)
+    # Explanatory prose is not an execution contract. Keep the full rationale;
+    # a verbose but valid assessment must not abort an otherwise complete run.
+    reason: str = Field(min_length=1)
     kind: Literal["factual", "analysis", "recommendation", "limitation"] = "factual"
 
 
@@ -57,7 +59,7 @@ def factual_lines(report: str) -> list[dict]:
         if stripped.startswith(("```", "~~~")):
             in_code = not in_code
             continue
-        if re.match(r"^#{1,6}\s*(参考文献|References|资料来源)\s*$", stripped, re.I):
+        if re.match(r"^#{1,6}\s*(参考文献|参考资料|References|资料来源)\s*$", stripped, re.I):
             in_references = True
         if (in_references or in_code or not stripped or stripped.startswith("#")
                 or re.fullmatch(r"[\s|:\-]+", stripped)
@@ -87,6 +89,9 @@ class CitationAgent:
                 await self.event("writer", "citation_repair", "started", "按引文缺口定向修正原稿", attempt=attempt + 1)
                 raw = await self.model(
                     "Repair ONLY the supplied report lines against original evidence. Preserve the requested scope. "
+                    "Keep the report reader-facing and concise: remove peripheral unsupported details instead of "
+                    "repeating their numbers with an 'unverified' disclaimer. Never narrate this audit, the supplied "
+                    "evidence catalog, or your repair process in the report. State only material limitations briefly. "
                     "Correct misattributed links. Qualify unsupported certainty, retain supported facts, and state material "
                     "limitations explicitly. Do not introduce new facts, delete an entire requested topic, or assert "
                     "experiments ran. Return one replacement per supplied line_id, no newlines inside replacements. "
@@ -157,7 +162,7 @@ class CitationAgent:
         for offset in range(0, len(lines), 12):
             raw = await self.model(
                 "You are the post-writing CitationAgent. Locate citations for factual report lines using ONLY "
-                "the supplied original passages. Do not invent papers, URLs, evidence IDs or experiments. "
+                "the supplied original passages. Keep each reason concise. Do not invent papers, URLs, evidence IDs or experiments. "
                 "Return ONLY JSON " + json.dumps(schema), {**payload, "report_lines": lines[offset:offset + 12]})
             (self.folder / f"citation-plan-{offset // 12 + 1}-raw.json").write_text(raw)
             batch = CitationPlan.model_validate_json(raw)

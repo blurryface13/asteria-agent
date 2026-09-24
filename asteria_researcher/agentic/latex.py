@@ -8,6 +8,7 @@ from pathlib import Path
 import re
 import shutil
 from uuid import uuid4
+from .pdf_fonts import embed_unicode_maps
 
 
 def escape(value: str) -> str:
@@ -26,7 +27,7 @@ SAFE_MATH_COMMANDS = {
     "alpha", "beta", "gamma", "delta", "epsilon", "theta", "lambda", "mu", "pi", "sigma", "phi", "psi", "omega",
     "mathrm", "mathbf", "mathit", "mathsf", "operatorname", "text", "frac", "dfrac", "tfrac", "sqrt", "left", "right",
     "sum", "prod", "int", "lim", "log", "exp", "sin", "cos", "tan", "cdot", "times", "pm", "leq", "geq", "neq",
-    "approx", "infty", "to", "rightarrow", "mapsto", "top", "mid", "perp", "forall", "exists", "in", "notin",
+    "approx", "infty", "to", "rightarrow", "leftarrow", "mapsto", "top", "mid", "perp", "forall", "exists", "in", "notin", "cup", "cap", "hat", "bar", "overline",
 }
 
 
@@ -67,14 +68,30 @@ def render_tex(markdown: str, profile: str = "academic") -> str:
     template_path = (TEMPLATES / profiles[profile]["template"]).resolve()
     if not template_path.is_relative_to(TEMPLATES.resolve()):
         raise ValueError("Template must be a trusted local asset")
+    reference_numbers = {}
+    reference_labels = {}
+    # Honor bibliography order even when the body cites sources out of order.
+    bibliography = re.split(r"(?im)^#{1,3}\s*(?:参考文献|参考资料|References)\s*$", markdown, maxsplit=1)
+    if len(bibliography) == 2:
+        for label, url in re.findall(r"\[([^\]]+)\]\((https?://[^)]+)\)", bibliography[1]):
+            reference_numbers.setdefault(url, len(reference_numbers) + 1)
+            reference_labels.setdefault(url, label)
+    in_references = False
     def inline(text):
-        text = text.replace("**", "").replace("`", "")
         parts, cursor = [], 0
-        pattern = re.compile(r"(?<!\\)(\$\$([^$\n]+?)\$\$|\$([^$\n]+?)\$|\\\((.+?)\\\))|\[([^\]]+)\]\((https?://[^)]+)\)")
+        pattern = re.compile(r"(?<!\\)(\$\$([^$\n]+?)\$\$|\$([^$\n]+?)\$|\\\((.+?)\\\))|\[([^\]]+)\]\((https?://[^)]+)\)|\*\*(.+?)\*\*|`([^`]+)`")
         for match in pattern.finditer(text):
             parts.append(escape(text[cursor:match.start()]))
             if match[5] is not None:
-                parts.append(r"\href{" + escape(match[6]) + "}{" + escape(match[5]) + "}")
+                url, label = match[6], match[5]
+                number = reference_numbers.setdefault(url, len(reference_numbers) + 1)
+                reference_labels.setdefault(url, label)
+                display = f"[{number}] " + label if in_references else f"[{number}]"
+                parts.append(r"\href{" + escape(url) + "}{" + escape(display) + "}")
+            elif match[7] is not None:
+                parts.append(r"\textbf{" + inline(match[7]) + "}")
+            elif match[8] is not None:
+                parts.append(r"\texttt{" + escape(match[8]) + "}")
             else:
                 parts.append(r"\(" + sanitize_math(match[2] or match[3] or match[4]) + r"\)")
             cursor = match.end()
@@ -116,8 +133,9 @@ def render_tex(markdown: str, profile: str = "academic") -> str:
         heading = re.match(r"^(#{1,3})\s+(.+)$", line)
         if heading:
             if len(heading[1]) == 1:
-                lines.append(r"{\LARGE\bfseries " + inline(heading[2]) + r"\par}\vspace{12pt}")
+                lines.append(r"{\raggedright\LARGE\bfseries\hyphenpenalty=10000 " + inline(heading[2]) + r"\par}\vspace{8pt}")
             else:
+                in_references = bool(re.fullmatch(r"(?:参考文献|参考资料|References)", heading[2], re.I))
                 command = ["section", "subsection"][len(heading[1])-2]
                 title = heading[2]
                 if profile == "academic":
@@ -131,6 +149,10 @@ def render_tex(markdown: str, profile: str = "academic") -> str:
             lines.append(inline(line) + "\n")
     if list_kind:
         lines.append("\\end{" + list_kind + "}")
+    if reference_numbers and not re.search(r"(?im)^#{1,3}\s*(参考文献|参考资料|References)\s*$", markdown):
+        lines.append(r"\section*{参考资料}")
+        for url, number in reference_numbers.items():
+            lines.append(r"\noindent\href{" + escape(url) + "}{" + escape(f"[{number}] {reference_labels[url]}") + r"}\par")
     template = template_path.read_text(encoding="utf-8")
     if template.count("% ASTERIA_BODY") != 1:
         raise ValueError("Template must have exactly one body slot")
@@ -145,7 +167,7 @@ async def publish(markdown: str, root: Path, *, profile: str = "academic") -> di
     folder.mkdir(parents=True)
     (folder / "report.md").write_text(markdown, encoding="utf-8")
     (folder / "report.tex").write_text(render_tex(markdown, profile), encoding="utf-8")
-    (folder / "publication.json").write_text(json.dumps({"format_profile": profile, "renderer": "safe-markdown-v2"}))
+    (folder / "publication.json").write_text(json.dumps({"format_profile": profile, "renderer": "safe-markdown-v3", "status": "compiling"}))
     process = await asyncio.create_subprocess_exec(
         compiler, "-no-shell-escape", "-halt-on-error", "-interaction=nonstopmode", "report.tex",
         cwd=folder, env={**os.environ, "openin_any": "p", "openout_any": "p"},
@@ -160,6 +182,10 @@ async def publish(markdown: str, root: Path, *, profile: str = "academic") -> di
     (folder / "compile.txt").write_bytes(output)
     if process.returncode or not (folder / "report.pdf").is_file():
         raise RuntimeError(f"LaTeX compilation failed; inspect {folder / 'compile.txt'}")
+    mapped_fonts = await asyncio.to_thread(embed_unicode_maps, folder / "report.pdf")
+    (folder / "publication.json").write_text(json.dumps({
+        "format_profile": profile, "renderer": "safe-markdown-v3",
+        "embedded_unicode_maps": mapped_fonts, "status": "completed"}))
     # Preserve the caller's output root (including nested or absolute QA roots).
     output_folder = folder.relative_to(Path.cwd()) if folder.is_relative_to(Path.cwd()) else folder
     return {key: str(output_folder / name) for key, name in {

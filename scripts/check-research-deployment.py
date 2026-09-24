@@ -48,7 +48,13 @@ async def main():
     async def tex():
         if not shutil.which("xelatex"):
             raise FileNotFoundError("XeLaTeX required")
-        return "XeLaTeX executable available"
+        process = await asyncio.create_subprocess_exec(
+            "kpsewhich", "--format=cmap", "Adobe-GB1-UCS2",
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+        out, _ = await process.communicate()
+        if process.returncode or not Path(out.decode().strip()).is_file():
+            raise FileNotFoundError("TeX Adobe-GB1 Unicode mapping required for portable Chinese PDF")
+        return "XeLaTeX and embeddable Chinese Unicode mapping available"
     async def mcp(module, env):
         from mcp import ClientSession, StdioServerParameters
         from mcp.client.stdio import stdio_client

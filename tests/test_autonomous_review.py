@@ -357,7 +357,7 @@ def test_writer_repairs_length_and_keeps_audit_drafts(tmp_path):
         return ("水" * 500 if len(calls) == 1 else "水" * 250) + f" [source]({URL})"
     async def emit(*args): pass
     runtime = AutonomousReview(model, None, emit, None, tmp_path, online_rag=False)
-    runtime.query, runtime.plan = "写约300字", {"perspectives": []}
+    runtime.query, runtime.plan = "写不超过300字", {"perspectives": []}
     runtime.library.papers[URL] = {}
     runtime.evidence = [{"agent": "reader", "query": "test", "passages": [{"source": URL, "page": 1, "text": "evidence"}]}]
     report = asyncio.run(runtime.write_report("summary"))
