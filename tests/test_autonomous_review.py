@@ -2,13 +2,36 @@ import asyncio
 import json
 import pytest
 
-from asteria_researcher.agentic.autonomous import AutonomousReview
+from asteria_researcher.agentic.autonomous import (
+    AutonomousReview, _normalize_assessor_reason, _normalize_partition_duplicates,
+)
 from asteria_researcher.agentic.library import PaperLibrary, canonical
 from asteria_researcher.agentic.primary_sources import extract_file
-from asteria_researcher.agentic.sufficiency import ReviewPlan
+from asteria_researcher.agentic.sufficiency import ReviewPlan, ScopePartition, ProcessMove
 
 URL = "https://arxiv.org/abs/1706.03762"
 OTHER = "https://arxiv.org/abs/1810.04805"
+
+
+def test_scope_partition_fallback_preserves_original_goal_and_other_process_moves():
+    part = ScopePartition(research_goal_ids=["g1", "g2"],
+                          process_goals=[ProcessMove(goal_id="g1", kind="autonomous_discovery")])
+    fixed, repaired = _normalize_partition_duplicates(part, ["g1", "g2"])
+    assert fixed.research_goal_ids == ["g1", "g2"]
+    assert fixed.process_goals == [] and repaired == ["g1"]
+    missing, repaired = _normalize_partition_duplicates(part, ["g1", "g2", "g3"])
+    assert missing == part and repaired == []
+
+
+def test_assessor_reason_alias_preserves_existing_verdict_and_evidence():
+    raw = json.dumps({"goals": [{"goal_id": "g1", "status": "supported",
+                                 "reasoning": "原文第 3 页支持该结论", "supports": [{"evidence_id": "e1"}]}]})
+    normalized, ids = _normalize_assessor_reason(raw)
+    goal = json.loads(normalized)["goals"][0]
+    assert ids == ["g1"] and goal["reason"] == goal["reasoning"]
+    assert goal["supports"] == [{"evidence_id": "e1"}]
+    unchanged, ids = _normalize_assessor_reason(json.dumps({"goals": [{**goal, "reason": "已有说明"}]}))
+    assert json.loads(unchanged)["goals"][0]["reason"] == "已有说明" and ids == []
 
 
 class Embeddings:
@@ -59,6 +82,17 @@ def test_graph_requires_bibliography_evidence_and_real_title_match(tmp_path, mon
     edge = library.edges[(URL, OTHER)]
     assert edge["evidence"] == "Devlin. BERT. 2019."
     assert library.nodes[OTHER]["status"] == "discovered"
+
+
+def test_institutional_report_can_be_read_but_not_passed_as_academic_citation_graph(tmp_path):
+    url = "https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents"
+    library = PaperLibrary(tmp_path, None, None)
+    node = library.add({"url": url, "title": "Agent evals", "source_type": "academic_publication"})
+    assert node["source_type"] == "institutional_report"
+    library.papers[url] = {"text": "Research", "pages": [{"page": 1, "text": "Research"}]}
+    assert library.read_passage(url)["source_type"] == "institutional_report"
+    with pytest.raises(ValueError, match="机构报告"):
+        asyncio.run(library.references(url, "benchmarks"))
 
 
 def test_shared_reads_are_deduplicated_and_download_budget_enforced(tmp_path, monkeypatch):

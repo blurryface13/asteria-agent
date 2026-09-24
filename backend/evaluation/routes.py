@@ -39,7 +39,9 @@ class TaskCreateRequest(BaseModel):
 
 
 class TaskRunRequest(BaseModel):
-    variant: str = "basic"
+    # Never silently score the retired BasicReport workflow as the current
+    # Coordinator. Legacy runs remain available by explicitly naming them.
+    variant: str = "current"
 
 
 class ReviewRequest(BaseModel):
@@ -296,6 +298,10 @@ async def monitor(_email: str = Depends(get_current_user_email)):
 
 @router.post("/tasks/{task_id}/run")
 async def run_task(task_id: str, request: TaskRunRequest, _email: str = Depends(get_current_user_email)):
+    if request.variant == "current":
+        raise HTTPException(status_code=501, detail=(
+            "当前 Coordinator 尚未接入此旧评测执行器；请通过真实任务入口验收。"
+            "如需复测历史流程，请显式指定 basic、multi_agent 或 multi_agent_perspectives。"))
     raw = store.get("tasks", task_id)
     if not raw:
         raise HTTPException(status_code=404, detail="task not found")

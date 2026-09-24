@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { authFetch } from "@/helpers/auth";
+import { authFetch, getDisplayName } from "@/helpers/auth";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import Icon from "@/components/harness/Icon";
 import shell from "@/components/harness/harness.module.css";
@@ -180,7 +180,7 @@ function TraceTree({ spans }: { spans: Span[] }) {
 export default function EvaluationWorkspace() {
   const workspace = useWorkspace();
   const [sidebar, setSidebar] = useState(true);
-  const [username, setUsername] = useState("bunny");
+  const [username, setUsername] = useState("用户");
   const [tab, setTab] = useState<Tab>("runs");
   const [source, setSource] = useState<Source>("history");
   const [rows, setRows] = useState<RecordData[]>([]);
@@ -198,7 +198,7 @@ export default function EvaluationWorkspace() {
   const closeRef = useRef<HTMLButtonElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    setUsername(localStorage.getItem("asteria.displayName") || "bunny");
+    setUsername(getDisplayName());
     if (window.matchMedia("(max-width: 899px)").matches) setSidebar(false);
   }, []);
   const refresh = useCallback(async () => {

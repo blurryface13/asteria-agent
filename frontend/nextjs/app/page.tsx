@@ -949,7 +949,7 @@ export default function Home() {
         currentResearchId={currentResearchId || undefined} isProcessingChat={isProcessingChat}
         onShareClick={currentResearchId ? handleCopyUrl : undefined} showResearchActivity={conversationMode === 'research'}/>
       {showHumanFeedback && <HumanFeedback questionForHuman={questionForHuman}
-        websocket={null} onFeedbackSubmit={handleFeedbackSubmit}/>}
+        onFeedbackSubmit={handleFeedbackSubmit}/>}
     </ResearchHarness>
   );
 }

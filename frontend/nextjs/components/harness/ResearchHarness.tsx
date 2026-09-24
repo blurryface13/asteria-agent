@@ -12,6 +12,7 @@ import SkillBrowser from "./SkillBrowser";
 import KnowledgePicker from "../knowledge/KnowledgePicker";
 import MemoryEditor from "../memory/MemoryEditor";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { getDisplayName, setDisplayName } from "@/helpers/auth";
 
 interface Props {
   conversationMode?: 'research' | 'chat';
@@ -206,7 +207,7 @@ export default function ResearchHarness(p: Props) {
   const [panel, setPanel] = useState(""),
     [menu, setMenu] = useState("");
   const [mode, setMode] = useState<"research" | "chat">("research");
-  const [username, setUsername] = useState("bunny"),
+  const [username, setUsername] = useState("用户"),
     [search, setSearch] = useState("");
   const [projectName, setProjectName] = useState(""),
     [activeProjectId, setActiveProjectId] = useState<string | null>(null);
@@ -218,7 +219,7 @@ export default function ResearchHarness(p: Props) {
     input = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
     setRail(window.innerWidth >= 900);
-    setUsername(localStorage.getItem("asteria.displayName") || "bunny");
+    setUsername(getDisplayName());
     setActiveProjectId(localStorage.getItem("asteria.activeProjectId"));
     try { setExpandedProjects(JSON.parse(localStorage.getItem("asteria.expandedProjects") || "{}")); } catch { /* Ignore an obsolete UI preference. */ }
   }, []);
@@ -944,9 +945,9 @@ export default function ResearchHarness(p: Props) {
                 <button
                   className={s.primary}
                   onClick={() => {
-                    const name = username.trim() || "bunny";
+                    const name = username.trim() || getDisplayName();
                     setUsername(name);
-                    localStorage.setItem("asteria.displayName", name);
+                    setDisplayName(name);
                     setModal("");
                   }}
                 >

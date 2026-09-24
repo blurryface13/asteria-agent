@@ -8,7 +8,7 @@ import re
 import time
 from pathlib import Path
 
-from .primary_sources import read_paper, search_papers, validate_url, ScholarlyRateLimit
+from .primary_sources import read_paper, search_papers, source_type, validate_url, ScholarlyRateLimit
 
 # Shared across runs in this backend process. A provider cooldown is not a
 # query-specific failure and must not be bypassed by the next task/query.
@@ -63,6 +63,7 @@ class PaperLibrary:
     def add(self, record):
         key = canonical(record["url"])
         self.nodes[key] = {**self.nodes.get(key, {}), **record, "id": key,
+                           "source_type": source_type(key),
                            "status": "read" if key in self.papers else "discovered"}
         return self.nodes[key]
 
@@ -144,10 +145,12 @@ class PaperLibrary:
                                       "page": page["page"], "raw_content": page["text"]})
         if not documents:
             raise ValueError("尚无全文证据；先读取论文，摘要不能当作全文证据")
+        source_types = {key: self.nodes[key]["source_type"] for key in selected}
         class EvidenceFormat:
             @staticmethod
             def pretty_print_docs(docs, max_results):
                 return json.dumps([{"source": d.metadata["url"], "page": d.metadata["page"],
+                                    "source_type": source_types.get(d.metadata["url"]),
                                     "text": d.page_content} for d in docs[:max_results]], ensure_ascii=False)
         retriever = HybridContextCompressor(documents, self.embeddings, prompt_family=EvidenceFormat)
         return await retriever.async_get_context(query, max_results=min(top_k, 20))
@@ -166,7 +169,8 @@ class PaperLibrary:
         text = selected["text"][offset:offset + length]
         end = offset + len(text)
         next_page = next((p["page"] for p in pages if p["page"] > page), None)
-        return {"source": key, "page": page, "offset": offset, "text": text,
+        return {"source": key, "source_type": source_type(key),
+                "page": page, "offset": offset, "text": text,
                 "next": {"page": page, "offset": end} if end < len(selected["text"])
                         else ({"page": next_page, "offset": 0} if next_page else None)}
 
@@ -184,6 +188,8 @@ class PaperLibrary:
         class References(BaseModel):
             references: list[Reference] = Field(max_length=8)
         key = canonical(url)
+        if source_type(key) == "institutional_report":
+            raise ValueError("机构报告不参与论文参考文献追踪；可读取正文并引用已核验段落")
         if key not in self.papers:
             raise ValueError("追踪参考文献前必须读取该论文")
         text = self.papers[key]["text"]

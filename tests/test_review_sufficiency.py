@@ -89,6 +89,28 @@ def test_partition_retries_invalid_ids_without_silently_dropping_goals(tmp_path)
     assert len(requests) == 2 and requests[1]["required_id_set"] == ["g1"]
 
 
+def test_partition_repairs_repeated_process_goal_before_research_starts(tmp_path):
+    events, calls = [], []
+    async def model(system, payload):
+        calls.append(payload)
+        return json.dumps({"research_goal_ids": ["g1"], "delivery_goal_ids": [],
+                           "process_goals": [{"goal_id": "g1", "kind": "autonomous_discovery"},
+                                             {"goal_id": "g2", "kind": "autonomous_discovery"}]})
+    async def emit(*args, **kwargs):
+        events.append(args)
+    runtime = AutonomousReview(model, None, emit, None, tmp_path, online_rag=False)
+    plan = ReviewPlan(scope="研究方法", perspectives=[{"name": "方法", "query": "方法"}],
+                      required_goals=GOALS + [{"id": "g2", "description": "自主检索两篇论文",
+                                               "user_quote": "自主检索两篇论文"}])
+    fixed = asyncio.run(runtime.partition_with_contract(plan, "比较注入方法，自主检索两篇论文"))
+    assert [goal.id for goal in fixed.required_goals] == ["g1"]
+    assert fixed.process_requirements[0].id == "p1"
+    assert fixed.process_requirements[0].user_quote == "自主检索两篇论文"
+    assert len(calls) == 2
+    assert any(event[0] == "agent_action" and event[1].get("repaired_duplicate_ids") == ["g1"]
+               for event in events)
+
+
 def test_shared_process_check_preserves_each_relocated_requirement():
     plan = ReviewPlan(scope="范围", perspectives=[{"name": "方法", "query": "方法"}],
                       required_goals=GOALS + [{"id": "g2", "description": "追踪关键论文书目", "user_quote": "追踪关键论文书目"}],

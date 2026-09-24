@@ -14,6 +14,7 @@ from uuid import uuid4
 from pydantic import BaseModel, ConfigDict, Field
 
 from .library import PaperLibrary, canonical
+from .primary_sources import explicit_arxiv_urls, source_type
 from .report_tools import validate_report_draft
 from .skill_catalog import SkillOptions, SkillSession, select_writing
 from .runtime import urls
@@ -91,6 +92,48 @@ def _normalize_plan_ids(payload):
             if isinstance(goal, dict):
                 goal["id"] = goal_id(goal.get("id"))
     return json.dumps(data, ensure_ascii=False)
+
+
+def _normalize_partition_duplicates(partition, expected_ids):
+    """Structural fallback after model retry: never discard a research goal.
+
+    A duplicate label does not prove which classification the model intended.
+    Keep the original answer goal and omit the conflicting process tag; record
+    the fallback in the trace for later review rather than guessing semantics.
+    """
+    moved = [goal.goal_id for goal in partition.process_goals]
+    if len(moved) != len(set(moved)) or not set(moved) <= set(expected_ids):
+        return partition, []
+    duplicated = set(moved) & set(partition.research_goal_ids)
+    if not duplicated or duplicated & set(partition.delivery_goal_ids):
+        return partition, []
+    candidate = partition.model_copy(update={
+        "process_goals": [move for move in partition.process_goals
+                          if move.goal_id not in duplicated],
+    })
+    if not candidate.research_goal_ids:
+        return partition, []
+    all_ids = (candidate.research_goal_ids + candidate.delivery_goal_ids +
+               [move.goal_id for move in candidate.process_goals])
+    if len(all_ids) != len(set(all_ids)) or set(all_ids) != set(expected_ids):
+        return partition, []
+    return candidate, sorted(duplicated)
+
+
+def _normalize_assessor_reason(raw):
+    """Accept `reasoning` as the already-written explanation for `reason`.
+
+    The assessor sometimes returns the fuller reasoning field but omits its
+    shorter alias. Copying that text changes no verdict, evidence or goal ID.
+    """
+    data = json.loads(raw)
+    repaired = []
+    for goal in data.get("goals", []):
+        if isinstance(goal, dict) and not goal.get("reason") and isinstance(goal.get("reasoning"), str):
+            if goal["reasoning"].strip():
+                goal["reason"] = goal["reasoning"][:1200]
+                repaired.append(goal.get("goal_id"))
+    return json.dumps(data, ensure_ascii=False), repaired
 
 
 class AutonomousReview:
@@ -262,10 +305,15 @@ class AutonomousReview:
             raw = await self.llm(instruction, payload)
             try:
                 partition = ScopePartition.model_validate_json(raw)
+                repaired_ids = []
+                if attempt:
+                    partition, repaired_ids = _normalize_partition_duplicates(partition, goal_ids)
                 result = partition_contract(plan, partition)
                 validate_contract(result, user_scope)
                 await self.event("lead", "scope_classification", "completed", "研究目标与过程、交付约束已区分",
-                                 attempt=attempt + 1, classification=partition.model_dump())
+                                 attempt=attempt + 1, classification=partition.model_dump(),
+                                 repaired_duplicate_ids=repaired_ids,
+                                 repair_strategy="preserve_research_goal" if repaired_ids else None)
                 return result
             except ValueError as error:
                 await self.event("lead", "scope_classification", "failed", "目标分类需要修正",
@@ -327,8 +375,9 @@ class AutonomousReview:
         return {"revision": self.plan_revisions, "plan": self.plan}
 
     async def research(self):
-        # User links are seeds, never silently truncated to the first three.
-        for url in urls(self.query):
+        # User links and explicitly labelled arXiv IDs are seeds, never
+        # inferred paper identities or silently truncated to the first three.
+        for url in urls(self.query) | explicit_arxiv_urls(self.query):
             try:
                 self.library.add({"url": url, "title": url})
             except ValueError:
@@ -424,10 +473,14 @@ class AutonomousReview:
                 raw = await self.llm(prompt + " Return ONLY JSON " + json.dumps(schema), context)
                 (self.folder / f"assessment-{len(self.assessments) + 1}{stage}-attempt-{attempt + 1}.json").write_text(raw)
                 try:
-                    report = SufficiencyReport.model_validate_json(raw)
+                    normalized, reason_aliases = _normalize_assessor_reason(raw)
+                    report = SufficiencyReport.model_validate_json(normalized)
                     ready = validate_report(report, self.plan["required_goals"], visible)
                     if {canonical(u) for u in urls(report.synthesis)} - self.library.papers.keys():
                         raise ValueError("审查总结引用了未读取来源")
+                    if reason_aliases:
+                        await self.event("assessor", "assessment_format", "completed",
+                                         "复用已有推理说明补齐 reason 字段", goal_ids=reason_aliases)
                     return report, ready
                 except (ValueError, TypeError) as error:
                     await self.event("assessor", "assessment_check", "failed", "审查输出需要纠正",
@@ -700,6 +753,12 @@ class AutonomousReview:
             "read_passage(paper_ids exactly one read URL,page,offset) returns up to 10000 original characters "
             "with page provenance and next cursor. Inspect methods, results and limitations, not only abstract. "
             "read preview is NOT full evidence. "
+            "User-supplied official Anthropic, OpenAI and xAI reports can be read and cited as institutional "
+            "sources, but are not peer-reviewed papers; arXiv is a preprint archive. references applies only "
+            "to academic sources. A bibliography/reference chain does NOT verify a paper's own publication "
+            "venue. An arXiv-only source should be labeled a preprint unless a verified publisher record is "
+            "already available; do not repeatedly trace references merely to prove absence of publication. "
+            "If a site blocks automated reading, report the gap; do not invent its contents. "
             + ("Online RAG is ON: retrieve(query English scientific terms,paper_ids optional) searches full text "
                "using BM25+dense RRF. Use retrieve or read_passage to collect evidence. " if self.online_rag else
                "Online RAG is OFF by user choice. retrieve is unavailable. Use read_passage, following next cursors "
@@ -709,7 +768,8 @@ class AutonomousReview:
             "Search syntax: quote only established short phrases, not a long natural-language description. "
             "When search is empty, REMOVE restrictive terms/phrases/categories, never add more AND filters. "
             "Inspect relevant available candidates before repeating near-identical searches. "
-            "Do not exhaustively follow irrelevant references. Candidate abstracts are not findings evidence. "
+            "Do not exhaustively follow irrelevant references. Source-status uncertainty is a reporting caveat, "
+            "not an open-ended research objective. Candidate abstracts are not findings evidence. "
             "Avoid duplicate reads/searches: shared catalog lists discovered/read papers. Tool errors are observations; "
             "choose a meaningful alternative action or explicitly report a blocking gap, never pretend success. "
             "finish(summary) returns findings with source URLs/page numbers and unresolved gaps, not internal thoughts. "
@@ -769,7 +829,7 @@ class AutonomousReview:
                     "evidence_index": [{"agent": e["agent"], "query": e["query"],
                                         "passages": [{k: p.get(k) for k in ("source", "page", "offset")} for p in e["passages"]]}
                                        for e in self.evidence],
-                    "catalog": [{k: n.get(k) for k in ("id", "title", "published", "status")}
+                    "catalog": [{k: n.get(k) for k in ("id", "title", "published", "status", "source_type")}
                                 for n in list(self.library.nodes.values())[-100:]],
                     "observations": observations[-10:]})
 
@@ -946,7 +1006,9 @@ class AutonomousReview:
         payload = {"task": self.query, "plan": self.plan, "synthesis": synthesis,
                    "reviewed_answers": self.assessments[-1]["goals"] if self.assessments else [],
                    "subagent_results": self.briefs, "evidence": evidence,
-                   "read_sources": list(self.library.papers), "citation_edges": list(self.library.edges.values()),
+                   "read_sources": list(self.library.papers),
+                   "source_types": {key: source_type(key) for key in self.library.papers},
+                   "citation_edges": list(self.library.edges.values()),
                    "instructions": "区分原文结果、推断和未解决问题，按主题综合，不要逐篇罗列。"}
         allowed_report_sources = set(self.library.papers)
         allowed_report_sources.update(s for result in self.coding_results for s in result.get("sources", []))
@@ -959,6 +1021,8 @@ class AutonomousReview:
             if self.capability == 'experiment_design' else
             "Write a Chinese Markdown literature review grounded in the supplied page-level ") +
             "evidence. Cite only read_sources, using Markdown links near factual claims. "
+            "Use source_types to identify institutional reports and academic preprints honestly; never present "
+            "an institutional article or arXiv preprint as peer-reviewed solely because it was read. "
             "Preserve scope/date limits and material research gaps. Do not claim exhaustive coverage, "
             "verified experiments, or factual certainty based only on citation membership. "
             "Preserve reviewed answer kinds: distinguish author-reported facts, cross-source synthesis, "
