@@ -28,7 +28,7 @@ from .sufficiency import (ASSESSOR_PROMPT, ASSESSOR_REVIEW_PROMPT, ReviewPlan, S
 
 class Action(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    tool: Literal["search", "read", "read_passage", "references", "retrieve", "delegate", "replan", "request_user", "load_skill", "finish"]
+    tool: Literal["search", "search_public", "read", "read_passage", "references", "retrieve", "delegate", "replan", "request_user", "load_skill", "finish"]
     purpose: str = Field(min_length=1, max_length=350)
     query: str = Field(default="", max_length=3500)
     paper_ids: list[str] = Field(default_factory=list, max_length=12,
@@ -137,7 +137,7 @@ def _normalize_assessor_reason(raw):
 
 
 class AutonomousReview:
-    def __init__(self, model, embeddings, emit, approve, root=Path("outputs"), *, max_actions=None, online_rag=True, skill_options=None, coding_tools=None, capability='literature_review'):
+    def __init__(self, model, embeddings, emit, approve, root=Path("outputs"), *, max_actions=None, online_rag=True, skill_options=None, coding_tools=None, public_search=None, capability='literature_review'):
         if type(online_rag) is not bool:
             raise ValueError("online_rag must be a boolean")
         if capability not in {'literature_review','experiment_design'}:
@@ -157,10 +157,12 @@ class AutonomousReview:
         self.event_lock, self.model_slots = asyncio.Lock(), asyncio.Semaphore(3)
         self.evidence, self.briefs = [], []
         self.coding_tools = coding_tools or {}
+        self.public_search = public_search
         self.delegations, self.coding_results = [], []
         self.artifact_review, self.artifact_review_fingerprint = [], None
         self.help_requests = {}
         self.assessments, self.assessment_fingerprint = [], None
+        self.last_batch_checkpoint = None
         self.last_assessment_action, self.stalled_checks = -3, 0
         # Three consecutive rejected assessments permit two targeted follow-ups.
         # New passage IDs alone must not reset an unresolved goal's retry budget.
@@ -368,6 +370,7 @@ class AutonomousReview:
         (self.folder / f"plan-revision-{self.plan_revisions}.json").write_text(
             json.dumps(self.plan, ensure_ascii=False, indent=2))
         (self.folder / "plan.json").write_text(json.dumps(self.plan, ensure_ascii=False, indent=2))
+        self.save_working_memory("plan_revised")
         await self.event("lead", "plan_revised", "completed", "根据当前证据重规划研究策略",
                          revision=self.plan_revisions,
                          strategy={"scope": self.plan["scope"], "perspectives": self.plan["perspectives"],
@@ -425,10 +428,36 @@ class AutonomousReview:
         self.plan = plan.model_dump()
         self.user_scope = user_scope
         (self.folder / "plan.json").write_text(json.dumps(self.plan, ensure_ascii=False, indent=2))
+        self.save_working_memory("approved_plan")
         result = await self.loop("lead", self.query, lead=True, steps=18)
         if result["status"] != "completed":
             raise RuntimeError("研究尚未达到交付条件：" + result["summary"])
-        return await self.write_report(result["summary"])
+        draft = await self.write_report(result["summary"])
+        from .citation_agent import CitationAgent
+        citation_agent = CitationAgent(self.llm, self.event, self.folder)
+        report = await citation_agent.attach(draft, evidence_catalog(self.evidence, self.library.papers),
+                                             self.library.papers)
+        (self.folder / "report-with-citations.md").write_text(report)
+        self.save_working_memory("citations_completed")
+        return report
+
+    def save_working_memory(self, phase):
+        """Small run-scoped handoff; source text remains in the evidence files."""
+        snapshot = {
+            "phase": phase, "task": getattr(self, "query", ""),
+            "plan_file": "plan.json" if (self.folder / "plan.json").exists() else None,
+            "pending_goal_ids": [g["id"] for g in self.pending_goals()] if hasattr(self, "plan") else [],
+            "delegation_batches": len(self.delegations),
+            "evidence_file": "evidence.json" if (self.folder / "evidence.json").exists() else None,
+            "evidence_passages": sum(len(group["passages"]) for group in self.evidence),
+            "last_assessment": self.assessments[-1] if self.assessments else None,
+        }
+        (self.folder / "working-memory.json").write_text(json.dumps(snapshot, ensure_ascii=False, indent=2))
+        return snapshot
+
+    def load_working_memory(self):
+        path = self.folder / "working-memory.json"
+        return json.loads(path.read_text()) if path.exists() else {}
 
     async def assess_sufficiency(self):
         """Independent context, verified evidence IDs, cached unchanged evidence."""
@@ -512,9 +541,12 @@ class AutonomousReview:
         return result
 
     async def lead_checkpoint(self):
-        from .reviewer import ReviewerAgent
-        assessment, implementation = await ReviewerAgent(
-            self.assess_sufficiency, self.review_implementation, self.event).run()
+        # Lead owns the continue/finish decision. Existing checks remain
+        # independent evidence/implementation validators, not a Reviewer role.
+        await self.event("lead", "checkpoint", "started", "综合本批发现并判断是否补研")
+        assessment = await self.assess_sufficiency()
+        implementation = await self.review_implementation()
+        self.save_working_memory("lead_checkpoint")
         if assessment["ready"] and all(f["supported"] for f in implementation):
             result = {"status": "completed", "agent": "lead", "summary": assessment["synthesis"]}
             await self.event("lead", "agent", "completed", "充分性审查通过，结束补研", result=result)
@@ -543,6 +575,8 @@ class AutonomousReview:
                       "；".join(self.assessment_gaps(assessment))}
             await self.event("lead", "agent", "incomplete", "补研没有证据增量，停止继续派发", result=result)
             return result
+        await self.event("lead", "checkpoint", "incomplete", "保留证据缺口，由 Lead 决定定向补研",
+                         gaps=self.assessment_gaps(assessment))
         return None
 
     def pending_goals(self):
@@ -635,6 +669,7 @@ class AutonomousReview:
         try:
             results = await run_parallel(assignments, execute, on_result=arrived)
             record.update(status="returned", results=results)
+            self.save_working_memory("parallel_batch_returned")
             return results
         except asyncio.CancelledError:
             record["status"] = "cancelled"
@@ -717,7 +752,7 @@ class AutonomousReview:
                 findings.append(item.model_dump())
         self.artifact_review, self.artifact_review_fingerprint = findings, fingerprint
         (self.folder / "implementation-review.json").write_text(json.dumps(findings, ensure_ascii=False, indent=2))
-        await self.event("reviewer", "implementation_review", "completed", "独立核验代码与实验交付要求", findings=findings)
+        await self.event("lead", "implementation_review", "completed", "核验代码与实验交付要求", findings=findings)
         return findings
 
     @staticmethod
@@ -743,12 +778,14 @@ class AutonomousReview:
         system = (
             "You are the lead research agent. Delegate complementary objectives to independent researchers "
             "in parallel when useful, inspect their findings and gaps, then choose next actions. "
-            "When ready to deliver, choose finish to ask the independent Reviewer for acceptance. "
-            "If rejected, use its concrete gaps to choose your next action; review is NOT periodic. "
+            "After each returned batch a lead checkpoint checks evidence coverage; act only on its remaining gaps. "
+            "You own the decision to continue research or finish. "
             if lead else "You are an independent research subagent with your own objective and action loop. "
         ) + (
             "At each turn select ONE action, based on observations, not a preset sequence. "
-            "Tools: search(query arXiv syntax,start pagination,sort_by); read(paper_ids discovered URLs); "
+            "Tools: search(query arXiv syntax,start pagination,sort_by); "
+            + ("search_public(query) discovers public web results; only allowlisted primary URLs can be added/read. " if self.public_search else "") +
+            "read(paper_ids discovered URLs); "
             "references(paper_ids read URLs,query selects relevant bibliography references and resolves real papers); "
             "read_passage(paper_ids exactly one read URL,page,offset) returns up to 10000 original characters "
             "with page provenance and next cursor. Inspect methods, results and limitations, not only abstract. "
@@ -816,6 +853,7 @@ class AutonomousReview:
             return await self.llm(decision_system, {
                     "task": self.query, "approved_plan": self.plan, "objective": objective,
                     "assignment_context": assignment_context or {},
+                    "working_memory": self.load_working_memory() if lead else {},
                     "pending_goals": self.pending_goals() if lead else [],
                     "implementation_review": self.artifact_review if lead else [],
                     "available_roles": ["researcher", "coding"] if self.coding_tools else ["researcher"],
@@ -891,6 +929,21 @@ class AutonomousReview:
                     result = await self.library.search(action.query, start=action.start, sort_by=action.sort_by)
                     if result:
                         self.successful_searches += 1
+                elif action.tool == "search_public":
+                    if not self.public_search or not action.query.strip():
+                        raise ValueError("公开资料搜索未配置或检索词为空")
+                    discovered = await asyncio.wait_for(self.public_search(action.query), 30)
+                    result = []
+                    for row in discovered[:5]:
+                        try:
+                            node = self.library.add({"url": row["url"], "title": row.get("title", "")})
+                            result.append({"id": node["id"], "title": node["title"],
+                                           "snippet": row.get("content", "")[:500], "status": "discovered"})
+                        except (KeyError, ValueError, TypeError):
+                            continue
+                    self.library.save()
+                    if result:
+                        self.successful_searches += 1
                 elif action.tool == "read":
                     if not action.paper_ids:
                         raise ValueError("read requires paper_ids")
@@ -935,6 +988,13 @@ class AutonomousReview:
                         (self.folder / "evidence.json").write_text(json.dumps(self.evidence, ensure_ascii=False))
                 elif action.tool == "delegate":
                     result = await self.dispatch_assignments(action.assignments, action.retained_goal_ids)
+                    if lead and self.plan.get("required_goals"):
+                        checkpoint = await self.lead_checkpoint()
+                        if checkpoint:
+                            await self.event(agent, "delegate", checkpoint["status"],
+                                             "并行调研完成，Lead 已作出收尾决定", call_id=call_id, result=checkpoint)
+                            return AgentFinish(checkpoint)
+                        self.last_batch_checkpoint = self.assessments[-1]
                 elif action.tool == "request_user":
                     result = await self.approve(action.query)
                 else:
@@ -962,7 +1022,7 @@ class AutonomousReview:
             limit = self.max_actions if lead else max(0, self.max_actions - 5)
             if limit - self.actions <= 1:
                 return {'finish'}
-            return set(profile.tool_scope) - (set() if self.online_rag else {'retrieve'})
+            return set(profile.tool_scope) - (set() if self.online_rag else {'retrieve'}) - (set() if self.public_search else {'search_public'})
         completed = await BaseAgent(profile, max_turns=steps).run(
             decide=decide, parse=Action.model_validate_json, execute=execute_action,
             observe_error=observe_error, available=available)

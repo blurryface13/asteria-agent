@@ -106,6 +106,52 @@ def test_approved_tasks_execute_concurrently_with_isolated_contracts(tmp_path):
     assert [x["assignment"]["name"] for x in result] == ["method", "evaluation"]
 
 
+def test_lead_decides_after_parallel_batch_without_finish_action(tmp_path):
+    tasks = [task(), task(name="evaluation", objective="Study robustness metrics", goals=("g2",))]
+    decisions = []
+    async def model(system, payload):
+        decisions.append(system)
+        assert json.loads(payload)["working_memory"]["phase"] == "approved_plan"
+        return json.dumps({"tool": "delegate", "purpose": "并行调查两个不同问题",
+                           "assignments": [t.model_dump() for t in tasks]})
+    r = runtime(tmp_path, model)
+    r.save_working_memory("approved_plan")
+    async def dispatch(*_args):
+        r.evidence.append({"agent": "researcher", "query": "method", "passages": [{
+            "source": "https://arxiv.org/abs/1706.03762", "text": "Evidence", "page": 1, "offset": 0}]})
+        return [{"status": "completed", "summary": "发现方法与指标"}]
+    r.dispatch_assignments = dispatch
+    async def checkpoint():
+        return {"status": "completed", "agent": "lead", "summary": "两个研究问题已有依据"}
+    r.lead_checkpoint = checkpoint
+    result = asyncio.run(r.loop("lead", r.query, lead=True, steps=3))
+    assert result["status"] == "completed"
+    assert len(decisions) == 1  # The model did not need a second `finish` turn.
+
+
+def test_public_search_only_registers_allowlisted_primary_sources(tmp_path):
+    turns = 0
+    async def public_search(_query):
+        return [{"url": "https://example.com/blog", "title": "untrusted", "content": "unverified"},
+                {"url": "https://www.anthropic.com/engineering/multi-agent-research-system",
+                 "title": "Research system", "content": "search snippet only"}]
+    async def model(_system, _payload):
+        nonlocal turns
+        turns += 1
+        if turns == 1:
+            return json.dumps({"tool": "search_public", "query": "multi-agent research",
+                               "purpose": "发现机构一手资料"})
+        return json.dumps({"tool": "finish", "purpose": "记录未读限制",
+                           "outcome": "incomplete", "summary": "仅发现候选，尚未通读原文"})
+    r = AutonomousReview(model, None, noop, noop, tmp_path, online_rag=False,
+                         public_search=public_search)
+    r.query, r.plan = "检索研究系统", {"required_goals": []}
+    result = asyncio.run(r.loop("researcher-A", r.query, steps=2))
+    assert result["status"] == "incomplete"
+    assert list(r.library.nodes) == ["https://www.anthropic.com/engineering/multi-agent-research-system"]
+    assert r.library.papers == {}  # Discovery snippets are not original-text evidence.
+
+
 def test_parallel_failure_not_hidden_and_cancellation_propagates():
     tasks = [task(), task(name="b", objective="other")]
     async def execute(t):

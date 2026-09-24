@@ -18,9 +18,9 @@ from .base_agent import AgentProfile
 RESEARCHER = AgentProfile(
     "researcher", "调查分配的研究问题，不重复其他角色的调查范围。",
     "子目标、调查角度、排除范围、来源限制", "原文依据、发现、未解决问题",
-    ("search", "read", "retrieve", "read_passage", "references", "load_skill", "finish"), 16)
+    ("search", "search_public", "read", "retrieve", "read_passage", "references", "load_skill", "finish"), 16)
 LEAD = AgentProfile(
-    "lead", "按独立子目标组织研究；选择自行调查或并行派发，准备交付时请 Reviewer 验收。",
+    "lead", "按独立子目标组织研究；每批回收后综合证据，决定补研或交付。",
     "用户确认的研究目标、子任务结果、共享依据与验收缺口", "有依据的综合结果或明确未完成项",
     (*RESEARCHER.tool_scope, "delegate", "replan", "request_user"), 18)
 CODING = AgentProfile(

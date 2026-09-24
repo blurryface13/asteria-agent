@@ -4,7 +4,7 @@
 
 Python · AgentOrchestrator / BaseAgent · FastAPI · Next.js · PostgreSQL · Redis · ChromaDB · Ollama
 
-当前主入口按 EchoMind 的角色编排方式适配：`AgentOrchestrator` 负责意图与主辅路由，工作角色共享 `BaseAgent` 工具循环；科研支路额外提供 Lead 分工并行与交付时 Reviewer 验收。不是原样复制 EchoMind，也不是把旧 LangGraph 节点全部串行跑一遍。具体映射与测试见 [骨架对齐记录](docs/echomind-alignment-plan.md)。
+当前主入口按 EchoMind 的角色编排方式适配：`AgentOrchestrator` 负责意图与主辅路由，工作角色共享 `BaseAgent` 工具循环；科研支路由 Lead 安排互补子目标并行调查、按批综合与补研，Writer 成稿后交给 CitationAgent 核对正文和原文出处。不是原样复制 EchoMind，也不是把旧 LangGraph 节点全部串行跑一遍。详见 [入口骨架](docs/echomind-alignment-plan.md)和 [科研多 Agent 架构图及工具清单](docs/anthropic-research-alignment.md)。
 
 ## ✨ 能做什么
 
@@ -38,6 +38,7 @@ Python · AgentOrchestrator / BaseAgent · FastAPI · Next.js · PostgreSQL · R
 - [评测工作台与评分策略](docs/evaluation-workspace.md)
 - [自主实验与评测路线](docs/experiment-evaluation-roadmap.md)
 - [Lead 分工与代码调研协作](docs/agentic-collaboration-plan.md)
+- [科研多 Agent 架构图、运行边界与 MCP/Tool 清单](docs/anthropic-research-alignment.md)
 - [协作验收、测试指令与当前限制](docs/agentic-collaboration-acceptance.md)
 - [EchoMind 骨架对齐与真实请求验收](docs/echomind-alignment-plan.md)
 - [实验室部署与登录排查](docs/lab-deployment.md)

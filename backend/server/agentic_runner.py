@@ -102,6 +102,7 @@ async def run_autonomous_review(query, logs_handler, research_kwargs, *, capabil
     async def emit(kind, payload):
         await logs_handler.send_json({"type": "logs", "content": kind, "output": payload})
     from backend.server.coding_tools import build_coding_tools
+    from backend.server.specialists import search_public_sources
     # Identity belongs to the durable server Run, never research_kwargs/model arguments.
     server_run = getattr(getattr(logs_handler, "websocket", None), "run", {})
     owner = server_run.get("user_email") if isinstance(server_run, dict) else None
@@ -109,6 +110,7 @@ async def run_autonomous_review(query, logs_handler, research_kwargs, *, capabil
         Memory(cfg.embedding_provider, cfg.embedding_model, **cfg.embedding_kwargs).get_embeddings() if online_rag else None,
         emit, logs_handler.request_feedback, online_rag=online_rag,
         skill_options=getattr(logs_handler, "skill_options", None), coding_tools=build_coding_tools(owner),
+        public_search=search_public_sources,
         capability=capability)
     report = await runtime.run(query)
     await runtime.event("lead", "publish", "started", "编译 LaTeX 与 PDF")
@@ -119,7 +121,9 @@ async def run_autonomous_review(query, logs_handler, research_kwargs, *, capabil
                       "evidence": str(runtime.folder / "evidence.json"),
                       "run_metadata": str(runtime.folder / "run.json"),
                       "review_plan": str(runtime.folder / "plan.json"),
-                      "sufficiency": str(runtime.folder / "sufficiency.json")})
+                      "sufficiency": str(runtime.folder / "sufficiency.json"),
+                      "working_memory": str(runtime.folder / "working-memory.json"),
+                      "citation_review": str(runtime.folder / "citation-review.json")})
     for key, filename in (("delegations", "delegations.json"), ("coding_results", "coding-results.json"),
                           ("research_requests", "research-requests.json"), ("implementation_review", "implementation-review.json")):
         if (runtime.folder / filename).is_file():

@@ -186,7 +186,7 @@ def test_general_chat_uses_shared_loop_and_keeps_report_context():
     assert 'example.org' in text and meta['agent'] == 'general_chat' and not meta['tool_calls']
 
 
-def test_lead_reviews_on_finish_not_every_three_actions_and_resumes(tmp_path):
+def test_lead_checkpoints_on_finish_not_every_three_actions_and_resumes(tmp_path):
     from asteria_researcher.agentic.autonomous import AutonomousReview
     reviewed, actions, events = [], [], []
     sequence = ['search','search','search','finish','search','finish']
@@ -217,7 +217,7 @@ def test_lead_reviews_on_finish_not_every_three_actions_and_resumes(tmp_path):
     result = asyncio.run(r.loop('lead',r.query,lead=True,steps=6))
     assert result['status'] == 'completed'
     assert [len(a) for a in reviewed] == [4,6]
-    assert len([e for e in events if e['agent']=='reviewer' and e['status']=='started']) == 2
+    assert len([e for e in events if e['agent']=='lead' and e['tool']=='checkpoint' and e['status']=='started']) == 2
 
 
 def test_experiment_design_enters_shared_research_runtime(monkeypatch):
