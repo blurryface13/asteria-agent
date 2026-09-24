@@ -46,6 +46,17 @@ async def main(source, draft=None):
     runtime.library.nodes = {node['id']:node for node in read('citations.json')['nodes']}
     if (source/'knowledge-sources.json').exists():
         runtime.knowledge_sources = read('knowledge-sources.json')
+    if (source/'analysis.json').exists():
+        runtime.analysis_manifest = read('analysis.json')
+        import re
+        for chart in runtime.analysis_manifest.get('charts', []):
+            name = chart['path']
+            if not re.fullmatch(r'figures/[a-z][a-z0-9-]{0,40}\.png', name):
+                raise ValueError('Invalid source figure path')
+            path = source / name
+            if path.is_symlink() or not path.resolve().is_relative_to(source) or not path.is_file():
+                raise ValueError('Source figure unavailable or outside review directory')
+            runtime.figure_assets[name] = path
     synthesis = next(d['summary'] for d in reversed(runtime.lead_decisions) if d['tool'] == 'finish')
     print('Replay output: '+str(runtime.folder), flush=True)
     if draft is None:
@@ -60,7 +71,7 @@ async def main(source, draft=None):
     citation = CitationAgent(runtime.llm, runtime.event, runtime.folder)
     report = await citation.attach_with_repair(report, evidence_catalog(runtime.evidence, runtime.read_sources()), runtime.read_sources())
     (runtime.folder/'report-with-citations.md').write_text(report)
-    paths = await publish(report, runtime.folder, profile=runtime.format_profile)
+    paths = await publish(report, runtime.folder, profile=runtime.format_profile, assets=runtime.figure_assets)
     result = {'source_review':str(source),'source_draft':draft,
               'mode':'citation_stage_replay' if draft else 'report_stage_replay','paths':paths,
               'model_calls':runtime.model_calls,**report_length(report)}

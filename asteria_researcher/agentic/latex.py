@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import zipfile
 from uuid import uuid4
 from .pdf_fonts import embed_unicode_maps
 
@@ -222,5 +223,11 @@ async def publish(markdown: str, root: Path, *, profile: str = "academic", asset
         "embedded_unicode_maps": mapped_fonts, "status": "completed"}))
     # Preserve the caller's output root (including nested or absolute QA roots).
     output_folder = folder.relative_to(Path.cwd()) if folder.is_relative_to(Path.cwd()) else folder
-    return {key: str(output_folder / name) for key, name in {
+    result = {key: str(output_folder / name) for key, name in {
         "tex": "report.tex", "latex_pdf": "report.pdf", "compile_log": "compile.txt", "md": "report.md"}.items()}
+    if assets:
+        with zipfile.ZipFile(folder / 'report-bundle.zip', 'w', zipfile.ZIP_DEFLATED) as archive:
+            for name in ['report.md', 'report.tex', 'report.pdf', *assets]:
+                archive.write(folder / name, name)
+        result['report_bundle'] = str(output_folder / 'report-bundle.zip')
+    return result

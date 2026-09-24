@@ -34,7 +34,7 @@ class ResearchFinding(BaseModel):
     conclusion: str = Field(max_length=1800)
     conditions: str = Field(default="", max_length=1500,
                             description="Applicable setting, dataset/subset, metric and baseline; unknown stays unknown")
-    sources: list[str] = Field(default_factory=list, max_length=8)
+    sources: list[str] = Field(default_factory=list)
     limitations: str = Field(default="", max_length=1200)
 
 
@@ -58,7 +58,7 @@ class Action(BaseModel):
     assignments: list[Assignment] = Field(default_factory=list, max_length=3)
     retained_goal_ids: list[str] = Field(default_factory=list, max_length=14)
     summary: str = Field(default="", max_length=12000)
-    findings: list[ResearchFinding] = Field(default_factory=list, max_length=12)
+    findings: list[ResearchFinding] = Field(default_factory=list)
     gaps: list[str] = Field(default_factory=list, max_length=8)
     outcome: Literal["completed", "incomplete"] = "completed"
 

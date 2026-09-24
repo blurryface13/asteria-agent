@@ -35,5 +35,9 @@ async def output(relative: str, email=Depends(get_current_user_email)):
     media = 'application/pdf' if path.suffix.lower()=='.pdf' else 'text/plain; charset=utf-8'
     if path.suffix.lower()=='.docx':
         media='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    if path.suffix.lower()=='.png':
+        media='image/png'
+    if path.suffix.lower()=='.zip':
+        media='application/zip'
     return FileResponse(path,media_type=media,headers={'Cache-Control':'private, no-store',
         'X-Content-Type-Options':'nosniff','Content-Security-Policy':"sandbox; default-src 'none'"})

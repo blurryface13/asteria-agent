@@ -11,6 +11,7 @@ Python · AgentOrchestrator / BaseAgent · MCP · FastAPI · Next.js · PostgreS
 - **自主研究**：根据任务目标安排检索、原文阅读与引用追踪，动态委派并行研究 Agent；计划支持人工确认与修订，补研依据证据缺口，而不是固定章节流水线。
 - **按需使用 Skill**：Agent 发现技能并按阶段加载，用户也可查看、指定技能。内容写作指导、格式契约、LaTeX 模板和编译工具分别维护。
 - **报告交付**：生成 Markdown、LaTeX 与 PDF，在工作台检查报告、源码、研究轨迹和引用关系；支持围绕报告继续问答。
+- **带图研究**：可从已读证据生成方法对照图和有共同评价口径的数值图；图表数据与来源独立留档，由 Writer 引入 PDF。金融行业概览与模型更新采用按需加载的 Anthropic 原版 Skill，商业数据接口需另行授权。
 - **项目与知识库**：项目组织多轮对话，历史内容持久化到 PostgreSQL。离线 RAG 保留独立入口，支持混合检索与重排；在线研究可选择启用 RAG。
 - **科研工具与 MCP**：Lead/子 Agent 可检索论文、公开一手资料及授权实验室知识库；知识库与文件工具使用真实 stdio MCP。子任务完整结果独立保存，Lead 按需读取产物与阶段记忆；CitationAgent 对报告补充出处，发现引文缺口时定向修稿重检。
 - **分层记忆**：PostgreSQL 保存会话原始记录，Redis 缓存近期上下文；用户偏好和项目主题以可编辑 Markdown 保存，并由独立 ChromaDB 集合索引主题记忆，按用户、项目与当前问题做语义召回。论文知识库的向量索引与个人记忆隔离。
@@ -42,6 +43,7 @@ Python · AgentOrchestrator / BaseAgent · MCP · FastAPI · Next.js · PostgreS
 - [自主实验与评测路线](docs/experiment-evaluation-roadmap.md)
 - [Lead 分工与代码调研协作](docs/agentic-collaboration-plan.md)
 - [科研多 Agent 架构图、运行边界与 MCP/Tool 清单](docs/anthropic-research-alignment.md)
+- [Anthropic 原版材料复用、带图报告与 MCP 验收](docs/anthropic-illustrated-research.md)
 - [协作验收、测试指令与当前限制](docs/agentic-collaboration-acceptance.md)
 - [EchoMind 骨架对齐与真实请求验收](docs/echomind-alignment-plan.md)
 - [实验室部署与登录排查](docs/lab-deployment.md)

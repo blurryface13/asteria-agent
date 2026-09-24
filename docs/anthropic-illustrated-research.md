@@ -42,6 +42,20 @@
 金融 Skill 已导入不代表商业数据 MCP 已授权或金融长链路已验收；先使用公开来源，不自动注册付费服务或宣称拥有实时行情。
 后续 MCP 增补必须验证真实连接、参数/响应契约、超时与错误回传，不以安装成功代替业务可用。
 
+### Consensus 实测与待办
+
+Anthropic 的 bio-research 连接器目录也推荐通用的 Consensus：
+https://github.com/anthropics/knowledge-work-plugins/blob/main/bio-research/CONNECTORS.md
+
+- 官方 MCP 地址：`https://mcp.consensus.app/mcp`。
+- 2026-09-25 本机无凭据 initialize 实测为 **HTTP 401**，WWW-Authenticate 要求 Bearer，scope 为 search。仅做握手，没有发送研究材料、账号信息或私有知识库内容。
+- 授权与额度说明：https://help.consensus.app/en/articles/13694300-how-to-use-consensus-in-claude 。官方不同页面的匿名/免费额度描述并不一致，以实际账号与服务响应为准，不承诺匿名可用。
+- 当前未配置 OAuth 或有效令牌，因此不启用这个外部 MCP、不把连接失败隐藏成成功检索，也不自动购买额度。
+- 现有 MCPClientManager 修复了 HTTP headers 因判断错误字段被丢弃的问题；HTTP token 通过 Authorization 传递，不再使用不兼容的 token 参数。配置层修复已测，但不代表当前自主研究循环已挂上 Consensus。
+- 待取得授权后，再测试 tools/list、真实 search 输出契约和结果来源映射，接到可选检索工具；保留 arXiv/现有公开检索作为明确可见的替代路径。
+
+金融 Skill 在现有 financial_research/company_research 工具循环中可通过 load_skill 实际加载；不是只注册目录。当前这些仍是简短资料分析角色，不能据此声称金融复杂报告全链路已验收。
+
 ## 验收
 
 - 单元：源文件追溯、Skill 延迟加载、证据摘录/数值/路径校验、并行父调用归属、图表渲染。
@@ -49,3 +63,12 @@
 - 真实任务：CV 博士研究创新方向，至少 10 篇已读来源；对比方法、提出可证伪研究假设/基线/消融，图表有解释、出处及条件。
 - 报告质量不以达到固定字数为通过标准；逐页检查图表文字、布局、论断引用、创新点可操作性。
 - 真实端到端结果另行记录；未跑完不得用离线 PDF 测试替代。
+
+### 当前实施记录
+
+- 首批实现提交：d2cccda；回归 329 项通过，包括真实中文图表 PDF。
+- 金融简短角色的动态 Skill 工具与 HTTP MCP 认证适配继续补充；未重启正在运行的付费任务。
+- CV 验收任务输入：docs/acceptance/cv-illustrated-research.txt。
+- Run：05837182c44b4d3dbfcdac00d72f1260；观测目录：outputs/acceptance_2fb36f12de；研究目录：outputs/review_7a840471255940c5925394e1202925ec。
+- 首批并行研究发现旧 schema 的 sources<=8 / findings<=12 导致 3 次非必要格式拒绝，另有一次输出截断；模型修正后子任务均回传。已删除这两处数量门槛并加测试，保留真实来源核验与总执行预算。该改动在下次 worker 启动后生效，不把当前运行说成已经用了修复。
+- 本轮先后共出现多少错误、最终质量和交付状态，待完整验收后记录。

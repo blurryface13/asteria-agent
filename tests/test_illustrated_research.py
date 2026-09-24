@@ -35,6 +35,13 @@ def test_role_uses_verbatim_upstream_and_only_maps_bindings():
     assert 'MINIMUM of five' not in role_guidance(False)
 
 
+def test_supported_handoff_is_not_rejected_by_arbitrary_finding_counts():
+    from asteria_researcher.agentic.autonomous import Action
+    value = {'conclusion': 'Across-paper synthesis', 'sources': [f'https://example.org/{i}' for i in range(10)]}
+    action = Action(tool='finish', purpose='handoff', findings=[value] * 13)
+    assert len(action.findings) == 13 and len(action.findings[0].sources) == 10
+
+
 def test_finance_skills_are_discovered_before_their_bodies_are_loaded():
     session = SkillSession('research')
     assert 'anthropic_sector_overview' in {x['id'] for x in session.discover()}
@@ -42,6 +49,21 @@ def test_finance_skills_are_discovered_before_their_bodies_are_loaded():
     session.load('anthropic_sector_overview')
     assert 'Market Size & Growth' in session.prompt()
     assert '不能假装生成或修改了工作簿' in session.prompt()
+
+
+def test_financial_specialist_can_actually_load_upstream_skill():
+    from backend.server.specialists import run_specialist
+    seen = []
+    async def model(system, payload):
+        seen.append(system)
+        if len(seen) == 1:
+            assert 'anthropic_sector_overview' in payload
+            return json.dumps({'action': 'tool', 'tool': 'load_skill', 'query': 'anthropic_sector_overview'})
+        assert 'Market Size & Growth' in system
+        return json.dumps({'action': 'answer', 'content': '请先确定行业范围和报告期；尚未检索财务资料。'})
+    _, trace = asyncio.run(run_specialist('financial_research', '如何开展行业调研', [], model, None))
+    assert any(s['id'] == 'anthropic_sector_overview' for s in trace['skills'])
+    assert trace['tool_calls'][0]['tool'] == 'load_skill'
 
 
 def test_chart_validation_requires_real_evidence_and_consistent_shape():
@@ -120,3 +142,6 @@ def test_real_illustrated_chinese_pdf(tmp_path):
     with fitz.open(result['latex_pdf']) as pdf:
         assert sum(len(page.get_images()) for page in pdf) >= 1
         assert '中文图表测试' in ''.join(page.get_text() for page in pdf)
+    import zipfile
+    with zipfile.ZipFile(result['report_bundle']) as archive:
+        assert 'figures/method-map.png' in archive.namelist()
