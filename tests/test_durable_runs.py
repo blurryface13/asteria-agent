@@ -65,6 +65,15 @@ async def durable_lifecycle(monkeypatch):
         with pytest.raises(HTTPException):
             await store.answer('test-owner', run_id, approval, 'different')
         await asyncio.gather(*[store.append(run_id, worker, {'type':'logs','output':str(i)}) for i in range(20)])
+        # Real JSONB boundary: a PDF glyph must not turn a successful child
+        # handoff into repeated model retries. Raw caller data stays intact.
+        evidence = {'type': 'tool_event', 'tool': 'finish', 'result': {
+            'evidence': [{'page': 2, 'text': '原文\x00condition'}]}}
+        await store.append(run_id, worker, evidence)
+        assert '\x00' in evidence['result']['evidence'][0]['text']
+        persisted = (await store.events('test-owner', run_id))[-1]['payload']
+        assert persisted['result']['evidence'][0]['text'] == '原文�condition'
+        assert persisted['_storage_normalization']['nul_replacements'] == 1
         events = await store.events('test-owner', run_id)
         assert [r['sequence'] for r in events] == list(range(1, len(events)+1))
         cursor = events[-1]['sequence']

@@ -8,6 +8,7 @@ import asyncio
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import secrets
 import sys
@@ -57,13 +58,30 @@ async def run(args):
     from backend.auth.db import close_pool
     load_dotenv(ROOT / ".env")
     load_dotenv(ROOT / ".env.lab", override=True)
-    identity = uuid4().hex[:10]
+    resume = getattr(args, "resume", None)
+    if resume:
+        folder = Path(resume).resolve()
+        if folder.parent != (ROOT / 'outputs').resolve() or not re.fullmatch(r'acceptance_[0-9a-f]{10}', folder.name):
+            raise ValueError('Resume accepts only this repository’s dedicated acceptance folders')
+        identity = folder.name.removeprefix('acceptance_')
+        submission = json.loads((folder / 'request.json').read_text())
+        from backend.auth.db import get_pool
+        pool = await get_pool()
+        owner = await pool.fetchval('SELECT user_email FROM workspace_conversations WHERE id=$1', submission['conversation_id'])
+        if owner != f'acceptance-{identity}@example.com':
+            await close_pool()
+            raise ValueError('Cannot reset credentials for a non-acceptance account')
+    else:
+        identity = uuid4().hex[:10]
     email, password = f"acceptance-{identity}@example.com", secrets.token_urlsafe(24)
     await provision(email, password, "科研链路验收")
     await close_pool()
     folder = ROOT / "outputs" / ("acceptance_" + identity)
-    folder.mkdir(parents=True)
+    folder.mkdir(parents=True, exist_ok=bool(resume))
     run_id, last_state, after, terminal = None, None, 0, False
+    stage, primary_error = "routing", None
+    if resume and (folder / 'events.jsonl').exists():
+        after = max((json.loads(line)['sequence'] for line in (folder / 'events.jsonl').read_text().splitlines() if line.strip()), default=0)
     started = time.monotonic()
     async with httpx.AsyncClient(base_url=args.url, timeout=30, trust_env=False) as client:
         async def request(method, path, **kwargs):
@@ -72,27 +90,35 @@ async def run(args):
             return response.json() if response.content else None
         login = await request("POST", "/api/auth/login", json={"email": email, "password": password})
         client.headers["Authorization"] = "Bearer " + login["access_token"]
-        conversation = await request("POST", "/api/workspace/conversations", json={"title": "Anthropic 架构端到端验收", "mode": "research"})
-        task = Path(args.task_file).read_text() if args.task_file else DEFAULT_TASK
-        submission = {"conversation_id": conversation["id"], "request_id": "accept-" + identity,
-            "message": task, "knowledge_mode": "auto", "research_request": {
-                "task": task, "report_type": "research_report", "report_source": "web",
-                "tone": "Objective", "online_rag": not args.direct_read, "headers": {}, "mcp_enabled": True}}
-        (folder / "request.json").write_text(json.dumps(submission, ensure_ascii=False, indent=2))
+        if resume:
+            conversation = {'id': submission['conversation_id']}
+            (folder / ('resume-' + uuid4().hex[:8] + '.json')).write_text(json.dumps({
+                'resumed_at_epoch': time.time(), 'note': 'Observer resumed; no new task or model request submitted.'}))
+        else:
+            conversation = await request("POST", "/api/workspace/conversations", json={"title": "Anthropic 架构端到端验收", "mode": "research"})
+            task = Path(args.task_file).read_text() if args.task_file else DEFAULT_TASK
+            submission = {"conversation_id": conversation["id"], "request_id": "accept-" + identity,
+                "message": task, "knowledge_mode": "auto", "research_request": {
+                    "task": task, "report_type": "research_report", "report_source": "web",
+                    "tone": "Objective", "online_rag": not args.direct_read, "headers": {}, "mcp_enabled": True}}
+            (folder / "request.json").write_text(json.dumps(submission, ensure_ascii=False, indent=2))
         print(json.dumps({"account": email, "conversation": conversation["id"], "output": str(folder)}), flush=True)
         try:
-            await request("POST", "/api/coordinator/route", json=submission)
+            if not resume:
+                await request("POST", "/api/coordinator/route", json=submission)
             while time.monotonic() - started < args.timeout:
                 if not run_id:
                     turn = (await request("GET", "/api/coordinator/turn", params={"conversation_id": conversation["id"]}))["turn"]
-                    if turn and turn["status"] == "completed":
+                    if turn and turn["status"] in {"completed", "failed", "interrupted"}:
                         (folder / "routing.json").write_text(json.dumps(turn, ensure_ascii=False, indent=2))
+                    if turn and turn["status"] == "completed":
                         run_id = turn["result"].get("run_id")
                         if not run_id:
                             raise RuntimeError("Research request did not start a research Run: " + json.dumps(turn["result"], ensure_ascii=False)[:1500])
                     elif turn and turn["status"] in {"failed", "interrupted"}:
                         raise RuntimeError(str(turn.get("error")))
                 if run_id:
+                    stage = "research"
                     current = await request("GET", f"/api/workspace/runs/{run_id}")
                     if current["status"] != last_state:
                         print(json.dumps({"run_id": run_id, "status": current["status"], "seconds": round(time.monotonic()-started)}), flush=True)
@@ -117,16 +143,38 @@ async def run(args):
                         (folder / "result.json").write_text(json.dumps(current, ensure_ascii=False, indent=2))
                         if current["status"] != "completed":
                             raise RuntimeError(str(current.get("error") or current["status"]))
+                        stage = "delivery_verification"
                         downloads = await verify_deliverables(client, current)
                         (folder / "downloads.json").write_text(json.dumps(downloads, ensure_ascii=False, indent=2))
                         print("PASS " + str(folder / "result.json"), flush=True)
                         return
                 await asyncio.sleep(2)
             raise TimeoutError("Acceptance deadline exceeded")
+        except Exception as error:
+            primary_error = error
+            # Do not serialize HTTP request objects, headers, auth tokens or raw
+            # provider responses. The API's sanitized routing/run error is saved
+            # separately, including failures before a research Run exists.
+            (folder / "failure.json").write_text(json.dumps({
+                "stage": stage, "error_type": type(error).__name__, "run_id": run_id,
+                "http_status": error.response.status_code if isinstance(error, httpx.HTTPStatusError) else None,
+                "elapsed_seconds": round(time.monotonic() - started, 2),
+                "evidence": [p.name for p in (folder / "routing.json", folder / "result.json") if p.exists()],
+            }, ensure_ascii=False, indent=2))
+            raise
         finally:
-            if run_id and not terminal:
-                await request("POST", f"/api/workspace/runs/{run_id}/cancel")
-            await request("POST", "/api/auth/logout")
+            cleanup_errors = []
+            paths = ([f"/api/workspace/runs/{run_id}/cancel"] if run_id and not terminal else [])
+            for path in paths + ["/api/auth/logout"]:
+                try:
+                    await request("POST", path)
+                except Exception as error:
+                    cleanup_errors.append({"operation": "cancel" if path.endswith("/cancel") else "logout",
+                                           "error_type": type(error).__name__})
+            if cleanup_errors:
+                (folder / "cleanup-errors.json").write_text(json.dumps(cleanup_errors, indent=2))
+                if primary_error is None:
+                    raise RuntimeError("Acceptance cleanup failed; see cleanup-errors.json")
 
 
 if __name__ == "__main__":
@@ -136,4 +184,5 @@ if __name__ == "__main__":
     parser.add_argument("--approve-plan", action="store_true")
     parser.add_argument("--direct-read", action="store_true")
     parser.add_argument("--task-file")
+    parser.add_argument("--resume", help="Resume observation of a dedicated acceptance folder; does not submit another task")
     asyncio.run(run(parser.parse_args()))

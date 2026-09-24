@@ -59,7 +59,7 @@ def test_approximate_length_never_restarts_research_or_blocks_delivery(tmp_path)
     source = 'https://arxiv.org/abs/1706.03762'
     async def model(system, payload):
         if system.startswith('Select exactly ONE content skill'):
-            return json.dumps({'skill_ids':['report_writing'], 'format_profile':'brief', 'reason':'review'})
+            return json.dumps({'content_skill':'report_writing', 'format_profile':'brief', 'reason':'review'})
         calls.append(system)
         return '研究' * 250 + f' [来源]({source})'
     async def emit(*args): pass

@@ -18,7 +18,7 @@ def runner(responses, feedback=None, evidence="证据 https://example.org/paper"
     calls, events = [], []
     async def model(system, user):
         if system.startswith("Select exactly ONE content skill"):
-            return json.dumps({"skill_ids": ["general_writing"], "format_profile": "brief", "reason": "test report"})
+            return json.dumps({"content_skill": "general_writing", "format_profile": "brief", "reason": "test report"})
         result = responses.pop(0)
         return json.dumps(result) if isinstance(result, dict) else result
     async def research(query):

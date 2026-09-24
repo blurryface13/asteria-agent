@@ -1,7 +1,9 @@
 import asyncio
 import hashlib
 import importlib.util
+import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -33,3 +35,102 @@ def test_acceptance_requires_downloadable_matching_deliverables(bad_hash):
             asyncio.run(run())
     else:
         assert len(asyncio.run(run())) == 4
+
+
+@pytest.mark.parametrize("cleanup_failure", [False, True])
+def test_routing_failure_saved_before_run_and_not_masked(tmp_path, monkeypatch, cleanup_failure):
+    from backend.auth import lab, db
+
+    async def noop(*args):
+        pass
+
+    monkeypatch.setattr(lab, "provision", noop)
+    monkeypatch.setattr(db, "close_pool", noop)
+    monkeypatch.setattr(acceptance, "ROOT", tmp_path)
+    original_client = httpx.AsyncClient
+    calls = []
+
+    def handle(request):
+        calls.append(request.url.path)
+        if request.url.path == "/api/auth/login":
+            return httpx.Response(200, json={"access_token": "must-not-be-saved"})
+        if request.url.path == "/api/workspace/conversations":
+            return httpx.Response(200, json={"id": "test-conversation"})
+        if request.url.path == "/api/coordinator/route":
+            return httpx.Response(200, json={"status": "running"})
+        if request.url.path == "/api/coordinator/turn":
+            return httpx.Response(200, json={"turn": {"status": "failed", "error": "HTTP 402", "usage": {}}})
+        if request.url.path == "/api/auth/logout":
+            return httpx.Response(503 if cleanup_failure else 200, json={})
+        raise AssertionError("Unexpected request: " + request.url.path)
+
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **kw: original_client(
+        **kw, transport=httpx.MockTransport(handle)))
+    args = SimpleNamespace(url="http://test", task_file=None, direct_read=False, timeout=10, approve_plan=True)
+    with pytest.raises(RuntimeError, match="HTTP 402"):
+        asyncio.run(acceptance.run(args))
+    folder = next((tmp_path / "outputs").iterdir())
+    assert json.loads((folder / "routing.json").read_text())["status"] == "failed"
+    failure = json.loads((folder / "failure.json").read_text())
+    assert failure["stage"] == "routing" and failure["run_id"] is None
+    assert (folder / "cleanup-errors.json").exists() == cleanup_failure
+    assert calls.count("/api/coordinator/route") == 1
+    assert calls[-1] == "/api/auth/logout"
+    assert not any("must-not-be-saved" in file.read_text() for file in folder.iterdir())
+
+
+@pytest.mark.parametrize('owner_matches', [True, False])
+def test_resume_observes_same_run_without_submission_or_foreign_reset(tmp_path, monkeypatch, owner_matches):
+    from backend.auth import lab, db
+    folder = tmp_path / 'outputs' / 'acceptance_0123456789'
+    folder.mkdir(parents=True)
+    (folder / 'request.json').write_text(json.dumps({'conversation_id': 'existing'}))
+    (folder / 'events.jsonl').write_text(json.dumps({'sequence': 4}) + '\n')
+    resets, paths = [], []
+
+    class Pool:
+        async def fetchval(self, *args):
+            return 'acceptance-0123456789@example.com' if owner_matches else 'real-user@example.com'
+
+    async def pool():
+        return Pool()
+
+    async def provision(*args):
+        resets.append(args[0])
+
+    async def noop(*args):
+        return []
+
+    monkeypatch.setattr(db, 'get_pool', pool)
+    monkeypatch.setattr(db, 'close_pool', noop)
+    monkeypatch.setattr(lab, 'provision', provision)
+    monkeypatch.setattr(acceptance, 'verify_deliverables', noop)
+    monkeypatch.setattr(acceptance, 'ROOT', tmp_path)
+    original_client = httpx.AsyncClient
+
+    def handle(request):
+        paths.append(request.url.path)
+        if request.url.path == '/api/auth/login':
+            return httpx.Response(200, json={'access_token': 'temporary-test-token'})
+        if request.url.path == '/api/coordinator/turn':
+            return httpx.Response(200, json={'turn': {'status': 'completed', 'result': {'run_id': 'original-run'}}})
+        if request.url.path == '/api/workspace/runs/original-run':
+            return httpx.Response(200, json={'status': 'completed', 'artifacts': []})
+        if request.url.path.endswith('/events'):
+            assert request.url.params['after'] == '4'
+            return httpx.Response(200, json={'events': [{'sequence': 5, 'payload': {'type': 'run_state'}}]})
+        if request.url.path == '/api/auth/logout':
+            return httpx.Response(200, json={})
+        raise AssertionError('Must not submit, create a conversation or cancel: ' + request.url.path)
+
+    monkeypatch.setattr(httpx, 'AsyncClient', lambda **kw: original_client(**kw, transport=httpx.MockTransport(handle)))
+    args = SimpleNamespace(url='http://test', resume=str(folder), timeout=5, approve_plan=True)
+    if not owner_matches:
+        with pytest.raises(ValueError, match='non-acceptance'):
+            asyncio.run(acceptance.run(args))
+        assert not resets and not paths
+    else:
+        asyncio.run(acceptance.run(args))
+        assert resets == ['acceptance-0123456789@example.com']
+        assert [json.loads(line)['sequence'] for line in (folder / 'events.jsonl').read_text().splitlines()] == [4, 5]
+        assert json.loads((folder / 'result.json').read_text())['status'] == 'completed'

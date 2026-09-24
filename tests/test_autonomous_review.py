@@ -352,7 +352,7 @@ def test_writer_repairs_length_and_keeps_audit_drafts(tmp_path):
     calls = []
     async def model(system, payload):
         if system.startswith("Select exactly ONE content skill"):
-            return json.dumps({"skill_ids": ["report_writing"], "format_profile": "brief", "reason": "short review"})
+            return json.dumps({"content_skill": "report_writing", "format_profile": "brief", "reason": "short review"})
         calls.append((system, json.loads(payload)))
         return ("水" * 500 if len(calls) == 1 else "水" * 250) + f" [source]({URL})"
     async def emit(*args): pass

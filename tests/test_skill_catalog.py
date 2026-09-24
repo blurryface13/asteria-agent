@@ -39,7 +39,8 @@ def test_user_pins_checked_and_repaired_not_silently_overridden():
     calls = []
     async def model(system, payload):
         calls.append(json.loads(payload))
-        return json.dumps({"skill_ids": ["general_writing"] if len(calls) == 1 else ["report_writing", "source_priority"],
+        return json.dumps({"content_skill": "general_writing" if len(calls) == 1 else "report_writing",
+                           "guidance_skills": [] if len(calls) == 1 else ["source_priority"],
                            "format_profile": "brief", "reason": "用户选择主题综述与一手来源审查"})
     selection, prompt, trace = asyncio.run(select_writing(model, "写综述", {},
         SkillOptions(skill_ids=["report_writing", "source_priority"], format_profile="brief")))
@@ -52,6 +53,18 @@ def test_user_pins_checked_and_repaired_not_silently_overridden():
 
 def test_auto_selection_cannot_stack_content_roles():
     async def model(*args):
-        return json.dumps({"skill_ids": ["report_writing", "general_writing"], "format_profile": "academic", "reason": "bad"})
-    with pytest.raises(ValueError, match="at most one"):
+        return json.dumps({"content_skill": "report_writing", "guidance_skills": ["general_writing"], "format_profile": "academic", "reason": "bad"})
+    with pytest.raises(ValueError, match="only guidance"):
         asyncio.run(select_writing(model, "综述", {}))
+
+
+def test_model_contract_separates_primary_skill_from_guidance():
+    async def model(system, payload):
+        schema = json.loads(system.split('Return ONLY JSON: ', 1)[1])
+        assert schema['properties']['content_skill']['type'] == 'string'
+        assert 'report_writing' in schema['properties']['content_skill']['enum']
+        assert 'report_writing' not in schema['properties']['guidance_skills']['items']['enum']
+        return json.dumps({'content_skill': 'report_writing', 'guidance_skills': ['source_priority'],
+                           'format_profile': 'academic', 'reason': '单一综述结构与一手来源规范'})
+    selection, _, _ = asyncio.run(select_writing(model, '综述', {}))
+    assert selection.skill_ids == ['report_writing', 'source_priority']
