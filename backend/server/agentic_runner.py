@@ -125,7 +125,9 @@ async def run_autonomous_review(query, logs_handler, research_kwargs, *, capabil
         await logs_handler.send_json({"type": "diagnostic_paths", "output": diagnostics})
         raise
     await runtime.event("lead", "publish", "started", "编译 LaTeX 与 PDF")
-    artifacts = await publish(report, Path("outputs"), profile=runtime.format_profile)
+    artifacts = await publish(report, Path("outputs"), profile=runtime.format_profile, assets=runtime.figure_assets)
+    for key, path in runtime.figure_assets.items():
+        artifacts['chart_' + path.stem] = str(path)
     artifacts["writing_selection"] = str(runtime.folder / "writing.json")
     artifacts.update({"citation_graph": str(runtime.folder / "citations.json"),
                       "events": str(runtime.folder / "events.jsonl"),
@@ -138,7 +140,8 @@ async def run_autonomous_review(query, logs_handler, research_kwargs, *, capabil
                       "citation_history": str(runtime.folder / "citation-history.json")})
     for key, filename in (("delegations", "delegations.json"), ("coding_results", "coding-results.json"),
                           ("research_requests", "research-requests.json"), ("implementation_review", "implementation-review.json"),
-                          ("knowledge_sources", "knowledge-sources.json")):
+                          ("knowledge_sources", "knowledge-sources.json"),
+                          ("data_analysis", "analysis.json"), ("tool_calls", "tool-calls.jsonl")):
         if (runtime.folder / filename).is_file():
             artifacts[key] = str(runtime.folder / filename)
     for artifact in sorted(runtime.folder.glob("subagent-*.json")):

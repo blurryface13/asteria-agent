@@ -21,6 +21,8 @@ from .skill_catalog import SkillOptions, SkillSession, select_writing
 from .runtime import urls
 from .coding_contract import passages
 from .base_agent import BaseAgent, AgentFinish, AgentStop
+from .anthropic_roles import role_guidance
+from .tool_hooks import ToolHooks
 from .collaboration import (Assignment, allocation_report, run_parallel, ArtifactReview, LEAD, RESEARCHER)
 from .sufficiency import (ASSESSOR_PROMPT, ASSESSOR_REVIEW_PROMPT, ReviewPlan, SufficiencyReport, evidence_catalog,
                           process_checks, validate_contract, validate_report, ScopePartition, partition_contract)
@@ -167,6 +169,8 @@ class AutonomousReview:
         self.direct_passages, self.direct_chars = set(), 0
         self.model, self.emit, self.approve = model, emit, approve
         self.folder = root / ("review_" + uuid4().hex)
+        self.tool_hooks = ToolHooks(self.folder.name)
+        self.figure_assets, self.analysis_manifest = {}, {}
         self.library = PaperLibrary(self.folder, model, embeddings,
                                     max_papers=int(os.getenv("REVIEW_MAX_PAPERS", "48")),
                                     max_bytes=int(os.getenv("REVIEW_TOTAL_MIB", "512")) * 1048576)
@@ -208,6 +212,10 @@ class AutonomousReview:
         async with self.event_lock:
             with (self.folder / "events.jsonl").open("a") as stream:
                 stream.write(json.dumps(record, ensure_ascii=False) + "\n")
+            hook = self.tool_hooks.record(record)
+            if hook:
+                with (self.folder / "tool-calls.jsonl").open("a") as stream:
+                    stream.write(json.dumps(hook, ensure_ascii=False) + "\n")
             await self.emit("agent_action", record)
 
     async def llm(self, system, payload):
@@ -464,6 +472,12 @@ class AutonomousReview:
         result = await self.loop("lead", self.query, lead=True, steps=18)
         if result["status"] != "completed":
             raise RuntimeError("研究尚未达到交付条件：" + result["summary"])
+        if re.search(r'图表|带图|配图|可视化|示意图|chart|figure|visuali', self.query, re.I):
+            from .illustrations import analyze
+            from .citation_agent import visible_evidence
+            self.figure_assets, self.analysis_manifest = await analyze(
+                self.llm, self.event, self.folder, self.query, result['summary'], writing_briefs(self.briefs),
+                visible_evidence(evidence_catalog(self.evidence, self.read_sources())))
         draft = await self.write_report(result["summary"])
         from .citation_agent import CitationAgent
         citation_agent = CitationAgent(self.llm, self.event, self.folder)
@@ -836,7 +850,7 @@ class AutonomousReview:
         skills.load(self.research_skill, origin="system")
         await self.event(agent, "skill", "completed", "加载本研究会话的技能", skills=skills.trace(), phase="research")
         await self.event(agent, "agent", "started", objective)
-        system = (
+        system = role_guidance(lead) + (
             "You are the lead research agent. Delegate complementary objectives to independent researchers "
             "in parallel when useful, inspect their findings and gaps, then choose next actions. "
             "After each returned batch, YOU evaluate the structured child summaries, sources and gaps in your next turn. "
@@ -987,6 +1001,7 @@ class AutonomousReview:
                 self.record_lead_decision(action)
             call_id, started = uuid4().hex, time.monotonic()
             await self.event(agent, action.tool, "started", action.purpose, call_id=call_id, arguments=signature)
+            parent_token = self.tool_hooks.parent.set(call_id)
             try:
                 if action.tool == "finish":
                     if lead and action.outcome == "completed":
@@ -1143,12 +1158,17 @@ class AutonomousReview:
                     compact = {"excerpt": json.dumps(result, ensure_ascii=False)[:24000],
                                "notice": "Observation abbreviated; complete result is in event log. Retrieve scoped evidence if needed."}
                 observations.append({"tool": action.tool, "result": compact})
+            except asyncio.CancelledError:
+                await self.event(agent, action.tool, "cancelled", action.purpose, call_id=call_id)
+                raise
             except Exception as error:
                 # Explicit errors are returned to the deciding agent; never
                 # silently swap providers or count failed tools as evidence.
                 result = {"tool": action.tool, "error": f"{type(error).__name__}: {error}"[:2000]}
                 observations.append(result)
                 await self.event(agent, action.tool, "failed", action.purpose, call_id=call_id, error=result["error"], severity="attempt")
+            finally:
+                self.tool_hooks.parent.reset(parent_token)
         profile = LEAD if lead else RESEARCHER
         def available(turn):
             limit = self.max_actions if lead else max(0, self.max_actions - 5)
@@ -1195,6 +1215,7 @@ class AutonomousReview:
                 evidence.append(record)
                 self.evidence.append(record)
         payload = {"task": self.query, "plan": self.plan, "synthesis": synthesis,
+                   "data_analyst": self.analysis_manifest,
                    "subagent_results": writing_briefs(self.briefs), "evidence": evidence,
                    "read_sources": list(self.read_sources()),
                    "source_types": {**{key: source_type(key) for key in self.library.papers},
@@ -1221,13 +1242,18 @@ class AutonomousReview:
             "verified experiments, or factual certainty based only on citation membership. "
             "Preserve reviewed answer kinds: distinguish author-reported facts, cross-source synthesis, "
             "qualified analysis and unknowns. Cite the supporting premises of an inference, never label "
-            "it as an author claim. Integrate citations at claim-group/paragraph level when unambiguous; "
+            "it as an author claim. Put each citation immediately after the claim or tightly related claim group it supports; "
+            "never collect unrelated citations at the end of a long paragraph. "
             "do not repeat the same citation after every sentence or replace thematic reasoning with excerpts. "
             "Begin with a useful answer to the user's main question. Compare approaches on shared axes; explain "
             "tradeoffs and give a concrete recommendation for the user's scenario. Omit benchmark trivia unless "
             "it changes that recommendation. Preserve each finding's conditions and limitations; if comparison "
             "settings differ, do not merge their numbers. Use separate Markdown list items for actionable suggestions, "
             "short paragraphs, Chinese paraphrases instead of long English quotes, and $...$ for mathematical notation. "
+            "If data_analyst has charts, integrate their EXACT Markdown image paths on standalone lines: "
+            "![short descriptive caption](figures/id.png). Explain what the figure reveals near it, cite its sources, "
+            "and distinguish qualitative synthesis from experimental results. Do not alter generated figures or values. "
+            "If charts are unavailable, disclose why; never invent an image path. "
             "Respect requested length.\n" + writing_prompt
             + "\nOUTPUT CONTRACT: " + length_guidance
             + "Do not reproduce every child finding. Select only details that answer the user's actual questions. "
@@ -1272,6 +1298,12 @@ class AutonomousReview:
                                         "suggested_cut_units": max(0, actual_chars - int(target_chars * .95))} if target_chars and length_issues else None,
                                      "validation_issues": validation["issues"],
                                      "read_sources": sorted(allowed_report_sources), "evidence": evidence})
+        image_paths = re.findall(r'!\[[^\]]*\]\(([^)]+)\)', report)
+        if set(image_paths) - self.figure_assets.keys():
+            raise ValueError('报告包含未注册的图表路径')
+        if self.figure_assets and not image_paths:
+            # Do not silently claim illustrated delivery if Writer forgot the assets.
+            raise ValueError('Writer 未引用已生成图表，需检查写作交接')
         (self.folder / "evidence.json").write_text(json.dumps(self.evidence, ensure_ascii=False))
         self.library.save()
         await self.emit("citation_graph", self.library.snapshot())

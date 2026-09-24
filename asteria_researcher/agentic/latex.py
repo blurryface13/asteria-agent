@@ -61,7 +61,7 @@ TEMPLATES = Path(__file__).with_name("templates")
 def format_profiles():
     return json.loads((TEMPLATES / "profiles.json").read_text())
 
-def render_tex(markdown: str, profile: str = "academic") -> str:
+def render_tex(markdown: str, profile: str = "academic", *, assets=()) -> str:
     profiles = format_profiles()
     if profile not in profiles:
         raise ValueError(f"Unknown report format profile: {profile}")
@@ -106,6 +106,17 @@ def render_tex(markdown: str, profile: str = "academic") -> str:
     while index < len(source):
         line = source[index]
         index += 1
+        illustration = re.fullmatch(r'!\[([^\]]*)\]\(([^)]+)\)', line.strip())
+        if illustration:
+            name = illustration[2]
+            if name not in assets or not re.fullmatch(r'figures/[a-z][a-z0-9-]{0,40}\.png', name):
+                raise ValueError('Only registered local PNG figures may be published')
+            if list_kind:
+                lines.append('\\end{' + list_kind + '}')
+                list_kind = None
+            lines.extend([r'\begin{center}', r'\includegraphics[width=\linewidth,height=.65\textheight,keepaspectratio]{' + name + '}',
+                          r'\par\small ' + inline(illustration[1]), r'\end{center}'])
+            continue
         item = re.match(r"^\s*(?:([-*+])|\d+[.)])\s+(.+)$", line)
         kind = ("itemize" if item[1] else "enumerate") if item else None
         if list_kind and kind != list_kind:
@@ -160,19 +171,36 @@ def render_tex(markdown: str, profile: str = "academic") -> str:
         for url, number in reference_numbers.items():
             lines.append(r"\noindent\href{" + escape(url) + "}{" + escape(f"[{number}] {reference_labels[url]}") + r"}\par")
     template = template_path.read_text(encoding="utf-8")
+    if assets:
+        template = template.replace(r'\begin{document}', r'\usepackage{graphicx}' + '\n' + r'\begin{document}')
     if template.count("% ASTERIA_BODY") != 1:
         raise ValueError("Template must have exactly one body slot")
     return template.replace("% ASTERIA_BODY", "\n".join(lines))
 
 
-async def publish(markdown: str, root: Path, *, profile: str = "academic") -> dict[str, str]:
+async def publish(markdown: str, root: Path, *, profile: str = "academic", assets=None) -> dict[str, str]:
     compiler = shutil.which("xelatex")
     if not compiler:
         raise RuntimeError("XeLaTeX is required for scientific report publication")
     folder = root.resolve() / ("scientific_" + uuid4().hex)
     folder.mkdir(parents=True)
+    assets = assets or {}
+    for name, source_path in assets.items():
+        if not re.fullmatch(r'figures/[a-z][a-z0-9-]{0,40}\.png', name):
+            raise ValueError('Invalid registered figure name')
+        source_path = Path(source_path)
+        if source_path.is_symlink() or source_path.stat().st_size > 20 * 1024 * 1024:
+            raise ValueError('Figure must be a bounded regular PNG')
+        from PIL import Image
+        with Image.open(source_path) as im:
+            if im.format != 'PNG' or im.width * im.height > 24_000_000:
+                raise ValueError('Invalid PNG figure')
+            im.verify()
+        target = folder / name
+        target.parent.mkdir(exist_ok=True)
+        shutil.copyfile(source_path, target)
     (folder / "report.md").write_text(markdown, encoding="utf-8")
-    (folder / "report.tex").write_text(render_tex(markdown, profile), encoding="utf-8")
+    (folder / "report.tex").write_text(render_tex(markdown, profile, assets=assets), encoding="utf-8")
     (folder / "publication.json").write_text(json.dumps({"format_profile": profile, "renderer": "safe-markdown-v3", "status": "compiling"}))
     process = await asyncio.create_subprocess_exec(
         compiler, "-no-shell-escape", "-halt-on-error", "-interaction=nonstopmode", "report.tex",

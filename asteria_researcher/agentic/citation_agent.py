@@ -76,7 +76,7 @@ def factual_lines(report: str) -> list[dict]:
             continue
         if re.match(r"^#{1,6}\s*(参考文献|参考资料|References|资料来源)\s*$", stripped, re.I):
             in_references = True
-        if (in_references or in_code or not stripped or stripped.startswith("#")
+        if (in_references or in_code or not stripped or stripped.startswith(("#", "!["))
                 or re.fullmatch(r"[\s|:\-]+", stripped)
                 or len(re.findall(r"[\w\u4e00-\u9fff]", stripped)) < 12):
             continue
