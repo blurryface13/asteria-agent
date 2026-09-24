@@ -19,6 +19,19 @@ async def emit(*_args, **_kwargs):
     pass
 
 
+def test_provider_failure_preserves_draft_without_paid_retry(tmp_path):
+    calls = []
+    async def model(*args):
+        calls.append(args)
+        raise RuntimeError("HTTP 402")
+    with pytest.raises(RuntimeError, match="402"):
+        asyncio.run(CitationAgent(model, emit, tmp_path).attach_with_repair(REPORT, CATALOG, {SOURCE: {}}))
+    assert len(calls) == 1
+    assert (tmp_path / "citation-draft-1.md").read_text() == REPORT
+    assert json.loads((tmp_path / "citation-history.json").read_text()) == [
+        {"attempt": 1, "status": "failed", "error_type": "RuntimeError"}]
+
+
 def test_citation_agent_places_source_at_checked_line(tmp_path):
     async def model(_system, payload):
         assert payload["evidence"][0]["id"] == "e_1"
@@ -53,6 +66,51 @@ def test_citation_agent_refuses_invented_evidence_and_wrong_existing_link(tmp_pa
             wrong_report, CATALOG, {SOURCE: {}, "https://arxiv.org/abs/1810.04805": {}}))
 
 
+def test_citation_agent_places_private_chunk_marker(tmp_path):
+    private = "KB:" + "a" * 20
+    async def model(_system, _payload):
+        return json.dumps({"findings": [{"line_id": 2, "supported": True,
+                                         "evidence_ids": ["e_private"], "reason": "实验室原始页段支持"}]})
+    result = asyncio.run(CitationAgent(model, emit, tmp_path).attach(
+        REPORT, {"e_private": {"source": private, "page": 3, "text": "原始资料指出了模型结构。"}},
+        {private: {"title": "组内资料", "page": 3}}))
+    assert f"〔{private}〕" in result
+
+
+def test_citation_repair_rechecks_and_preserves_history(tmp_path):
+    calls = 0
+    async def model(system, payload):
+        nonlocal calls
+        calls += 1
+        if "Repair ONLY" in system:
+            return json.dumps({"replacements": [{"line_id": 2, "text": "该方法基于注意力机制进行序列建模，目前所读摘要不足以确认其具体实验效果。"}]})
+        return json.dumps({"findings": [{"line_id": 2, "supported": calls > 1,
+            "evidence_ids": ["e_1"] if calls > 1 else [], "reason": "补足限定条件"}]})
+    result = asyncio.run(CitationAgent(model, emit, tmp_path).attach_with_repair(REPORT, CATALOG, {SOURCE: {}}))
+    assert "目前所读摘要不足" in result and calls == 3
+    assert [r["status"] for r in json.loads((tmp_path / "citation-history.json").read_text())] == ["incomplete", "completed"]
+
+
+def test_citation_repairs_are_bounded(tmp_path):
+    async def model(system, payload):
+        if "Repair ONLY" in system:
+            return json.dumps({"replacements": [{"line_id": 2, "text": REPORT.splitlines()[2]}]})
+        return json.dumps({"findings": [{"line_id": 2, "supported": False, "reason": "仍缺证据"}]})
+    with pytest.raises(ValueError, match="未获原文支持"):
+        asyncio.run(CitationAgent(model, emit, tmp_path).attach_with_repair(REPORT, CATALOG, {SOURCE: {}}, max_repairs=1))
+    assert len(json.loads((tmp_path / "citation-history.json").read_text())) == 2
+
+
+def test_table_citations_stay_inside_cell_and_code_is_excluded(tmp_path):
+    report = "# 比较\n| 模型名称 | 方法描述 |\n| --- | --- |\n| Transformer | 该模型使用注意力机制处理序列信息并形成输出表示 |\n```python\nprint('this code is not a factual claim')\n```\n"
+    async def model(system, payload):
+        assert [row["line_id"] for row in payload["report_lines"]] == [3]
+        return json.dumps({"findings": [{"line_id": 3, "supported": True, "evidence_ids": ["e_1"], "reason": "原文支持"}]})
+    result = asyncio.run(CitationAgent(model, emit, tmp_path).attach(report, CATALOG, {SOURCE: {}}))
+    assert result.splitlines()[3].count("|") == 3
+    assert result.splitlines()[3].endswith(" |")
+
+
 def test_research_route_reaches_postwriting_citation_agent(tmp_path):
     async def approve(_question):
         return None
@@ -71,7 +129,9 @@ def test_research_route_reaches_postwriting_citation_agent(tmp_path):
     async def write(_summary):
         return REPORT
     runtime.plan_with_contract = plan_step
-    runtime.partition_with_contract = plan_step
+    async def no_reclassification(*_args):
+        raise AssertionError("A confirmed plan must not be reclassified by a second model")
+    runtime.partition_with_contract = no_reclassification
     runtime.loop = loop
     runtime.write_report = write
     # Stable IDs are computed from the passage; use that ID in the scripted judge.

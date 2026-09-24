@@ -37,3 +37,13 @@ curl -fsS http://127.0.0.1:8018/api/auth/config
 ## 测试前的边界
 
 先完成两账号隔离、登录/注销、项目与会话归属、后台任务、记忆召回和公共知识库的功能验收，再对任务提交与进度查询做有限负载测试。真实模型的端到端评测与接口替身压测分开，避免把模型排队和 API 吞吐混算。现有单元/合同测试不等同于已验证十余人生产容量。
+
+## 科研多 Agent 与 MCP 部署检查
+
+运行 `python scripts/check-research-deployment.py`。内置 MCP 随当前 Python 环境启动，无需另装 Node MCP 服务：`backend.knowledge.mcp_server` 提供授权库检索；`backend.files.mcp_server` 提供文件列举、读取和修改提案。MCP 会话由服务端绑定用户，模型不能改变身份或库范围。知识库 MCP 使用 `MODULAR_RAG_MCP_ROOT`、`MODULAR_RAG_MCP_CONFIG` 和当前数据库/Embedding 配置；外部引擎目录及其 Chroma 数据要随部署迁移，不可只复制本仓库。
+
+科研工具分工：论文/页段/引文追踪由任务内工具完成；`search_knowledge` 通过 MCP 检索选定库；`remember` 保存 Lead 阶段笔记；`read_artifact` 读取本 Run 的计划、证据和子任务产物。公共论文 URL 与内部 KB 片段使用不同引文标识，内部引用版本可在产物 `knowledge_sources` 中核对。
+
+更新时先确认无运行或等待审批的研究任务，再重启 API 与 worker，最后确认前端类型检查和页面可访问。不要在长任务进行中重启 worker。真实验收入口 `python scripts/accept-research-chain.py --approve-plan` 创建专用测试账号，经登录、意图路由、研究审批、并行调研、引用核对到 PDF 发布，结果保存于 `outputs/acceptance_*/`。未完成任务保留诊断产物，不计为通过；测试账号可由管理员在账号页禁用。
+
+模型服务返回 HTTP 402 时，先补充模型账户余额或明确更换配置，不反复提交完整科研任务。研究目录中的草稿、证据、子任务汇报和决策日志会保留，失败任务保持失败状态；草稿不等于通过引用核验的正式报告。当前没有承诺整个 Run 的自动断点续跑。2026-09-24 的最新真实验收已到达写作完成，但在引文阶段遇到 402，详见 `docs/anthropic-research-alignment.md`。

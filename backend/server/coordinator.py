@@ -27,8 +27,8 @@ async def capabilities(_email=Depends(get_current_user_email)):
     from asteria_researcher.agentic.intent_fusion import VERSION
     return {'specialists':profile_catalog(),'research':sorted(RESEARCH),
             'architecture':{'entry':'AgentOrchestrator','loop':'BaseAgent',
-                            'research_roles':['lead','researcher','coding','reviewer'],
-                            'review_trigger':'delivery_attempt_or_budget_exit'},
+            'research_roles':['lead','researcher','coding','citation_agent'],
+                            'review_trigger':'after_parallel_batch_or_delivery_attempt'},
             'routing':{'version':VERSION[:12],'strategies':['llm_few_shot','embedding','pattern'],
                        'vector_fallback':'local_ngram (explicit in each trace)',
                        'cache':'user/conversation/context scoped LRU, 256 entries, TTL 300s',
@@ -169,7 +169,7 @@ async def execute_turn(body, email):
         memory_context.set(memory)
         catalog = await managed.libraries(email) if body.knowledge_mode != 'off' else []
         selected_intent = None
-        if body.knowledge_mode == 'selected':
+        if body.knowledge_mode == 'selected' and body.research_request is None:
             allowed = [k for k in catalog if k['id'] in body.knowledge_ids]
             if len(allowed) != len(set(body.knowledge_ids)):
                 raise HTTPException(404,'所选知识库不存在')
@@ -179,6 +179,7 @@ async def execute_turn(body, email):
         result = await AgentOrchestrator(model, executors(model,config,record_progress)).run(Request(
             message=body.message,user_id=email,conv_id=body.conversation_id,request_id=body.request_id,
             history=history[:-1],report=report,knowledge_mode=body.knowledge_mode,
+            knowledge_ids=body.knowledge_ids,
             knowledge_catalog=[{k:item[k] for k in ('id','name','description','ready_documents')} for item in catalog],
             research_request=body.research_request,intent=selected_intent))
         result['memory'] = memory

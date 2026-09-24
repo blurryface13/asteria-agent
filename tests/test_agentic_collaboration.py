@@ -72,13 +72,11 @@ def test_semantic_paraphrases_and_misdeclared_coverage_rejected():
         validate_audit(DelegationAudit.model_validate(a), tasks)
 
 
-def test_failed_semantic_audit_starts_no_children_and_is_saved(tmp_path):
+def test_invalid_structure_starts_no_children_without_semantic_audit(tmp_path):
     async def model(system, payload):
-        assert "independently" in system
-        data = json.loads(payload)
-        return json.dumps(audit_for([Assignment.model_validate(a) for a in data["assignments"]], False))
+        raise AssertionError("No independent delegation judge may run")
     r = runtime(tmp_path, model)
-    tasks = [task(), task(name="evaluation", objective="Study robustness metrics", goals=("g2",))]
+    tasks = [task(), task(name="duplicate", goals=("g2",))]
     with pytest.raises(ValueError):
         asyncio.run(r.dispatch_assignments(tasks))
     assert r.children == 0
@@ -104,29 +102,61 @@ def test_approved_tasks_execute_concurrently_with_isolated_contracts(tmp_path):
     assert peak == 2 and r.children == 2
     assert {t["goal_ids"][0] for t in seen} == {"g1", "g2"}
     assert [x["assignment"]["name"] for x in result] == ["method", "evaluation"]
+    assert (r.folder / "subagent-1-1.json").exists()
+    assert (r.folder / "subagent-1-2.json").exists()
 
 
-def test_lead_decides_after_parallel_batch_without_finish_action(tmp_path):
+def test_lead_reads_child_handoffs_then_decides_finish_without_assessor(tmp_path):
     tasks = [task(), task(name="evaluation", objective="Study robustness metrics", goals=("g2",))]
     decisions = []
     async def model(system, payload):
-        decisions.append(system)
-        assert json.loads(payload)["working_memory"]["phase"] == "approved_plan"
-        return json.dumps({"tool": "delegate", "purpose": "并行调查两个不同问题",
-                           "assignments": [t.model_dump() for t in tasks]})
+        data = json.loads(payload)
+        decisions.append(data)
+        if len(decisions) == 1:
+            return json.dumps({"tool": "delegate", "purpose": "并行调查两个不同问题",
+                               "assignments": [t.model_dump() for t in tasks]})
+        assert "structured conclusion beyond 3000" in str(data["observations"])
+        assert "minor limitation" in str(data["observations"])
+        return json.dumps({"tool": "finish", "purpose": "子任务覆盖核心目标，说明局限后交付",
+                           "summary": "两个研究问题已有依据；限定条件在报告中注明"})
     r = runtime(tmp_path, model)
     r.save_working_memory("approved_plan")
     async def dispatch(*_args):
         r.evidence.append({"agent": "researcher", "query": "method", "passages": [{
             "source": "https://arxiv.org/abs/1706.03762", "text": "Evidence", "page": 1, "offset": 0}]})
-        return [{"status": "completed", "summary": "发现方法与指标"}]
+        return [{"assignment": tasks[0].model_dump(), "status": "completed",
+                 "summary": "x" * 3100 + "structured conclusion beyond 3000",
+                 "gaps": ["minor limitation"], "artifact": "subagent-1-1.json"}]
     r.dispatch_assignments = dispatch
-    async def checkpoint():
-        return {"status": "completed", "agent": "lead", "summary": "两个研究问题已有依据"}
-    r.lead_checkpoint = checkpoint
+    async def forbidden():
+        raise AssertionError("Online research must not call an independent sufficiency judge")
+    r.assess_sufficiency = r.offline_sufficiency_checkpoint = r.review_implementation = forbidden
     result = asyncio.run(r.loop("lead", r.query, lead=True, steps=3))
     assert result["status"] == "completed"
-    assert len(decisions) == 1  # The model did not need a second `finish` turn.
+    assert len(decisions) == 2
+    assert [d["tool"] for d in r.lead_decisions] == ["delegate", "finish"]
+    assert not (r.folder / "sufficiency.json").exists()
+
+
+def test_targeted_followup_need_not_redispatch_all_goals(tmp_path):
+    async def forbidden(*args):
+        raise AssertionError("Dispatch must not call a judge")
+    r = runtime(tmp_path, forbidden)
+    async def child(agent, objective, **kwargs):
+        return {"agent": agent, "status": "completed", "summary": "补齐一个缺口"}
+    r.loop = child
+    asyncio.run(r.dispatch_assignments([task()]))
+    assert r.delegations[0]["allocation"]["goal_owners"]["g2"] == ["lead"]
+
+
+def test_empty_retrieval_is_not_evidence_even_without_online_judge(tmp_path):
+    async def model(*args):
+        return json.dumps({"tool": "finish", "purpose": "准备交付", "summary": "声称完成"})
+    r = runtime(tmp_path, model)
+    r.evidence = [{"agent": "researcher", "query": "nothing", "passages": []}]
+    result = asyncio.run(r.loop("lead", r.query, lead=True, steps=1))
+    assert result["status"] == "incomplete"
+    assert not r.assessments
 
 
 def test_public_search_only_registers_allowlisted_primary_sources(tmp_path):
@@ -150,6 +180,69 @@ def test_public_search_only_registers_allowlisted_primary_sources(tmp_path):
     assert result["status"] == "incomplete"
     assert list(r.library.nodes) == ["https://www.anthropic.com/engineering/multi-agent-research-system"]
     assert r.library.papers == {}  # Discovery snippets are not original-text evidence.
+
+
+def test_research_subagent_can_use_authorized_knowledge_chunks(tmp_path):
+    turns = 0
+    async def search(_query):
+        return [{"kb_id": "lab-research-papers", "version_id": "v1", "id": "chunk-4",
+                 "name": "实验方法.md", "page": 3, "content": "方法使用不同检索器组合，并在第 3 页给出消融结果。"}]
+    async def model(_system, raw):
+        nonlocal turns
+        turns += 1
+        if turns == 1:
+            return json.dumps({"tool": "search_knowledge", "query": "检索器消融",
+                               "purpose": "核查实验室原文"})
+        source = json.loads(raw)["observations"][-1]["result"][0]["source"]
+        return json.dumps({"tool": "finish", "purpose": "有据回答", "outcome": "completed",
+                           "summary": f"实验室原始资料给出了消融结果。〔{source}〕"})
+    r = AutonomousReview(model, None, noop, noop, tmp_path, online_rag=False,
+                         knowledge_search=search)
+    r.query, r.plan = "核查检索器消融", {"required_goals": []}
+    result = asyncio.run(r.loop("researcher-KB", r.query, steps=2))
+    assert result["status"] == "completed" and len(r.knowledge_sources) == 1
+    assert (r.folder / "knowledge-sources.json").exists()
+    from asteria_researcher.agentic.sufficiency import evidence_catalog
+    assert len(evidence_catalog(r.evidence, r.read_sources())) == 1
+
+
+def test_batch_reads_overlap_and_keep_partial_results(tmp_path):
+    active, peak, calls = 0, 0, 0
+    async def model(_system, raw):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return json.dumps({"tool": "read", "purpose": "并发阅读", "paper_ids": ["a", "b", "a"]})
+        observed = json.loads(raw)["observations"][-1]["result"]
+        assert observed[0]["id"] == "a" and "error" in observed[1]
+        return json.dumps({"tool": "finish", "purpose": "回传限制", "outcome": "incomplete", "summary": "其中一篇暂时无法下载"})
+    r = runtime(tmp_path, model)
+    async def read(paper):
+        nonlocal active, peak
+        active += 1
+        peak = max(peak, active)
+        await asyncio.sleep(.01)
+        active -= 1
+        if paper == "b":
+            raise ValueError("unavailable")
+        return {"id": paper}
+    r.library.read = read
+    asyncio.run(r.loop("researcher", "test", steps=2))
+    assert peak == 2
+
+
+def test_run_memory_artifact_is_scoped_and_paged(tmp_path):
+    r = runtime(tmp_path)
+    r.lead_notes = "第一路已回答方法，后续补实验条件。"
+    r.save_working_memory("after_batch")
+    artifact = r.read_artifact("working-memory.json")
+    assert json.loads(artifact["text"])["lead_notes"] == r.lead_notes
+    with pytest.raises(ValueError):
+        r.read_artifact("../private.json")
+    (r.folder / "subagent-1-1.json").write_text("x" * 14000)
+    first = r.read_artifact("subagent-1-1.json")
+    second = r.read_artifact("subagent-1-1.json", first["next_offset"])
+    assert len(first["text"] + second["text"]) == 14000 and second["next_offset"] is None
 
 
 def test_parallel_failure_not_hidden_and_cancellation_propagates():
@@ -267,7 +360,7 @@ def test_experiment_execution_cannot_pass_from_a_generated_script(tmp_path):
     r.coding_results = [{"summary": "Generated script", "tool_results": [{"id": "tool1", "tool": "propose_workspace_change", "result": {"status": "pending"}}]}]
     result = asyncio.run(r.review_implementation())
     assert result[0]["supported"] is False
-    assert r.pending_goals()[-1]["id"] == "c1"
+    assert r.research_goals()[-1]["id"] == "c1"
 
 
 def test_code_review_checks_actual_evidence_and_caches_unchanged_results(tmp_path):
@@ -329,6 +422,8 @@ def test_lead_revises_redundant_assignment_then_real_child_loops_run(tmp_path):
         turn = turns.get(objective, 0)
         turns[objective] = turn + 1
         if objective == r.query:
+            if turn == 2:
+                return json.dumps({"tool": "finish", "purpose": "综合子任务结果", "summary": "children returned"})
             if turn == 0:
                 selected = [task(), task(name="duplicate", goals=("g2",))]
             else:
@@ -343,10 +438,6 @@ def test_lead_revises_redundant_assignment_then_real_child_loops_run(tmp_path):
     async def retrieve(*args):
         return json.dumps([{"source": paper, "page": 1, "text": "actual tool fixture evidence"}])
     r.library.retrieve = retrieve
-    async def checkpoint():
-        if len(r.briefs) == 2:
-            return {"status": "completed", "summary": "children returned"}
-    r.lead_checkpoint = checkpoint
     result = asyncio.run(r.loop("lead", r.query, lead=True, steps=4))
     assert result["status"] == "completed" and r.children == 2
     assert "高度重复" in str(saw_rejection)

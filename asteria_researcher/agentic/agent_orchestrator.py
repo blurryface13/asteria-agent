@@ -26,6 +26,7 @@ class Request:
     report: str = ''
     knowledge_catalog: list = field(default_factory=list)
     knowledge_mode: str = 'auto'
+    knowledge_ids: list[str] = field(default_factory=list)
     research_request: dict | None = None
     intent: Intent | None = None
     role_context: dict = field(default_factory=dict)

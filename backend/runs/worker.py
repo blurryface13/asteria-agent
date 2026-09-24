@@ -29,7 +29,7 @@ class DurableSink:
     async def send_json(self, payload):
         if payload.get('type') == 'error':
             self.error = str(payload.get('output', 'Research failed'))
-        if payload.get('type') == 'path':
+        if payload.get('type') in {'path', 'diagnostic_paths'}:
             self.paths.update(payload.get('output') or {})
         await self.store.append(self.run['id'], self.worker_id, payload)
 
@@ -128,6 +128,11 @@ async def execute(store, run, worker_id, execute_research=research, slot=None):
     except Exception as exc:
         state, error = 'failed', f'{type(exc).__name__}: {exc}'
         logger.exception('Research job failed: %s', run['id'])
+        if sink.paths:
+            try:
+                artifacts = await asyncio.to_thread(artifact_index, sink.paths)
+            except Exception:
+                logger.exception('Failed to index research diagnostics: %s', run['id'])
     finally:
         task.cancel()
         monitor.cancel()

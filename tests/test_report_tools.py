@@ -24,3 +24,11 @@ def test_report_tool_rejects_unread_source():
 
     assert not result["ok"]
     assert result["invalid_urls"] == ["https://arxiv.org/abs/1810.04805"]
+
+
+def test_report_tool_accepts_only_recorded_private_knowledge_citations():
+    marker = "KB:" + "a" * 20
+    report = f"# 综述\n实验室资料显示了方法上的对比结果。〔{marker}〕"
+    assert validate_report_draft(report, [marker])["ok"]
+    invalid = validate_report_draft(report, ["KB:" + "b" * 20])
+    assert not invalid["ok"] and invalid["invalid_urls"] == [marker]

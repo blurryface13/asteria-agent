@@ -18,11 +18,11 @@ from .base_agent import AgentProfile
 RESEARCHER = AgentProfile(
     "researcher", "调查分配的研究问题，不重复其他角色的调查范围。",
     "子目标、调查角度、排除范围、来源限制", "原文依据、发现、未解决问题",
-    ("search", "search_public", "read", "retrieve", "read_passage", "references", "load_skill", "finish"), 16)
+    ("search", "search_public", "search_knowledge", "read", "retrieve", "read_passage", "references", "load_skill", "finish"), 16)
 LEAD = AgentProfile(
     "lead", "按独立子目标组织研究；每批回收后综合证据，决定补研或交付。",
     "用户确认的研究目标、子任务结果、共享依据与验收缺口", "有依据的综合结果或明确未完成项",
-    (*RESEARCHER.tool_scope, "delegate", "replan", "request_user"), 18)
+    (*RESEARCHER.tool_scope, "delegate", "replan", "remember", "read_artifact", "request_user"), 18)
 CODING = AgentProfile(
     "coding", "调查代码和实验准备条件；遇到知识障碍时提出具体调研请求。",
     "子目标、工作区/仓库范围、已知依据、交付条件",
@@ -42,6 +42,8 @@ class Assignment(BaseModel):
     focus: str = Field(default="", max_length=700)
     expected_output: str = Field(default="", max_length=1000)
     exclude: str = Field(default="", max_length=700)
+    tool_guidance: str = Field(default="", max_length=700)
+    source_guidance: str = Field(default="", max_length=700)
 
 
 def normalize(value):

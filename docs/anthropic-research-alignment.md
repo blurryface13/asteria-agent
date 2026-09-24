@@ -1,6 +1,6 @@
 # Asteria 科研链路：参考 Anthropic Research 的架构对齐草案
 
-日期：2026-09-24。状态：**框架链路已接入代码并通过替身回归测试；真实模型的复杂综述端到端质量尚待实测。** 以 Anthropic 的科研协作架构和职责为参考，不复制其未披露的技术栈；保留按批等待；用 CitationAgent 替换当前在线 Reviewer，而不是仅更名。
+日期：2026-09-24。状态：**科研角色、工作记忆、子任务产物、知识库 MCP 与引用修稿链路已接通，正在执行真实模型验收。** 以 Anthropic 的科研协作架构和职责为参考，不复制其未披露的技术栈；保留按批等待；用 CitationAgent 替换当前在线 Reviewer，而不是仅更名。
 
 ## 当前可用于面试讲解的 Asteria 架构图
 
@@ -19,6 +19,7 @@ flowchart LR
   L -->|尚有缺口：定向再派工| L
   L -->|研究充分| W[Writer / 形成报告]
   W --> CA[CitationAgent / 正文位置与原文映射]
+  CA -->|需修稿：定向修正后重检| W
   CA -->|通过| U
   CA -->|无证据：不标记完成| M
 ```
@@ -26,7 +27,7 @@ flowchart LR
 ```mermaid
 sequenceDiagram
   participant U as User
-  participant C as Coordinator
+  participant C as AgentOrchestrator
   participant L as Research Lead
   participant M as Run Memory
   participant A as Search A
@@ -50,11 +51,15 @@ sequenceDiagram
   end
   L->>W: 综合报告
   W->>X: 草稿 + 已读页段
+  opt 引文或限定条件存在缺口，最多两次修稿
+    X-->>W: 正文位置与具体缺口
+    W->>X: 定向修稿后重新核验
+  end
   X-->>C: 按正文位置核对、补充引用
   C-->>U: 带引用的研究报告
 ```
 
-这里的 **Coordinator 是 Asteria 的产品入口**，不冒充 Anthropic 图中原本不存在的跨业务路由。Lead 的 `checkpoint` 是我们的工程核验：每批子任务回收后触发，依据有无原文证据及剩余目标决定收尾或继续。`working-memory.json` 存计划引用、剩余目标和阶段状态，每轮 Lead 决策会读取这个快照；`plan.json`、`delegations.json`、`evidence.json` 存完整内容。当前不是断点续跑的通用引擎。CitationAgent 在 Writer 之后审阅正文行与已读页段的映射，不能取代事实真实性的人审，也不会把一个合法 URL 自动当作论据。
+这里的 **AgentOrchestrator 是 Asteria 的产品入口**，不冒充 Anthropic 图中原本不存在的跨业务路由。每批子任务回收后，结果作为观察交给 **Lead 下一轮模型决策**；由它选择补研或 `finish`，不再调用独立充分性裁判，也不由程序替它自动收尾。`working-memory.json` 存计划引用、阶段笔记、Lead 决策与子任务产物索引；`remember` 更新笔记，`read_artifact` 分页读取本 Run 的完整产物。当前不是进程崩溃后的自动断点续跑引擎。CitationAgent 在 Writer 之后核对原文映射，缺口返回 Writer 定向修稿，重新核验后交付。
 
 一手资料：[Anthropic, *How we built our multi-agent research system*（2025-06-13）](https://www.anthropic.com/engineering/multi-agent-research-system)，重点看 Architecture overview、Prompt engineering、Production reliability 与 Appendix。本文区分 **原文披露**、**Asteria 当前实现**、**建议设计**；不能从示意图倒推出 Anthropic 未公开的代码、数据结构或停止阈值。
 
@@ -94,7 +99,7 @@ Lead 可保留跨面向的综合与最终方案，某一路发现方法冲突后
 
 **原文披露**：子 Agent 有自己的上下文窗口，围绕各自任务迭代使用搜索工具、判断结果，向 Lead 回传压缩发现。文章的生产实现按批同步等待子 Agent；运行中的子 Agent 不能彼此协调，Lead 也不能实时指导它们，慢分支可能拖住整批。原文把这写作已知权衡，而不是多 Agent 不成立的证据。附录还建议子 Agent 可将完整产物持久化到外部，仅把轻量引用交给 Lead。[来源](https://www.anthropic.com/engineering/multi-agent-research-system)
 
-**Asteria 当前**：`dispatch_assignments` 按不同目标派发，`run_parallel` 逐路保存/推送阶段结果，但 Lead 等待整批结束才继续决策；子任务共享整体预算。已有 `delegations.json`、`evidence.json` 和事件日志。
+**Asteria 当前**：`dispatch_assignments` 按不同目标派发，`run_parallel` 逐路保存/推送阶段结果，Lead 等待整批结束后继续决策；子任务共享整体预算。每路落盘 `subagent-<batch>-<index>.json`，保留委托、发现、证据、缺口和耗时；Lead 收到短摘要和产物引用，需要细节时调用 `read_artifact`。委托包含 objective、focus、expected_output、exclude、tool_guidance、source_guidance。论文批量 `read` 使用 `asyncio.gather`，共享 I/O 信号量和同源锁控制并发与重复下载。
 
 **已对齐的设计选择**：保留按批并行、整批返回后由 Lead 综合和继续派工的模式，不把完全异步调度列为本轮优化目标。子 Agent 默认不直接互发消息；同一批可以共用来源/证据存储，但这不等于互相协调。跨分支的冲突、重复和补查由 Lead 在批次之间处理。前端可逐路展示阶段发现，但注明未综合。慢/失败支路保留已有结果并记录原因；是否加单路超时以实际测试为依据，而非先重做调度器。
 
@@ -115,16 +120,16 @@ Lead 可保留跨面向的综合与最终方案，某一路发现方法冲突后
 
 **Asteria 改动前**：`ReviewerAgent` 在 Lead 主动 `finish` 或轮次耗尽时检查目标证据与代码交付；通过后 Writer 才生成报告。写作后的校验主要检查引用来源和形式，尚无独立的成稿正文位置引文定位。默认单目标连续 3 次打回停止，复杂综述可能在首轮检查之前重复派工。
 
-**已接入的设计**：CitationAgent **替换在线 Reviewer 角色**；原 `reviewer.py` 暂保留作为旧模块，但在线研究链路不再调用。目标充分性与代码交付核验仍在 Lead checkpoint 中执行，不把 CitationAgent 误用为目标裁判。
+**已接入的设计**：CitationAgent **替换在线 Reviewer 角色**。旧 `reviewer.py` 与独立充分性评估代码仅保留作离线诊断，在线研究链路不调用。已删除派发前的独立语义审批，以及批次回收、主动结束和预算耗尽时的强制充分性关卡。Lead 自己综合子任务答复；CitationAgent 不裁决是否还要重新开展研究。
 
-1. **Lead 负责研究是否充分**：按 Anthropic 的职责，在一批发现回来后综合覆盖、证据质量和冲突，决定继续/收尾；不足只派发具体缺口。明确硬约束（如至少实读两篇论文）做确定性核验，避免 Lead 凭主观判断漏掉用户要求。这是 Asteria 的工程保护，不假称 Anthropic 原文规定了 Reviewer、检查频次或停止阈值。
-2. **Writer 形成稿件后再由 CitationAgent 核引文**：输入最终稿、实际读取的原文/页段及来源元数据；逐行映射至少 20 个汉字的正文行，拒绝未知证据 ID、错配来源或标记为无支持的行，并对通过的行补充来源链接。当前是正文行级而非逐论断事实核验；Markdown 表格、短句及参考文献列表不在此轮映射范围。引用核对不替代目标覆盖检查。
+1. **Lead 负责研究是否充分**：按 Anthropic 的职责，在一批发现回来后综合覆盖、证据质量和冲突，决定继续/收尾；不足只派发具体缺口。实际搜索/引文追踪次数作为工具观察提供给 Lead；程序验证非空原文、引用属于已读来源、权限和预算，不另设语义充分性裁判，不假称 Anthropic 原文规定了 Reviewer、检查频次或停止阈值。
+2. **Writer 形成稿件后再由 CitationAgent 核引文**：输入稿件、原文页段与来源元数据；按每批 12 个正文位置核对中英文段落和表格行，跳过标题、代码块与参考文献标签。事实和分析必须绑定原文证据；明确的建议与局限可以没有引用，但不得夹带无证据事实。公共来源补链接，内部资料补 `〔KB:<片段标识>〕`，由 `knowledge-sources.json` 解析文档版本与页码。当前仍为正文行级、模型判断的来源映射，不能等同逐论断客观正确率保证。
 3. **代码/实验要求单独验收**：文件实际变更、测试结果、实验日志等需与工具观察对应；CitationAgent 不负责宣布代码已运行或实验已复现。
-4. **有界补研/修稿**：沿用 Asteria 的目标打回预算，而非 Anthropic 的公开参数；只有新证据才值得再次检查。研究目标仍不足时保留审查与证据产物、Run 标记失败/未完成，不改判 `completed`。CitationAgent 发现未支持正文时写入 `citation-review.json` 并阻止已完成交付；后续可增设显式修稿与部分报告发布路径，目前不宣称已实现。
+4. **有界补研/修稿**：研究使用全局行动、子 Agent 数量与超时预算，不再使用旧裁判的目标打回次数。Lead 可将非核心未知写为局限，不必重新派发整套目标。CitationAgent 将缺口正文位置交回 Writer，最多两次定向修稿后重新核对；保留每版草稿与 `citation-history.json`。修稿不能改动无关行、表格结构或凭空补事实。最终仍不足则保留诊断产物并报告未完成，不把失败报告标成成功。
 
 ## 6. 本轮已实现与后续验收
 
-已实现：并行批次回收后 Lead 主动 checkpoint；独立 CitationAgent 成稿定位；研究任务可用公开网页搜索发现**受白名单约束**的一手来源；单 Run 工作记忆快照；输出 `citation_review` 与 `working_memory` artifact；配套替身单元测试。研究者仍可独立选择自查或派工，不强制并行，不预设 aspect 数量。已有分工合同中的 `objective/focus/expected_output/exclude` 是委托给子 Agent 的输入契约，不是四个新的固定研究阶段。
+已实现：并行批次回收后由 Lead 下一轮自主决策；独立 CitationAgent 成稿定位；研究任务可用公开网页搜索发现**受白名单约束**的一手来源；单 Run 工作记忆快照；输出 `lead_decisions`、`citation_review` 与 `working_memory` artifact；配套替身单元测试。研究者仍可独立选择自查或派工，不强制并行，不预设 aspect 数量。已有分工合同中的 `objective/focus/expected_output/exclude` 是委托给子 Agent 的输入契约，不是四个新的固定研究阶段。
 
 未验证：真实模型对复杂综述的覆盖质量、CitationAgent 的误拒/漏检、公开搜索源的稳定性、PDF 发布成品、真实服务端一次完整请求。不能仅凭单测或架构图写“已在生产验证”。
 
@@ -142,10 +147,34 @@ Lead 可保留跨面向的综合与最终方案，某一路发现方法冲突后
 | --- | --- | --- |
 | arXiv 检索、论文读取、页段读取、引文追踪 | `PaperLibrary`，Lead 和 Search 子 Agent 共用任务范围证据；Coding 子 Agent 有同源论文工具 | 已有，摘要/检索命中不计作原文依据 |
 | 公开网页搜索 | `search_public_sources` 注入科研 Loop，最多取 5 条，只有通过 `primary_sources.validate_url` 的一手域名可加入读取目录 | 本轮接通；Tavily Key 可选，未配置则 Bing RSS；搜索摘要不是报告证据 |
-| 实验室知识库 | 产品问答路径使用 `backend.knowledge.managed` 检索，底层有 Modular RAG MCP bridge | **未接到当前 Research Lead/子 Agent**；下一步传入用户身份、授权库 ID、版本，并把 chunk/文档/页码转成可审计来源，不可直接把私人知识库结果混入公共论文引用 |
+| 实验室知识库 | `search_knowledge` → 本地 stdio MCP `search_lab_knowledge` → `managed.retrieve` → 既有 Modular RAG/Chroma 索引 | 已接入 Lead/Researcher；身份与库范围由服务端绑定，每次调用复查权限；返回 chunk、文档版本和页码；真实检索已返回 6 条片段 |
 | 本地文件 MCP | `backend.files.mcp_server` 的 `list/read/propose` 通过 `build_coding_tools(owner)` 给 Coding 子 Agent，提案需人工批准 | 已有但仅限认证用户；不是自动写入或删除文件 |
 | GitHub 仓库调查 | `repository_tools()` 提供固定仓库范围的 inspect/read | 已有；不能声称可编辑任意仓库 |
 | 运行实验、Shell、改代码后测试 | 当前科研 Coding 子 Agent 只读调查、语法/差异预览及提案；无通用执行器 | **未实现**；接入前先设计隔离工作区、命令白名单/审批、超时/资源限制和可复核测试日志，不把“规划实验”写成“执行实验” |
-| 引文核验 | `CitationAgent` 使用已读页段目录匹配报告正文并记录 `citation-review.json` | 本轮接通；应继续做逐论断验证与错误修稿闭环 |
+| 引文核验 | `CitationAgent` 核对正文与表格，关联公共 URL/私有 KB 引用，最多两轮定向修稿重检 | 已接通，保留 `citation-review.json`、`citation-history.json` 与修稿版本 |
 
-优先补 **授权知识库检索 → 受控实验/代码执行 → CitationAgent 修稿闭环**。Tool 是 Agent 能调用的具体能力；MCP 是其中一些能力的接入协议，不必把所有内部函数都包成 MCP 才算 Agent。面试时应区分“已接到当前科研链路”“项目其他入口有”“设计待补”三种状态。
+Tool 是 Agent 能调用的具体能力；MCP 是部分能力的接入协议。知识库和文件采用实际 stdio MCP，论文目录、页段、记忆和子任务调度采用进程内 Tool，便于维持同一 Run 的证据与预算。未配置第三方 MCP 可执行文件或密钥的任务不会动态安装任意服务。实验执行仍单列为后续能力，不能把代码提案写成已跑实验。
+
+## 8. 2026-09-24 工程实现与实测问题
+
+- 已移除主链路中的二次目标分类。一次规划区分研究目标、明确过程要求和交付约束，结构化重复 ID 直接规范；用户确认后不再自动迁移实质问题。
+- CitationAgent 的原文证据按 2400 字符窗口、200 字符重叠编目。这不是 Lead 的子任务汇报上限：Lead 收到完整的有界 `summary`（最多 12000 字符）、`gaps`、委托目标、来源索引和产物文件名；完整证据保留在磁盘，可按需读取。子 Agent 无需同时写一篇长 aspect 报告和第二篇短汇报，当前以一份结构化结果及对应原文证据为准。
+- 第一轮真实验收（Run `4534a939ff72401298f227cd321e5973`）三路并行成功，但因证据截断和额外索要去重量化指标而未交付；原始任务与事件保留在 `outputs/acceptance_c47085a7c4/`。
+- 第二轮仍被旧裁判的 schema 拒绝：模型在说明里引用 ID 却省略支持列表。记录在 `outputs/acceptance_cca171628f/`。重新对齐用户意图后，不再继续加强这道在线关卡，而是移除在线独立裁判，让 Lead 处理子任务汇报并自主收尾。两次失败记录保留用于对照，不改记为通过。
+- 可复现真实验收：`python scripts/accept-research-chain.py --approve-plan --timeout 1800`。使用真实登录、HTTP 路由、独立 worker、报告发布与持久化，消耗已配置模型额度；专用测试账号与报告保留，临时密码不会打印或落盘。`--task-file` 可替换任务，`--direct-read` 可关闭全文向量检索。
+
+### 第三轮真实验收：Lead 自主收尾，引用阶段因余额不足停止
+
+Run：`3c0aa28f2a134089bfcbc408ede98c6a`；运行目录：`outputs/review_79550b3f025a4c17bf74edab31679a1c/`；请求目录：`outputs/acceptance_81d2333e79/`。
+
+- 通过真实登录和科研路由，首批派发 ReAct、AutoGen、Anthropic 三个互补子任务，分别约 23.4、26.0、14.5 秒回传（相对本批派发，不是整个请求延迟）。
+- Lead 收到三份汇报后自行补充两项交叉验证，而非旧充分性裁判强制打回。后续搜索出现超时/空结果，部分阅读碰到全局 120000 字符预算；子任务如实回传限制。
+- Lead 依据原始请求“不要求穷尽文献”选择 `finish`，未强行重新派发。Writer 生成 `draft-1.md`，经过来源集合和基本格式检查；**这些检查不代表事实核验已经通过**。
+- CitationAgent 首次模型调用返回 HTTP 402。`run.json` 记录失败，研究约 297.4 秒、5 个子 Agent、53 次行动、71 次模型调用、独立充分性检查 0 次。输入字符数不是计费 Token，不能据此计算费用。
+- 结论：**研究循环到草稿已经实测可达；最终引文核对和 PDF 发布仍未端到端通过。** 不将这次任务算作成功样本，也不将草稿当作已验收报告。
+
+此次测试还暴露了研究 Skill 中残留的独立裁判描述，现已升级为 v5；同时向各 Agent 显式提供剩余原文阅读预算。这两项在第三轮启动之后修改，尚待下一次真实任务验证。模型余额恢复前不自动重试付费请求，也不静默切换其他供应商。
+
+后续验收重点：确认 v5 下补研与请求深度匹配；空搜索能缩小检索式或及时回传限制；CitationAgent 能完成正文归因；最终产物能经认证下载。已保存现有证据和草稿，定位引用阶段问题时可以复用这些输入，不必为每次调试重新开展全部研究。
+
+本轮工程回归：默认测试集 288 passed / 5 skipped；启用隔离 PostgreSQL schema 的 Run 生命周期测试 3 passed；前端 TypeScript 类型检查通过。部署预检确认 PostgreSQL、Redis、API、bge-m3 Embedding、XeLaTeX、知识库及文件 MCP 均可用。上述检查不包含余额恢复后的真实模型验收，不将通过项相加解释为业务测试覆盖率。

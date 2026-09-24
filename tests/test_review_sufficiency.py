@@ -34,6 +34,14 @@ def test_contract_requires_user_origin_and_unique_goal_ids():
         validate_contract(plan, "请比较注入方法")
 
 
+def test_evidence_catalog_retains_end_of_long_read_passage():
+    text = "a" * 8500 + "The conclusion appears at the end."
+    catalog = evidence_catalog([{"agent": "researcher", "query": "method", "passages": [
+        {"source": URL, "page": 2, "offset": 100, "text": text}]}], {URL})
+    assert any("The conclusion appears at the end." in row["text"] for row in catalog.values())
+    assert all(len(row["text"]) <= 2400 and row["offset"] >= 100 for row in catalog.values())
+
+
 def test_delivery_goal_is_relocated_before_approval_without_dropping_requirements():
     plan = ReviewPlan(scope="范围", perspectives=[{"name": "方法", "query": "方法"}],
                       required_goals=GOALS + [{"id": "g2", "description": "写约2500字中文报告", "user_quote": "写约2500字"}])
@@ -129,10 +137,10 @@ def test_planner_contract_gets_one_explicit_repair_turn(tmp_path):
     invalid = {"scope": task, "perspectives": [{"name": "方法", "query": "方法"}],
                "required_goals": [
                    {"id": "g1", "description": "比较注入方法", "user_quote": "比较注入方法"},
-                   {"id": "g1", "description": "总结实验结论", "user_quote": "总结实验结论"}],
+                   {"id": "g2", "description": "总结实验结论", "user_quote": "用户未提出的另一项实验要求"}],
                "process_requirements": [], "delivery_constraints": [], "optional_extensions": []}
     repaired = {**invalid, "required_goals": [
-        invalid["required_goals"][0], {**invalid["required_goals"][1], "id": "g2"}]}
+        invalid["required_goals"][0], {**invalid["required_goals"][1], "user_quote": "总结实验结论"}]}
     calls = []
 
     async def model(system, payload):
@@ -149,7 +157,7 @@ def test_planner_contract_gets_one_explicit_repair_turn(tmp_path):
     assert len(calls) == 2
 
 
-def test_planner_contract_repairs_duplicate_ids_when_model_repeats_candidate(tmp_path):
+def test_planner_normalizes_duplicate_ids_without_an_extra_model_call(tmp_path):
     task = "请比较注入方法并总结实验结论"
     invalid = {"scope": task, "perspectives": [{"name": "方法", "query": "方法"}],
                "required_goals": [
@@ -169,7 +177,8 @@ def test_planner_contract_repairs_duplicate_ids_when_model_repeats_candidate(tmp
     review.query = task
     plan = asyncio.run(review.plan_with_contract("plan", {"task": task}, task, "initial"))
     assert [goal.id for goal in plan.required_goals] == ["g1", "g2"]
-    assert len(calls) == 2
+    assert len(calls) == 1
+    assert [goal.user_quote for goal in plan.required_goals] == ["比较注入方法", "总结实验结论"]
 
 
 def test_server_attaches_exact_source_text_for_selected_evidence_id():
@@ -237,7 +246,7 @@ def runtime(tmp_path, model):
     return review
 
 
-def test_independent_assessor_accepts_when_lead_requests_delivery(tmp_path):
+def test_lead_delivery_no_longer_calls_independent_assessor(tmp_path):
     seen = []
     async def model(system, payload):
         data = json.loads(payload)
@@ -250,7 +259,7 @@ def test_independent_assessor_accepts_when_lead_requests_delivery(tmp_path):
     review = runtime(tmp_path, model)
     result = asyncio.run(review.loop("lead", "再研究额外方向", lead=True))
     assert result["status"] == "completed" and review.children == 0
-    assert len(seen) == 2 and (review.folder / "sufficiency.json").exists()
+    assert len(seen) == 1 and not (review.folder / "sufficiency.json").exists()
 
 
 def test_no_new_evidence_stops_repeated_followups_and_caches_assessment(tmp_path):
@@ -261,11 +270,11 @@ def test_no_new_evidence_stops_repeated_followups_and_caches_assessment(tmp_path
         return json.dumps(finding({e["id"]: e for e in data["evidence"]}, "partial"))
     review = runtime(tmp_path, model)
     async def check():
-        assert await review.lead_checkpoint() is None
+        assert await review.offline_sufficiency_checkpoint() is None
         review.actions += 3
-        assert await review.lead_checkpoint() is None
+        assert await review.offline_sufficiency_checkpoint() is None
         review.actions += 3
-        return await review.lead_checkpoint()
+        return await review.offline_sufficiency_checkpoint()
     result = asyncio.run(check())
     assert result["status"] == "incomplete" and "新证据" in result["summary"]
     assert len(calls) == 2  # Initial review + one semantic review, cached thereafter.
@@ -326,9 +335,9 @@ def test_missing_process_requirement_blocks_then_rechecks_after_actual_progress(
     review = runtime(tmp_path, model)
     review.plan["process_requirements"] = [{"id": "p1", "kind": "autonomous_discovery"}]
     async def check():
-        assert await review.lead_checkpoint() is None
+        assert await review.offline_sufficiency_checkpoint() is None
         review.successful_searches = 1
-        return await review.lead_checkpoint()
+        return await review.offline_sufficiency_checkpoint()
     assert asyncio.run(check())["status"] == "completed"
     assert len(review.assessments) == 2
 
@@ -362,7 +371,7 @@ def test_rejected_goal_limit_survives_new_passages_but_never_forces_success(tmp_
         for i in range(3):
             review.evidence = [{"agent": "reader", "query": "method", "passages": [
                 {"source": URL, "page": i + 1, "text": TEXT + str(i)}]}]
-            result = await review.lead_checkpoint()
+            result = await review.offline_sufficiency_checkpoint()
             if i < 2:
                 assert result is None
         return result
@@ -379,4 +388,4 @@ def test_success_at_rejection_boundary_is_not_blocked(tmp_path):
     review = runtime(tmp_path, model)
     partial = finding(evidence_catalog(EVIDENCE, {URL}), "partial")
     review.assessments = [partial, partial]
-    assert asyncio.run(review.lead_checkpoint())["status"] == "completed"
+    assert asyncio.run(review.offline_sufficiency_checkpoint())["status"] == "completed"

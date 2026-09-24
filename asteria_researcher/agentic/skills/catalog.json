@@ -4,7 +4,7 @@
     "title": "研究证据规范",
     "kind": "policy",
     "selectable": false,
-    "version": "4",
+    "version": "5",
     "phases": [
       "research"
     ],

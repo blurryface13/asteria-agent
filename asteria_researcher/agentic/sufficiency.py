@@ -146,9 +146,18 @@ def evidence_catalog(evidence, read_sources):
         for passage in group["passages"]:
             if passage.get("source") not in read_sources or not passage.get("text", "").strip():
                 continue
-            key = repr((passage["source"], passage.get("page"), passage.get("offset"), passage["text"]))
-            identifier = "e_" + hashlib.sha256(key.encode()).hexdigest()[:16]
-            catalog[identifier] = {**passage, "id": identifier, "agent": group["agent"]}
+            # Reading returns up to 10k characters. Index all of it so judges
+            # can see conclusions near the end, rather than only the first 2.4k.
+            text = passage["text"]
+            for start in range(0, len(text), 2200):
+                excerpt = text[start:start + 2400]
+                offset = (passage.get("offset") or 0) + start
+                key = repr((passage["source"], passage.get("page"), offset, excerpt))
+                identifier = "e_" + hashlib.sha256(key.encode()).hexdigest()[:16]
+                catalog[identifier] = {**passage, "id": identifier, "offset": offset,
+                                       "text": excerpt, "agent": group["agent"]}
+                if start + 2400 >= len(text):
+                    break
     return catalog
 
 
@@ -166,7 +175,7 @@ def validate_report(report, goals, catalog):
             if finding.answer_kind == "inference" and not finding.qualification.strip():
                 raise ValueError("推断必须明确限定条件，不能冒充原文事实")
         if finding.status == "supported" and (not finding.supports or finding.gap.strip()):
-            raise ValueError("已覆盖目标必须有原文证据，且不能同时存在核心缺口")
+            raise ValueError(f"目标 {finding.goal_id}：已覆盖目标必须有原文证据（supports 中填写 evidence_id），且 gap 必须为空")
         if finding.status != "supported" and not finding.gap.strip():
             raise ValueError("未覆盖目标必须说明具体核心缺口")
         for support in finding.supports:
@@ -197,6 +206,12 @@ Return answer_kind, answer, reasoning and qualification for every goal. A suppor
 or inference does NOT require the source to state the conclusion verbatim. If the user asks
 specifically for measured results or author-stated claims, an inference cannot substitute.
 For analysis/limitations requests, a qualified evidence-backed answer can satisfy the goal.
+For a question about HOW a mechanism works, a source's explicit design/practice plus stated
+limitations can answer it. Do not additionally require an ablation, error rate, numeric gain,
+or unpublished implementation detail unless the user requests quantitative validation.
+An engineering practice may be described as author-reported experience without claiming
+its effectiveness was independently measured. Missing optional measurements belong in
+qualifications, not a newly invented core requirement.
 Unknown is not supported; never turn an untested hypothesis into a finding.
 Do not demand a quotation for connective prose or the writer's organization. Citation density
 is not quality: source support for a premise and validity of an inference are separate checks.

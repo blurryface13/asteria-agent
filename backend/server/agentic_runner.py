@@ -34,7 +34,7 @@ def configured_model(config_path=None):
             cause = error
             while cause:
                 if getattr(cause, "status_code", None) == 402:
-                    raise RuntimeError("模型服务余额不足（HTTP 402），请充值或明确配置其他模型后重试；未生成报告。") from error
+                    raise RuntimeError("模型服务余额不足（HTTP 402），当前阶段已停止；已有草稿和证据保留，尚未完成最终交付。请充值或明确配置其他模型后重试。") from error
                 cause = cause.__cause__
             raise
     # Only a hash is exposed to the process-local cache, not credentials/config values.
@@ -102,17 +102,28 @@ async def run_autonomous_review(query, logs_handler, research_kwargs, *, capabil
     async def emit(kind, payload):
         await logs_handler.send_json({"type": "logs", "content": kind, "output": payload})
     from backend.server.coding_tools import build_coding_tools
+    from backend.server.research_tools import build_knowledge_search
     from backend.server.specialists import search_public_sources
     # Identity belongs to the durable server Run, never research_kwargs/model arguments.
     server_run = getattr(getattr(logs_handler, "websocket", None), "run", {})
     owner = server_run.get("user_email") if isinstance(server_run, dict) else None
+    run_request = server_run.get("request", {}) if isinstance(server_run, dict) else {}
+    knowledge_ids = run_request.get("knowledge_ids", []) if isinstance(run_request, dict) else []
     runtime = AutonomousReview(configured_model(research_kwargs.get("config_path")),
         Memory(cfg.embedding_provider, cfg.embedding_model, **cfg.embedding_kwargs).get_embeddings() if online_rag else None,
         emit, logs_handler.request_feedback, online_rag=online_rag,
         skill_options=getattr(logs_handler, "skill_options", None), coding_tools=build_coding_tools(owner),
         public_search=search_public_sources,
+        knowledge_search=build_knowledge_search(owner, knowledge_ids),
         capability=capability)
-    report = await runtime.run(query)
+    try:
+        report = await runtime.run(query)
+    except Exception:
+        # Retain inspectable evidence even when research cannot be completed.
+        diagnostics = {"diagnostic_" + p.stem.replace("-", "_"): str(p)
+                       for p in runtime.folder.iterdir() if p.is_file() and p.suffix in {".json", ".jsonl", ".md"}}
+        await logs_handler.send_json({"type": "diagnostic_paths", "output": diagnostics})
+        raise
     await runtime.event("lead", "publish", "started", "编译 LaTeX 与 PDF")
     artifacts = await publish(report, Path("outputs"), profile=runtime.format_profile)
     artifacts["writing_selection"] = str(runtime.folder / "writing.json")
@@ -121,13 +132,17 @@ async def run_autonomous_review(query, logs_handler, research_kwargs, *, capabil
                       "evidence": str(runtime.folder / "evidence.json"),
                       "run_metadata": str(runtime.folder / "run.json"),
                       "review_plan": str(runtime.folder / "plan.json"),
-                      "sufficiency": str(runtime.folder / "sufficiency.json"),
+                      "lead_decisions": str(runtime.folder / "lead-decisions.json"),
                       "working_memory": str(runtime.folder / "working-memory.json"),
-                      "citation_review": str(runtime.folder / "citation-review.json")})
+                      "citation_review": str(runtime.folder / "citation-review.json"),
+                      "citation_history": str(runtime.folder / "citation-history.json")})
     for key, filename in (("delegations", "delegations.json"), ("coding_results", "coding-results.json"),
-                          ("research_requests", "research-requests.json"), ("implementation_review", "implementation-review.json")):
+                          ("research_requests", "research-requests.json"), ("implementation_review", "implementation-review.json"),
+                          ("knowledge_sources", "knowledge-sources.json")):
         if (runtime.folder / filename).is_file():
             artifacts[key] = str(runtime.folder / filename)
+    for artifact in sorted(runtime.folder.glob("subagent-*.json")):
+        artifacts[artifact.stem.replace("-", "_")] = str(artifact)
     logs_handler.artifact_paths = artifacts
     await runtime.event("lead", "publish", "completed", "源码、PDF、引用图与研究轨迹已保存")
     await logs_handler.send_json({"type": "report", "output": report})

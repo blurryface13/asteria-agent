@@ -186,38 +186,35 @@ def test_general_chat_uses_shared_loop_and_keeps_report_context():
     assert 'example.org' in text and meta['agent'] == 'general_chat' and not meta['tool_calls']
 
 
-def test_lead_checkpoints_on_finish_not_every_three_actions_and_resumes(tmp_path):
+def test_lead_finish_is_not_intercepted_by_legacy_reviewer(tmp_path):
     from asteria_researcher.agentic.autonomous import AutonomousReview
     reviewed, actions, events = [], [], []
-    sequence = ['search','search','search','finish','search','finish']
+    sequence = ['search','search','search','finish']
     async def model(system, raw):
         data = json.loads(raw)
         turn = len(actions)
         tool = sequence[turn]
         actions.append(tool)
         if turn == 3: assert not reviewed  # Already >=3 actions, but no periodic reviewer.
-        if turn == 4: assert '补充' in str(data['observations'])
         return json.dumps({'tool':tool,'query':str(turn),'purpose':'继续研究','summary':'准备交付'})
     async def emit(kind, event): events.append(event)
     async def noop(*args): pass
     r = AutonomousReview(model,None,emit,noop,tmp_path,online_rag=False)
     r.query = '比较研究方法'
     r.plan = {'required_goals':[{'id':'g1','description':'方法对比'}]}
-    r.evidence = [{'agent':'lead','query':'existing','passages':[]}]
+    r.evidence = [{'agent':'lead','query':'existing','passages':[{'source':'https://arxiv.org/abs/1706.03762','text':'已读取的测试原文'}]}]
     async def search(*args,**kw): return []
     r.library.search = search
     async def assess():
         reviewed.append(list(actions))
-        record = {'ready':len(reviewed)==2,'goals':[], 'synthesis':'支持的结论'}
-        r.assessments.append(record)
-        return record
+        raise AssertionError('No online sufficiency judge')
     async def implementation(): return []
     r.assess_sufficiency, r.review_implementation = assess, implementation
     r.assessment_gaps = lambda assessment:['补充方法对比依据']
     result = asyncio.run(r.loop('lead',r.query,lead=True,steps=6))
     assert result['status'] == 'completed'
-    assert [len(a) for a in reviewed] == [4,6]
-    assert len([e for e in events if e['agent']=='lead' and e['tool']=='checkpoint' and e['status']=='started']) == 2
+    assert reviewed == [] and actions == sequence
+    assert not [e for e in events if e['tool']=='checkpoint']
 
 
 def test_experiment_design_enters_shared_research_runtime(monkeypatch):

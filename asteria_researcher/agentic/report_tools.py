@@ -9,10 +9,18 @@ from .runtime import urls
 
 
 HEADING_RE = re.compile(r"^#{1,3}\s+(.+?)\s*$", re.MULTILINE)
+KNOWLEDGE_REF_RE = re.compile(r"〔(KB:[0-9a-f]{20})〕")
+
+
+def knowledge_refs(markdown: str) -> set[str]:
+    """Run-local, auditable chunk references (resolved in knowledge-sources.json)."""
+    return set(KNOWLEDGE_REF_RE.findall(markdown or ""))
 
 
 def _source_key(url: str) -> str:
     """Canonicalize supported scholarly URLs without rejecting local test sources."""
+    if url.startswith("KB:"):
+        return url
     try:
         return canonical(url)
     except ValueError:
@@ -27,7 +35,7 @@ def validate_report_draft(
     max_length_ratio: float = 1.4,
 ) -> dict:
     """Return machine-checkable report issues without judging scientific truth."""
-    cited = sorted(urls(markdown or ""))
+    cited = sorted(urls(markdown or "") | knowledge_refs(markdown or ""))
     allowed = {_source_key(url) for url in allowed_urls}
     invalid = [url for url in cited if _source_key(url) not in allowed]
     chinese_chars = len(re.findall(r"[\u4e00-\u9fff]", markdown or ""))
