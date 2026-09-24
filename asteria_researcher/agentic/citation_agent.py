@@ -11,7 +11,7 @@ import re
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from .report_tools import _source_key, knowledge_refs
 from .runtime import urls
@@ -21,7 +21,8 @@ class CitationFinding(BaseModel):
     model_config = ConfigDict(extra="forbid")
     line_id: int
     supported: bool
-    evidence_ids: list[str] = Field(default_factory=list, max_length=5)
+    # A comparative paragraph may need several excerpts for each source.
+    evidence_ids: list[str] = Field(default_factory=list, max_length=96)
     # Explanatory prose is not an execution contract. Keep the full rationale;
     # a verbose but valid assessment must not abort an otherwise complete run.
     reason: str = Field(min_length=1)
@@ -50,6 +51,20 @@ class RepairPlan(BaseModel):
     replacements: list[LineRepair]
 
 
+def visible_evidence(catalog: dict) -> dict:
+    """Use the same source-balanced evidence for checking and repairing."""
+    groups = {}
+    for key, item in catalog.items():
+        groups.setdefault(item["source"], []).append((key, item))
+    selected = []
+    for index in range(max(map(len, groups.values()), default=0)):
+        for group in groups.values():
+            if index < len(group) and len(selected) < 96:
+                key, item = group[index]
+                selected.append((key, {**item, "id": key, "text": item["text"][:2400]}))
+    return dict(selected)
+
+
 def factual_lines(report: str) -> list[dict]:
     """Stable line positions for the report body, not heading/reference labels."""
     candidates = []
@@ -76,10 +91,11 @@ class CitationAgent:
 
     async def attach_with_repair(self, report, catalog, read_sources, *, max_repairs=2):
         history = []
+        catalog = visible_evidence(catalog)
         for attempt in range(max_repairs + 1):
             (self.folder / f"citation-draft-{attempt + 1}.md").write_text(report)
             try:
-                output = await self.attach(report, catalog, read_sources)
+                output = await self.attach(report, catalog, read_sources, attempt=attempt + 1)
                 history.append({"attempt": attempt + 1, "status": "completed"})
                 return output
             except CitationGapError as error:
@@ -99,7 +115,7 @@ class CitationAgent:
                     + json.dumps(RepairPlan.model_json_schema()),
                     {"gaps": error.gaps, "report_lines": [{"line_id": gap["line_id"],
                         "text": report.splitlines()[gap["line_id"]]} for gap in error.gaps],
-                     "evidence": list(catalog.values())[:96]})
+                     "evidence": list(catalog.values())})
                 plan = RepairPlan.model_validate_json(raw)
                 expected = {gap["line_id"] for gap in error.gaps}
                 actual = [line.line_id for line in plan.replacements]
@@ -128,27 +144,20 @@ class CitationAgent:
             finally:
                 (self.folder / "citation-history.json").write_text(json.dumps(history, ensure_ascii=False, indent=2))
 
-    async def attach(self, report: str, catalog: dict, read_sources: dict) -> str:
+    async def attach(self, report: str, catalog: dict, read_sources: dict, *, attempt: int = 1) -> str:
         lines = factual_lines(report)
         if not lines or not catalog:
             raise ValueError("CitationAgent 缺少待核对正文或已读原文证据")
         await self.event("citation_agent", "citation_location", "started", "按正文位置核对原文并补充引文")
-        # Balance sources so late-arriving children do not displace all early evidence.
-        groups = {}
-        for key, item in catalog.items():
-            groups.setdefault(item["source"], []).append((key, item))
-        selected = []
-        for index in range(max(map(len, groups.values()))):
-            for group in groups.values():
-                if index < len(group) and len(selected) < 96:
-                    selected.append(group[index])
-        visible = dict(selected)
+        visible = visible_evidence(catalog)
         payload = {
             "report_lines": lines,
             "evidence": [{"id": key, "source": item["source"], "page": item.get("page"),
                           "text": item["text"][:2400]} for key, item in visible.items()],
             "instruction": "Every line_id exactly once. An evidence ID is support only if the excerpt actually backs the line's claim. "
                            "Existing citations do not prove support. For unsupported claims set supported=false and explain the gap. "
+                           "For every existing source link, include evidence IDs supporting its claims, or identify "
+                           "the unsupported source explicitly. A paragraph may need several excerpts per source. "
                            "Classify kind: factual claims require evidence; analysis needs supporting premises; "
                            "recommendations and explicit limitations may omit citations when clearly labeled as such and "
                            "containing no unsupported factual premise. supported then means the statement is appropriately qualified. "
@@ -157,17 +166,39 @@ class CitationAgent:
         schema = CitationPlan.model_json_schema()
         schema["$defs"]["CitationFinding"]["required"] = list(dict.fromkeys(
             schema["$defs"]["CitationFinding"]["required"] + ["evidence_ids", "kind"]))
+        schema["$defs"]["CitationFinding"]["properties"]["evidence_ids"]["items"]["enum"] = list(visible)
         expected = {item["line_id"] for item in lines}
         findings = []
         for offset in range(0, len(lines), 12):
-            raw = await self.model(
-                "You are the post-writing CitationAgent. Locate citations for factual report lines using ONLY "
-                "the supplied original passages. Keep each reason concise. Do not invent papers, URLs, evidence IDs or experiments. "
-                "Return ONLY JSON " + json.dumps(schema), {**payload, "report_lines": lines[offset:offset + 12]})
-            (self.folder / f"citation-plan-{offset // 12 + 1}-raw.json").write_text(raw)
-            batch = CitationPlan.model_validate_json(raw)
-            if {item.line_id for item in batch.findings} != {item["line_id"] for item in lines[offset:offset + 12]}:
-                raise ValueError("CitationAgent 批次正文位置不完整")
+            batch_payload = {**payload, "report_lines": lines[offset:offset + 12]}
+            for retry in range(2):
+                # Only malformed output gets one correction, not provider
+                # failures, cancellation or unsupported factual claims.
+                raw = await self.model(
+                    "You are the post-writing CitationAgent. Locate citations for factual report lines using ONLY "
+                    "the supplied original passages. Keep each reason concise. Do not invent papers, URLs, evidence IDs or experiments. "
+                    "Return ONLY JSON " + json.dumps(schema), batch_payload)
+                (self.folder / f"citation-plan-{attempt}-{offset // 12 + 1}-{retry + 1}-raw.json").write_text(raw)
+                try:
+                    batch = CitationPlan.model_validate_json(raw)
+                    batch_ids = [item.line_id for item in batch.findings]
+                    if len(batch_ids) != len(set(batch_ids)) or set(batch_ids) != {item["line_id"] for item in lines[offset:offset + 12]}:
+                        raise ValueError("CitationAgent 批次正文位置不完整或重复")
+                    unknown = sorted({key for item in batch.findings for key in item.evidence_ids} - set(visible))
+                    if unknown:
+                        raise ValueError("CitationAgent 使用了不存在或不可见的原文证据：" + ", ".join(unknown[:12]))
+                    break
+                except (ValidationError, ValueError) as error:
+                    if retry:
+                        raise
+                    detail = ([{"loc": list(e["loc"]), "type": e["type"], "msg": e["msg"]}
+                               for e in error.errors(include_input=False, include_context=False, include_url=False)[:12]]
+                              if isinstance(error, ValidationError) else str(error))
+                    batch_payload = {**batch_payload, "validation_error": detail,
+                                     "correction": "Reassess this batch; copy exact IDs from evidence. Never guess an ID."}
+                    await self.event("citation_agent", "citation_contract_retry", "started",
+                                     "纠正引文批次输出格式", attempt=attempt, batch=offset // 12 + 1,
+                                     error_type=type(error).__name__)
             findings.extend(batch.findings)
         plan = CitationPlan(findings=findings)
         ids = [finding.line_id for finding in plan.findings]
@@ -187,7 +218,9 @@ class CitationAgent:
                 raise ValueError("CitationAgent 使用了未读取的来源")
             existing = {_source_key(url) for url in urls(report.splitlines()[finding.line_id]) | knowledge_refs(report.splitlines()[finding.line_id])}
             if existing - {_source_key(url) for url in cited}:
-                gaps.append({"line_id": finding.line_id, "reason": "原稿引文与原文证据映射不一致"})
+                gaps.append({"line_id": finding.line_id, "reason": "原稿引文与原文证据映射不一致",
+                             "unmatched_sources": sorted(existing - {_source_key(url) for url in cited}),
+                             "supported_sources": cited})
                 continue
             by_line[finding.line_id] = list(dict.fromkeys(cited))
         audit = {"status": "incomplete" if gaps else "completed", "findings": plan.model_dump()["findings"],

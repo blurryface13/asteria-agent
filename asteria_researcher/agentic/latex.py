@@ -73,8 +73,12 @@ def render_tex(markdown: str, profile: str = "academic") -> str:
     # Honor bibliography order even when the body cites sources out of order.
     bibliography = re.split(r"(?im)^#{1,3}\s*(?:参考文献|参考资料|References)\s*$", markdown, maxsplit=1)
     if len(bibliography) == 2:
-        for label, url in re.findall(r"\[([^\]]+)\]\((https?://[^)]+)\)", bibliography[1]):
+        # Writers may use either Markdown links or 'Title — bare URL'. Seed
+        # numbers from both before visiting body citations in a different order.
+        for url in re.findall(r"https?://[^\s<>\[\]()]+", bibliography[1]):
+            url = url.rstrip(".,;，。；")
             reference_numbers.setdefault(url, len(reference_numbers) + 1)
+        for label, url in re.findall(r"\[([^\]]+)\]\((https?://[^)]+)\)", bibliography[1]):
             reference_labels.setdefault(url, label)
     in_references = False
     def inline(text):
@@ -110,6 +114,8 @@ def render_tex(markdown: str, profile: str = "academic") -> str:
         if item:
             if not list_kind:
                 lines.append("\\begin{" + kind + "}")
+                if in_references:
+                    lines.append(r"\small\raggedright\setlength{\itemsep}{2pt}\setlength{\parsep}{0pt}")
                 list_kind = kind
             lines.append(r"\item " + inline(item[2]))
             continue

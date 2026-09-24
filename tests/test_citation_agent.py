@@ -19,6 +19,62 @@ async def emit(*_args, **_kwargs):
     pass
 
 
+def test_bad_evidence_id_gets_one_contract_correction(tmp_path):
+    calls = []
+    async def model(_system, payload):
+        calls.append(payload)
+        if len(calls) == 2:
+            assert "e_typo" in payload["validation_error"]
+        return json.dumps({"findings": [{"line_id": 2, "supported": True,
+            "evidence_ids": ["e_typo" if len(calls) == 1 else "e_1"], "reason": "原文支持"}]})
+    result = asyncio.run(CitationAgent(model, emit, tmp_path).attach(REPORT, CATALOG, {SOURCE: {}}))
+    assert SOURCE in result and len(calls) == 2
+    assert len(list(tmp_path.glob("citation-plan-*-raw.json"))) == 2
+
+
+def test_invalid_id_retry_is_bounded(tmp_path):
+    calls = []
+    async def model(*args):
+        calls.append(args)
+        return json.dumps({"findings": [{"line_id": 2, "supported": True,
+            "evidence_ids": ["e_invented"], "reason": "incorrect"}]})
+    with pytest.raises(ValueError, match="不存在"):
+        asyncio.run(CitationAgent(model, emit, tmp_path).attach_with_repair(REPORT, CATALOG, {SOURCE: {}}))
+    assert len(calls) == 2
+    assert not (tmp_path / "citation-draft-2.md").exists()
+
+
+def test_comparative_paragraph_may_use_more_than_five_excerpts(tmp_path):
+    catalog = {f"e_{i}": {**CATALOG['e_1'], "text": f"Evidence {i}"} for i in range(6)}
+    async def model(_system, payload):
+        return json.dumps({"findings": [{"line_id": 2, "supported": True,
+            "evidence_ids": list(catalog), "reason": "six complementary excerpts"}]})
+    assert SOURCE in asyncio.run(CitationAgent(model, emit, tmp_path).attach(REPORT, catalog, {SOURCE: {}}))
+
+
+def test_repair_uses_exact_same_visible_evidence_and_source_feedback(tmp_path):
+    other = "https://arxiv.org/abs/1810.04805"
+    catalog = {f"e_{i}": {**CATALOG['e_1'], "text": f"Passage {i}"} for i in range(110)}
+    catalog['e_late'] = {"source": other, "text": "Late source remains visible", "page": 1}
+    original = REPORT.rstrip() + f" [incorrect]({other})\n"
+    seen, repaired = None, False
+    async def model(system, payload):
+        nonlocal seen, repaired
+        if "Repair ONLY" in system:
+            repair_evidence = {v['id']: v['text'] for v in payload['evidence']}
+            assert repair_evidence == seen
+            assert 'e_late' in repair_evidence
+            assert payload['gaps'][0]['unmatched_sources']
+            repaired = True
+            return json.dumps({"replacements": [{"line_id": 2, "text": REPORT.splitlines()[2]}]})
+        seen = {v['id']: v['text'] for v in payload['evidence']}
+        return json.dumps({"findings": [{"line_id": 2, "supported": True,
+            "evidence_ids": ['e_0'], "reason": "source supports text"}]})
+    result = asyncio.run(CitationAgent(model, emit, tmp_path).attach_with_repair(original, catalog, {SOURCE: {}, other: {}}))
+    assert repaired and other not in result
+    assert len(list(tmp_path.glob('citation-plan-*-raw.json'))) == 2
+
+
 def test_provider_failure_preserves_draft_without_paid_retry(tmp_path):
     calls = []
     async def model(*args):

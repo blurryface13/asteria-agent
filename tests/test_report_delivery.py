@@ -13,6 +13,16 @@ from asteria_researcher.agentic.report_tools import report_length, validate_repo
 from asteria_researcher.agentic.citation_agent import CitationPlan, factual_lines
 
 
+def test_bare_and_mixed_bibliography_urls_keep_body_numbers_aligned():
+    report = ('[B](https://example.org/b) [A](https://example.org/a) [C](https://example.org/c)\n'
+              '## 参考文献\n1. Title A — https://example.org/a\n'
+              '2. [Title B](https://example.org/b)\n3. Title C — https://example.org/c （预印本）')
+    body = render_tex(report).split(r'\section{参考文献}')[0]
+    assert r'\href{https://example.org/b}{[2]}' in body
+    assert r'\href{https://example.org/a}{[1]}' in body
+    assert r'\href{https://example.org/c}{[3]}' in body
+
+
 def test_citation_explanation_length_is_not_a_delivery_gate():
     reason = '原文支持该结论，但它仍有适用条件。' * 100
     plan = CitationPlan(findings=[{'line_id': 1, 'supported': True, 'reason': reason}])

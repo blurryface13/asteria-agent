@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 
-async def main(source):
+async def main(source, draft=None):
     from dotenv import load_dotenv
     load_dotenv(ROOT / '.env')
     load_dotenv(ROOT / '.env.lab', override=True)
@@ -27,6 +27,10 @@ async def main(source):
     async def emit(*args):
         pass
     source = source.resolve()
+    if draft is not None and (Path(draft).name != draft or not (source / draft).is_file()
+                              or (source / draft).suffix != '.md'
+                              or not (source / draft).resolve().is_relative_to(source)):
+        raise ValueError('Draft must name an existing Markdown file inside the source review')
     runtime = AutonomousReview(configured_model(), None, emit, None,
                                ROOT/'outputs'/'report_replay', online_rag=False)
     runtime.folder.mkdir(parents=True, exist_ok=True)
@@ -44,12 +48,21 @@ async def main(source):
         runtime.knowledge_sources = read('knowledge-sources.json')
     synthesis = next(d['summary'] for d in reversed(runtime.lead_decisions) if d['tool'] == 'finish')
     print('Replay output: '+str(runtime.folder), flush=True)
-    report = await runtime.write_report(synthesis)
+    if draft is None:
+        report = await runtime.write_report(synthesis)
+    else:
+        report = (source / draft).read_text()
+        runtime.format_profile = read('writing.json')['format_profile']
+    (runtime.folder / 'replay-input.json').write_text(json.dumps({
+        'source_review': str(source), 'source_draft': draft,
+        'mode': 'citation_stage_replay' if draft else 'report_stage_replay',
+        'authenticated_end_to_end': False}, ensure_ascii=False, indent=2))
     citation = CitationAgent(runtime.llm, runtime.event, runtime.folder)
     report = await citation.attach_with_repair(report, evidence_catalog(runtime.evidence, runtime.read_sources()), runtime.read_sources())
     (runtime.folder/'report-with-citations.md').write_text(report)
     paths = await publish(report, runtime.folder, profile=runtime.format_profile)
-    result = {'source_review':str(source),'mode':'report_stage_replay','paths':paths,
+    result = {'source_review':str(source),'source_draft':draft,
+              'mode':'citation_stage_replay' if draft else 'report_stage_replay','paths':paths,
               'model_calls':runtime.model_calls,**report_length(report)}
     (runtime.folder/'replay.json').write_text(json.dumps(result,ensure_ascii=False,indent=2))
     print(json.dumps(result,ensure_ascii=False,indent=2))
@@ -58,5 +71,6 @@ async def main(source):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('source',type=Path)
+    parser.add_argument('--draft', help='Replay only citation/publication from this saved Markdown filename')
     args = parser.parse_args()
-    asyncio.run(main(args.source))
+    asyncio.run(main(args.source, args.draft))
