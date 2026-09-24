@@ -42,6 +42,24 @@ def test_supported_handoff_is_not_rejected_by_arbitrary_finding_counts():
     assert len(action.findings) == 13 and len(action.findings[0].sources) == 10
 
 
+def test_exhausted_research_budget_still_allows_lead_handoff(tmp_path):
+    from asteria_researcher.agentic.autonomous import AutonomousReview
+    source = 'https://arxiv.org/abs/1706.03762'
+    async def emit(*args): pass
+    async def model(system, payload):
+        assert 'Only finish is available' in system
+        assert json.loads(payload)['subagent_results'][0]['summary'] == 'Saved findings'
+        return json.dumps({'tool': 'finish', 'purpose': 'synthesize', 'summary': 'Evidence is sufficient'})
+    runtime = AutonomousReview(model, None, emit, None, tmp_path, online_rag=False)
+    runtime.query, runtime.plan = 'research', {'required_goals': []}
+    runtime.briefs = [{'summary': 'Saved findings'}]
+    runtime.evidence = [{'agent': 'child', 'query': 'question', 'passages': [{'source': source, 'text': 'Original evidence', 'page': 1}]}]
+    runtime.actions, runtime.model_calls = runtime.max_actions, runtime.max_actions + 15
+    result = asyncio.run(runtime.loop('lead', runtime.query, lead=True, steps=2))
+    assert result['status'] == 'completed'
+    assert runtime.actions == runtime.max_actions
+
+
 def test_finance_skills_are_discovered_before_their_bodies_are_loaded():
     session = SkillSession('research')
     assert 'anthropic_sector_overview' in {x['id'] for x in session.discover()}

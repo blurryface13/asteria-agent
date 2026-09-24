@@ -24,7 +24,8 @@ def configured_model(config_path=None):
             result = await asyncio.wait_for(create_chat_completion(
                 messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
                 model=cfg.smart_llm_model, llm_provider=cfg.smart_llm_provider,
-                temperature=0, max_tokens=6000, llm_kwargs=cfg.llm_kwargs), timeout=180)
+                temperature=0, max_tokens=int(os.getenv('ASTERIA_AGENT_MAX_OUTPUT_TOKENS', '12000')),
+                llm_kwargs=cfg.llm_kwargs), timeout=180)
             # Providers sometimes wrap valid structured JSON in a Markdown fence.
             # Remove only that transport wrapper; Pydantic still validates content.
             import re

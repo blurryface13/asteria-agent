@@ -219,7 +219,9 @@ class AutonomousReview:
             await self.emit("agent_action", record)
 
     async def llm(self, system, payload):
-        if self.model_calls >= self.max_actions + 25:
+        # Research must stop before consuming synthesis/publication headroom.
+        # The global cap still bounds schema repairs and delivery calls.
+        if self.model_calls >= self.max_actions + 40:
             raise RuntimeError("模型调用预算已耗尽，任务证据与轨迹已保存")
         self.model_calls += 1
         serialized = json.dumps(payload, ensure_ascii=False)
@@ -472,13 +474,17 @@ class AutonomousReview:
         result = await self.loop("lead", self.query, lead=True, steps=18)
         if result["status"] != "completed":
             raise RuntimeError("研究尚未达到交付条件：" + result["summary"])
+        return await self.deliver(result['summary'])
+
+    async def deliver(self, synthesis):
+        """Shared live/recovery delivery path, independent from more discovery."""
         if re.search(r'图表|带图|配图|可视化|示意图|chart|figure|visuali', self.query, re.I):
             from .illustrations import analyze
             from .citation_agent import visible_evidence
             self.figure_assets, self.analysis_manifest = await analyze(
-                self.llm, self.event, self.folder, self.query, result['summary'], writing_briefs(self.briefs),
+                self.llm, self.event, self.folder, self.query, synthesis, writing_briefs(self.briefs),
                 visible_evidence(evidence_catalog(self.evidence, self.read_sources())))
-        draft = await self.write_report(result["summary"])
+        draft = await self.write_report(synthesis)
         from .citation_agent import CitationAgent
         citation_agent = CitationAgent(self.llm, self.event, self.folder)
         report = await citation_agent.attach_with_repair(draft, evidence_catalog(self.evidence, self.read_sources()),
@@ -923,8 +929,9 @@ class AutonomousReview:
                "replan() may revise only the internal "
                "research strategy while preserving confirmed goals and delivery constraints; request_user(query) asks for scope clarification. "
                "remember(summary) persists concise decisions and open questions to working memory. "
-               "Your final summary should give cross-task synthesis, answers to user goals and writing priorities, "
-               "not rephrase all child facts. The writer receives original child findings directly. "
+               "Your finish is an editorial handoff, NOT the final report: return a concise cross-task synthesis, "
+               "answers to user goals, recommended hypotheses and writing priorities. Leave findings empty for Lead; "
+               "the writer receives original child findings directly. Do not repeat those findings in summary. "
                "read_artifact(query=registered filename,offset) retrieves the full child result, plan or evidence in pages. "
                "Use child artifact references when compact observations omit details. Save useful context before moving to a new batch. "
                "The writer receives the actual shared evidence, not just your personal reads. Do not repeat every "
@@ -935,9 +942,7 @@ class AutonomousReview:
         )
         async def decide(turn, allowed):
             action_limit = self.max_actions if lead else max(0, self.max_actions - 5)
-            if self.actions >= action_limit or self.model_calls >= self.max_actions + 15:
-                return None
-            handoff_now = steps - turn == 1 or action_limit - self.actions == 1
+            handoff_now = allowed == {'finish'} or steps - turn == 1
             schema = Action.model_json_schema()
             schema["properties"]["tool"]["enum"] = sorted(allowed)
             decision_system = system + "\n" + skills.prompt() + "\nReturn ONLY JSON " + json.dumps(schema)
@@ -949,10 +954,11 @@ class AutonomousReview:
                     "task": self.query, "approved_plan": self.plan, "objective": objective,
                     "assignment_context": assignment_context or {},
                     "working_memory": self.load_working_memory() if lead else {},
+                    "subagent_results": writing_briefs(self.briefs) if lead else [],
                     "approved_goals": self.research_goals() if lead else [],
                     "process_observations": process_checks(self.plan.get("process_requirements", []), self.successful_searches, len(self.library.edges)) if lead else [],
                     "available_roles": ["researcher", "coding"] if self.coding_tools else ["researcher"],
-                    "today": str(date.today()), "remaining_actions": action_limit - self.actions,
+                    "today": str(date.today()), "remaining_actions": max(0, action_limit - self.actions),
                     "remaining_direct_evidence_chars": max(0, 120000 - self.direct_chars),
                     "evidence_budget_guidance": "When direct evidence budget is exhausted, use already collected findings or report limitations; do not repeatedly request new passages.",
                     "remaining_turns": steps - turn,
@@ -979,6 +985,10 @@ class AutonomousReview:
                     observation['validation_errors'] = [
                         {'loc': list(item['loc']), 'type': item['type'], 'message': item['msg'][:500]}
                         for item in error.errors(include_input=False, include_context=False, include_url=False)[:20]]
+                    if any(item['type'] == 'json_invalid' for item in observation['validation_errors']):
+                        observation['repair_guidance'] = ('Output may be truncated: return a substantially shorter complete JSON object. '
+                            'Lead: concise synthesis, findings=[]; writer already receives child findings. '
+                            'Researcher: prioritize unique findings, do not duplicate findings in summary.')
             observations.append(observation)
             await self.event(agent, 'decision_error', 'failed', message, **{
                 k: v for k, v in observation.items() if k != 'error'})
@@ -994,9 +1004,10 @@ class AutonomousReview:
             seen.add(key)
             # Model calls await concurrently; another child may have consumed
             # the remaining shared budget while this action was being chosen.
-            if self.actions >= action_limit:
+            if self.actions >= action_limit and action.tool != 'finish':
                 raise AgentStop()
-            self.actions += 1
+            if action.tool != 'finish':
+                self.actions += 1
             if lead:
                 self.record_lead_decision(action)
             call_id, started = uuid4().hex, time.monotonic()
@@ -1172,7 +1183,9 @@ class AutonomousReview:
         profile = LEAD if lead else RESEARCHER
         def available(turn):
             limit = self.max_actions if lead else max(0, self.max_actions - 5)
-            if limit - self.actions <= 1:
+            # Final handoffs never compete with parallel workers for a last
+            # research action. Reserve calls for all children and the Lead.
+            if limit - self.actions <= 1 or self.model_calls >= self.max_actions:
                 return {'finish'}
             return (set(profile.tool_scope) - (set() if self.online_rag else {'retrieve'})
                     - (set() if self.public_search else {'search_public'})
