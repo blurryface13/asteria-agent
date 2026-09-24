@@ -54,6 +54,8 @@ Ledger 参考 [Magentic-One](https://www.microsoft.com/en-us/research/articles/m
 - AstaBench：先审计官方任务、工具环境与评分接口，再选适配子集；保持被测对象为 Asteria，不换成框架自带 Agent。自建任务不称官方分数。
 - 通用任务：以金融行业的公开资料研究为迁移样例，先检查入口、来源范围、工具能力及写作 Skill 是否过度限定论文；只修改有真实阻碍的位置，保留来源权限与证据链。Coding 继续遵守第 2 节，不扩大主线范围。
 
+通用任务的候选验收输入见 `eval/tasks/general_public_company_research.txt`，**本轮尚未执行**。它考察公开年报与机构原文的读取、不同财年/财务口径的保留、缺失披露的诚实处理，而不是投资收益预测。迁移重点是公开原文工具与证据记录、可复用的 Lead/Search 循环、通用报告 Skill；不通过新增一组公司角色掩盖只读了搜索摘要的问题。
+
 ## 7. 运行与优化结果
 
 ### 7.1 入口失败与验收脚本修复
@@ -81,6 +83,8 @@ python scripts/audit-research-run.py outputs/review_f4281651ea7c403a8ed8933fd33f
 
 - `financial_research`、`company_research` 的 specialist 目前主要调用 `search_public_sources`，明确返回搜索摘要，并非完整原文调研。通用报告扩展首先补证据读取链路，而不是只改角色人设或宣传为深入报告。
 - [AstaBench 官方说明](https://github.com/allenai/asta-bench)：拟优先对接 ScholarQABench2（`astabench/sqa_dev`）与 PaperFindingBench validation；Adapter 需保留任务提供的工具/语料日期约束，输出和模型 usage 接入 Inspect。HF 受限数据许可及 Asta 工具凭据按官方要求核对。当前仅完成文档审计，未安装全套镜像、未运行官方任务、无分数。
+- 环境预检：本地服务实际使用 Python 3.10.20、MCP 1.9.1，未安装 Inspect/AstaBench；[AstaBench v0.3.1 依赖](https://github.com/allenai/asta-bench/blob/v0.3.1/pyproject.toml)要求 Python ≥3.11、Inspect 0.3.114、MCP ~1.10。后续采用独立评测环境，不能直接升级当前正常服务的环境。已配置环境中仅核对存在性，`ASTA_TOOL_KEY`、`HF_TOKEN` 均缺失；不查找无关项目密钥、不擅自接受数据许可。
+- [SQA 官方任务契约](https://github.com/allenai/asta-bench/blob/v0.3.1/astabench/evals/sqa/task.py)：产物需要 sections、text、citations/snippets 等结构，不能直接把现有 Markdown 粘入当作完整适配；官方评分涵盖内容要点召回、回答精度、引用精度与引用召回，区别于项目内置四维 Judge。下一步先做工具、输出和 usage Adapter 的替身契约测试，再按可用凭据执行一个开发样例；隐藏 target 不得进入 Agent 上下文。
 
 ### 7.4 本轮已定位的局部性能问题：并行研究争用 Embedding
 
@@ -126,3 +130,11 @@ python scripts/accept-research-chain.py --approve-plan --task-file eval/tasks/co
 # 仅当观察进程中断且原任务仍需观察时使用；不新建任务：
 python scripts/accept-research-chain.py --resume outputs/acceptance_d04d79690d --approve-plan --timeout 1500
 ```
+
+### 7.7 复测过程中发现的诊断缺口（补丁尚未影响当前 Run）
+
+复测第一批三路结束时间分别为 271.002、705.838、724.018 秒，前两路分别回传 8、12 条 findings，第三路以 incomplete 回传且没有 findings。第三路保留的最后两条观察均为 `Invalid action JSON/schema`，但旧 observe_error 丢弃了 Pydantic 具体异常，因此**无法事后断言是输出截断、字段超限还是格式错误**。Lead 随后读取其完整产物并针对记忆/评测补研，同时仍有补充代表性方法的任务，需结合最终质量判断哪些补研必要。
+
+新增小修复：给模型返回字段路径、错误类型与约束说明，并留下 `decision_error` 事件；不记录原始模型响应、input 或 context 字段。回归验证错误 `gaps` 类型能够在下一次决策修复，保持原行动上限，不增加隐藏重试、不放宽权限。当前 worker 已在运行，补丁未热更新；该 Run 不计作此项补丁的真实验证。
+
+初步体验结论：复杂任务的主要耗时已不只是模型推理。本次读取了多篇几十页原文，首次建立本地向量索引占据较长时间；批级公平调度不减少总编码量，不能从单路提早返回推断总体加速。后续可通过持久化内容哈希缓存减少跨 Run 重复编码，但需验证模型/分块版本失效与用户隔离后再实施，本轮未擅自切换 RAG 模式。

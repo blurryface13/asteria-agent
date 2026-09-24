@@ -35,7 +35,17 @@ def audit(folder, acceptance=None):
     events_path = folder / "events.jsonl"
     events = [json.loads(line) for line in events_path.read_text().splitlines() if line.strip()] if events_path.exists() else []
     reads = defaultdict(list)
+    retrieval_starts, retrievals = {}, []
     for event in events:
+        if event.get('tool') == 'retrieve' and event.get('call_id'):
+            call = event['call_id']
+            if event.get('status') == 'started':
+                retrieval_starts[call] = event
+            elif call in retrieval_starts and event.get('status') in {'completed', 'failed'}:
+                start = retrieval_starts.pop(call)
+                retrievals.append({'agent': event.get('agent'), 'status': event['status'],
+                    'elapsed_seconds': round(event['time'] - start['time'], 3),
+                    'query': start.get('arguments', {}).get('query')})
         result = event.get("result")
         if event.get("tool") == "read_passage" and event.get("status") == "completed" and isinstance(result, dict):
             key = (source_key(result["source"]), result.get("page"), result.get("offset"))
@@ -50,6 +60,13 @@ def audit(folder, acceptance=None):
     recorded = {}
     if acceptance and (acceptance / "result.json").exists():
         recorded = json.loads((acceptance / "result.json").read_text())
+    normalizations = []
+    if acceptance and (acceptance / 'events.jsonl').exists():
+        for line in (acceptance / 'events.jsonl').read_text().splitlines():
+            event = json.loads(line)
+            details = event.get('payload', {}).get('_storage_normalization')
+            if details:
+                normalizations.append({'sequence': event['sequence'], **details})
     calls = sum(map(len, reads.values()))
     return {
         "schema_version": 1, "review_directory": str(folder), "report_exists": report_path.exists(),
@@ -60,6 +77,8 @@ def audit(folder, acceptance=None):
         "bibliography_only_links": sorted(links(report) - body_links),
         "direct_read_calls": calls, "distinct_direct_passages": len(reads),
         "repeated_direct_reads": calls - len(reads),
+        "retrievals": retrievals,
+        "storage_normalizations": normalizations,
         "shared_passages": [{"source": key[0], "page": key[1], "offset": key[2],
                              "calls": len(agents), "agents": sorted(set(agents))}
                             for key, agents in reads.items() if len(agents) > 1],
@@ -69,6 +88,7 @@ def audit(folder, acceptance=None):
         "limitations": ["URL counts are not citation correctness or semantic coverage.",
                         "arXiv count excludes other publishers and deduplicates versions; inspect those separately.",
                         "Repeated passage reads are not automatically wasted work or repeated downloads.",
+                        "Retrieval latency includes waiting, embedding and ranking; it is not pure model inference time.",
                         "Body length is an approximate observation, never a pass/fail threshold.",
                         "Provider token usage may include cache hits; no currency cost is inferred."],
     }

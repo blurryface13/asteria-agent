@@ -956,7 +956,18 @@ class AutonomousReview:
         async def observe_error(message, error):
             if not self.online_rag:
                 message += '；用户关闭在线 RAG，请使用 read_passage，不得调用 retrieve'
-            observations.append({"error": message})
+            observation = {"error": message}
+            if error is not None:
+                observation['error_type'] = type(error).__name__
+                # Preserve actionable field constraints, not raw model output
+                # or Pydantic's input/context objects (which may contain data).
+                if hasattr(error, 'errors'):
+                    observation['validation_errors'] = [
+                        {'loc': list(item['loc']), 'type': item['type'], 'message': item['msg'][:500]}
+                        for item in error.errors(include_input=False, include_context=False, include_url=False)[:20]]
+            observations.append(observation)
+            await self.event(agent, 'decision_error', 'failed', message, **{
+                k: v for k, v in observation.items() if k != 'error'})
 
         async def execute_action(action, turn):
             action_limit = self.max_actions if lead else max(0, self.max_actions - 5)

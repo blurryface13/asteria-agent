@@ -144,6 +144,31 @@ def test_subagents_have_independent_parallel_action_loops(tmp_path):
     assert by_agent == {"robustness": 2, "security": 2}
 
 
+def test_decision_validation_returns_field_details_without_raw_input(tmp_path):
+    calls, events = [], []
+    async def model(system, payload):
+        data = json.loads(payload)
+        calls.append(data)
+        if len(calls) == 1:
+            return json.dumps({'tool': 'finish', 'purpose': 'handoff',
+                               'gaps': 'private-raw-model-output'})
+        error = data['observations'][-1]
+        assert error['validation_errors'][0]['loc'] == ['gaps']
+        assert error['validation_errors'][0]['type'] == 'list_type'
+        assert 'private-raw-model-output' not in json.dumps(error)
+        return json.dumps({'tool': 'finish', 'purpose': 'partial handoff',
+                           'outcome': 'incomplete', 'summary': 'No supported findings yet', 'gaps': ['Missing original text']})
+    async def emit(kind, payload):
+        events.append(payload)
+    runtime = AutonomousReview(model, Embeddings(), emit, None, tmp_path)
+    runtime.query, runtime.plan = 'review', {'scope': 'review'}
+    result = asyncio.run(runtime.loop('researcher-test', 'review', steps=2))
+    assert result['status'] == 'incomplete' and len(calls) == 2
+    diagnostic = next(e for e in events if e['tool'] == 'decision_error')
+    assert diagnostic['validation_errors'][0]['loc'] == ['gaps']
+    assert 'private-raw-model-output' not in json.dumps(diagnostic)
+
+
 def test_lead_can_delegate_unresolved_work_and_merge_shared_evidence(tmp_path):
     calls = {}
 

@@ -28,3 +28,18 @@ def test_shared_passage_diagnostic_is_not_automatic_failure(tmp_path):
     assert result["repeated_direct_reads"] == 1
     assert result["tool_failure_counts"] == {}
     assert not result["report_exists"]
+
+
+def test_retrieval_timing_and_storage_normalization_are_distinct(tmp_path):
+    events = [{'tool': 'retrieve', 'status': 'started', 'call_id': 'A', 'time': 10,
+               'agent': 'search-1', 'arguments': {'query': 'evidence'}},
+              {'tool': 'retrieve', 'status': 'completed', 'call_id': 'A', 'time': 12.5, 'agent': 'search-1'}]
+    (tmp_path / 'events.jsonl').write_text('\n'.join(json.dumps(e) for e in events))
+    acceptance = tmp_path / 'acceptance'
+    acceptance.mkdir()
+    (acceptance / 'events.jsonl').write_text(json.dumps({'sequence': 5, 'payload': {
+        '_storage_normalization': {'nul_replacements': 2, 'replacement': 'U+FFFD'}}}) + '\n')
+    result = audit_module.audit(tmp_path, acceptance)
+    assert result['retrievals'] == [{'agent': 'search-1', 'status': 'completed', 'elapsed_seconds': 2.5, 'query': 'evidence'}]
+    assert result['storage_normalizations'][0]['nul_replacements'] == 2
+    assert result['direct_read_calls'] == 0
