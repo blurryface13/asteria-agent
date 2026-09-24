@@ -5,6 +5,7 @@ and preserves the report/events. Never prints or saves the temporary password.
 """
 import argparse
 import asyncio
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -21,6 +22,32 @@ https://arxiv.org/abs/2210.03629
 https://arxiv.org/abs/2308.08155
 https://www.anthropic.com/engineering/multi-agent-research-system
 请对不同问题合理分工，区分论文结论、厂商经验和你的建议，正文给出来源；无需运行实验或修改代码。"""
+
+
+async def verify_deliverables(client, run):
+    """Use the authenticated download path, not merely files present on disk."""
+    from urllib.parse import quote
+    from pathlib import PurePosixPath
+    artifacts = {item["kind"]: item for item in run.get("artifacts", [])}
+    verified = []
+    for kind in ("md", "latex_pdf", "citation_review", "lead_decisions"):
+        item = artifacts.get(kind)
+        if not item:
+            raise ValueError("Missing completed-run artifact: " + kind)
+        path = PurePosixPath(item["path"])
+        if path.is_absolute() or not path.parts or path.parts[0] != "outputs" or ".." in path.parts:
+            raise ValueError("Invalid artifact download path")
+        response = await client.get("/" + quote(str(path), safe="/"))
+        response.raise_for_status()
+        content = response.content
+        if len(content) != item["size_bytes"] or hashlib.sha256(content).hexdigest() != item["sha256"]:
+            raise ValueError("Artifact download differs from recorded content: " + kind)
+        if kind == "latex_pdf" and not content.startswith(b"%PDF-"):
+            raise ValueError("PDF artifact is not a PDF")
+        if kind == "citation_review" and json.loads(content)["status"] != "completed":
+            raise ValueError("Citation review is not complete")
+        verified.append({"kind": kind, "status": response.status_code, "bytes": len(content), "sha256": item["sha256"]})
+    return verified
 
 
 async def run(args):
@@ -90,6 +117,8 @@ async def run(args):
                         (folder / "result.json").write_text(json.dumps(current, ensure_ascii=False, indent=2))
                         if current["status"] != "completed":
                             raise RuntimeError(str(current.get("error") or current["status"]))
+                        downloads = await verify_deliverables(client, current)
+                        (folder / "downloads.json").write_text(json.dumps(downloads, ensure_ascii=False, indent=2))
                         print("PASS " + str(folder / "result.json"), flush=True)
                         return
                 await asyncio.sleep(2)

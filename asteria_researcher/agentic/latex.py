@@ -13,7 +13,9 @@ from uuid import uuid4
 def escape(value: str) -> str:
     replacements = {"\\": r"\textbackslash{}", "{": r"\{", "}": r"\}",
                     "$": r"\$", "&": r"\&", "#": r"\#", "%": r"\%",
-                    "_": r"\_", "~": r"\textasciitilde{}", "^": r"\textasciicircum{}"}
+                    "_": r"\_", "~": r"\textasciitilde{}", "^": r"\textasciicircum{}",
+                    "∪": r"\ensuremath{\cup}", "∩": r"\ensuremath{\cap}",
+                    "∈": r"\ensuremath{\in}", "≤": r"\ensuremath{\leq}", "≥": r"\ensuremath{\geq}"}
     return "".join(replacements.get(char, char) for char in value)
 
 
@@ -66,13 +68,15 @@ def render_tex(markdown: str, profile: str = "academic") -> str:
     if not template_path.is_relative_to(TEMPLATES.resolve()):
         raise ValueError("Template must be a trusted local asset")
     def inline(text):
-        text = re.sub(r"\[([^\]]+)\]\((https?://[^)]+)\)", r"\1 (\2)", text)
         text = text.replace("**", "").replace("`", "")
         parts, cursor = [], 0
-        pattern = re.compile(r"(?<!\\)(\$\$([^$\n]+?)\$\$|\$([^$\n]+?)\$|\\\((.+?)\\\))")
+        pattern = re.compile(r"(?<!\\)(\$\$([^$\n]+?)\$\$|\$([^$\n]+?)\$|\\\((.+?)\\\))|\[([^\]]+)\]\((https?://[^)]+)\)")
         for match in pattern.finditer(text):
             parts.append(escape(text[cursor:match.start()]))
-            parts.append(r"\(" + sanitize_math(match[2] or match[3] or match[4]) + r"\)")
+            if match[5] is not None:
+                parts.append(r"\href{" + escape(match[6]) + "}{" + escape(match[5]) + "}")
+            else:
+                parts.append(r"\(" + sanitize_math(match[2] or match[3] or match[4]) + r"\)")
             cursor = match.end()
         parts.append(escape(text[cursor:]))
         return "".join(parts)
@@ -115,7 +119,12 @@ def render_tex(markdown: str, profile: str = "academic") -> str:
                 lines.append(r"{\LARGE\bfseries " + inline(heading[2]) + r"\par}\vspace{12pt}")
             else:
                 command = ["section", "subsection"][len(heading[1])-2]
-                lines.append("\\" + command + "{" + inline(heading[2]) + "}")
+                title = heading[2]
+                if profile == "academic":
+                    # ctex already supplies section numbers in this template.
+                    title = re.sub(r"^(?:[一二三四五六七八九十百]+[、．.]|\d+[、．.]|\d+(?:\.\d+)+\.?)\s+", "", title)
+                    title = re.sub(r"^[一二三四五六七八九十百]+、", "", title)
+                lines.append("\\" + command + "{" + inline(title) + "}")
         elif line.startswith("```"):
             lines.append(r"\smallskip")
         else:
@@ -151,5 +160,7 @@ async def publish(markdown: str, root: Path, *, profile: str = "academic") -> di
     (folder / "compile.txt").write_bytes(output)
     if process.returncode or not (folder / "report.pdf").is_file():
         raise RuntimeError(f"LaTeX compilation failed; inspect {folder / 'compile.txt'}")
-    return {key: f"outputs/{folder.name}/{name}" for key, name in {
+    # Preserve the caller's output root (including nested or absolute QA roots).
+    output_folder = folder.relative_to(Path.cwd()) if folder.is_relative_to(Path.cwd()) else folder
+    return {key: str(output_folder / name) for key, name in {
         "tex": "report.tex", "latex_pdf": "report.pdf", "compile_log": "compile.txt", "md": "report.md"}.items()}

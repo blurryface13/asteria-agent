@@ -49,7 +49,7 @@ def capability_for(query: str) -> str | None:
 
 
 def urls(text: str) -> set[str]:
-    return {u.rstrip(".,;:") for u in re.findall(r"https?://[^\s<>\\\]\"}）。，；！？、（*`)]+", text)}
+    return {u.rstrip(".,;:") for u in re.findall(r"https?://[^\s<>\\\]\"}）。，；：！？、（【】“”‘’*`)]+", text)}
 
 
 class Coordinator:
