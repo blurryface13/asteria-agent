@@ -70,6 +70,20 @@ def test_math_symbols_and_long_table_identifiers_remain_readable():
     assert r'\href{https://example.org/long/path}' in tex
 
 
+def test_escaped_math_literals_do_not_become_tex_comments():
+    from asteria_researcher.agentic.latex import sanitize_math
+    assert sanitize_math(r's_0=15\%') == r's_0=15\%'
+    for symbol in '%&#$_{}':
+        assert sanitize_math('\\' + symbol) == '\\' + symbol
+    assert r'\input' not in sanitize_math(r'\input{/etc/passwd}')
+
+
+@pytest.mark.skipif(not shutil.which('xelatex'), reason='XeLaTeX required')
+def test_real_pdf_compiles_math_percentage(tmp_path):
+    result = asyncio.run(publish('# 公式回归\n\n固定尺度 $s_0=15\\%$；阈值 $\\eta=0.9$。', tmp_path))
+    assert Path(result['latex_pdf']).read_bytes().startswith(b'%PDF-')
+
+
 def test_unread_future_reading_is_repaired_locally_not_regenerated(tmp_path):
     import json
     source = 'https://arxiv.org/abs/1706.03762'

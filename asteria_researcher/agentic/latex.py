@@ -53,6 +53,10 @@ def sanitize_math(value: str) -> str:
             command = match[1]
             if command.isalpha() and command in SAFE_MATH_COMMANDS:
                 result.append("\\" + command)
+            elif command in {'%', '&', '#', '$', '_', '{', '}'}:
+                # These are literal math glyphs. Turning \% into a bare %
+                # comments out the rest of the TeX line, including math close.
+                result.append('\\' + command)
             elif not command.isalpha() and command in {"!", ",", ";", ":", "'", "[", "]", "(", ")"}:
                 result.append("\\" + command)
             else:
