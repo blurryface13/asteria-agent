@@ -24,6 +24,23 @@
 这不是资料不足，而是研究与交付争抢预算。按官方“接近预算时停止研究并综合”的策略，改为停止新检索但允许结构化 handoff，给 Lead/Analyst/Writer/CitationAgent 留调用额度。
 已有材料续跑另存目录，不修改原 Run 状态；后续新的真实 Run 验证修复后的全链路。
 
+## 中断后发现的具体问题与修复
+
+- `ddfe158d727c49d9bc0b50072d399a3c`：新的真实登录/提交链路完成了研究，但 Lead 因出版元数据未确认等限制返回 incomplete，旧代码直接禁止 Writer 交付。现在由同一 Lead 做一次有界的交付判断，区分核心证据缺失与可报告的限制；不增加新 Reviewer、不抹掉原始 incomplete 状态、不替代用户要求的真实实验执行。
+- Writer 把明确标为未读的后续阅读候选放进参考文献，全篇重写两次仍保留同一问题。现在只修对应行；候选可保留为明确未读的名称，不能作为引用证据。
+- CitationAgent 把建议消融、假设的否定条件以及表头当成待证明的实验结果。现在传递章节语境、排除纯表头、明确事实/建议的评分契约；不是放过虚构结果或错引。
+- 图表的中文宽度估算与相对行高导致溢出、标题重叠。改为真实字体测量换行、按行数分配物理高度、独立标题区域。PDF 中长协议名称增加安全断行，数学符号映射到可信数学命令。
+- 模型 402 曾中断在已完成 Writer 之后。`recover-research-delivery.py --resume-draft` 从校验通过的草稿恢复 CitationAgent，保留独立恢复目录，不重跑全文检索与 Writer；鉴权/余额等不可重试 HTTP 状态不再指数退避重试。
+
+## 原证据续跑（不等同新端到端验收）
+
+```sh
+python scripts/recover-research-delivery.py outputs/review_7a840471255940c5925394e1202925ec \
+  --checkpoint outputs/delivery_recovery/review_ab67fc8dcb6e4d8dad3da5174cbe92dc --resume-draft
+```
+
+仅检查排版、不调用模型：`python scripts/preview-research-report.py <已校验草稿目录>`。预览带“非验收交付”声明，不能作为最终报告。
+
 ## 明天集中处理的授权
 
 | 服务 | 用途 | 申请/授权入口 | 当前状态 |

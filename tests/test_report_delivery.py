@@ -63,6 +63,37 @@ def test_pdf_keeps_emphasis_code_and_numbered_links():
     assert r'\href{https://example.org/b}{[2]}' in reordered
 
 
+def test_math_symbols_and_long_table_identifiers_remain_readable():
+    tex = render_tex('a≈b $\\ell_{cons}$\n\n| 数据 | 来源 |\n|---|---|\n| ScanNet200/ARKitScenes mAP/AP@25/AP@50 | [原文](https://example.org/long/path) |')
+    assert r'\ensuremath{\approx}' in tex and r'\ell_{cons}' in tex
+    assert r'\allowbreak{}' in tex and r'\raggedright\arraybackslash' in tex
+    assert r'\href{https://example.org/long/path}' in tex
+
+
+def test_unread_future_reading_is_repaired_locally_not_regenerated(tmp_path):
+    import json
+    source = 'https://arxiv.org/abs/1706.03762'
+    unread = 'https://arxiv.org/abs/1810.04805'
+    report = f'# 研究报告\n已有证据支持注意力机制。[来源]({source})\n\n后续阅读（未读）：[候选]({unread})\n## 参考文献\n- [已读]({source})\n- [未读]({unread})'
+    calls = []
+    async def model(system, payload):
+        if system.startswith('Select exactly ONE content skill'):
+            return json.dumps({'content_skill': 'report_writing', 'format_profile': 'brief', 'reason': 'review'})
+        calls.append(system)
+        if system.startswith('Repair only these lines'):
+            lines = json.loads(payload)['lines']
+            return json.dumps({'replacements': [{'line_id': r['line_id'], 'text': '' if r['text'].startswith('-') else '后续阅读：候选（未读，不作为证据）'} for r in lines]})
+        return report
+    async def emit(*args): pass
+    runtime = AutonomousReview(model, None, emit, None, tmp_path, online_rag=False)
+    runtime.query, runtime.plan = '研究报告', {}
+    runtime.library.papers[source] = {}
+    result = asyncio.run(runtime.write_report('synthesis'))
+    assert unread not in result and source in result
+    assert '后续阅读：候选（未读，不作为证据）' in result
+    assert len(calls) == 2
+
+
 def test_approximate_length_never_restarts_research_or_blocks_delivery(tmp_path):
     import json
     calls = []

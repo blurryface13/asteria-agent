@@ -69,6 +69,28 @@ def test_finance_skills_are_discovered_before_their_bodies_are_loaded():
     assert '不能假装生成或修改了工作簿' in session.prompt()
 
 
+def test_lead_can_deliver_with_reportable_limits_without_faking_research_status(tmp_path):
+    from asteria_researcher.agentic.autonomous import AutonomousReview
+    async def emit(*args): pass
+    async def model(system, payload):
+        assert 'not a separate reviewer' in system
+        return json.dumps({'ready': True, 'reason': 'Enough core evidence', 'limitations': ['发表状态未核验']})
+    runtime = AutonomousReview(model, None, emit, None, tmp_path, online_rag=False)
+    runtime.query, runtime.plan = '综合研究，提供报告', {}
+    runtime.library.papers['https://example.org/paper'] = {}
+    runtime.evidence = [{'passages': [{'source': 'https://example.org/paper', 'text': 'Full source'}]}]
+    result = {'status': 'incomplete', 'summary': 'Supported synthesis', 'gaps': ['Not exhaustive']}
+    handoff = asyncio.run(runtime.delivery_handoff(result))
+    assert '发表状态未核验' in handoff and 'Not exhaustive' in handoff
+    assert result['status'] == 'incomplete'
+    runtime.plan = {'implementation_requirements': [{'kind': 'experiment_execution'}]}
+    with pytest.raises(RuntimeError, match='不能以报告替代'):
+        asyncio.run(runtime.delivery_handoff(result))
+    runtime.plan, runtime.evidence = {}, []
+    with pytest.raises(RuntimeError, match='无已读原文'):
+        asyncio.run(runtime.delivery_handoff(result))
+
+
 def test_financial_specialist_can_actually_load_upstream_skill():
     from backend.server.specialists import run_specialist
     seen = []
@@ -91,10 +113,25 @@ def test_chart_validation_requires_real_evidence_and_consistent_shape():
     bad.rows[0].quote = 'This sentence does not exist in the paper.'
     with pytest.raises(ValueError, match='exact excerpt'):
         validate_chart(bad, EVIDENCE)
-    bad = good.model_copy(deep=True)
+
+
+def test_pdf_hyphenation_and_ligatures_are_not_false_evidence_mismatches():
+    from asteria_researcher.agentic.illustrations import normalized_excerpt
+    assert normalized_excerpt('ob-\ntained ﬁelds') == normalized_excerpt('ob-tained fields')
+    assert normalized_excerpt('scores 14.2') != normalized_excerpt('scores 12.4')
+    bad = chart()
     bad.rows[0].cells = ['one']
     with pytest.raises(ValueError, match='cell count'):
         validate_chart(bad, EVIDENCE)
+
+
+def test_label_header_is_preserved_without_rejecting_valid_table_notation():
+    data = chart().model_dump()
+    data['columns'] = ['研究方法', *data['columns']]
+    normalized = Chart.model_validate(data)
+    assert normalized.row_header == '研究方法'
+    assert normalized.columns == chart().columns
+    validate_chart(normalized, EVIDENCE)
 
 
 def test_bars_cannot_invent_scores_or_merge_different_protocols():

@@ -134,6 +134,8 @@ async def create_chat_completion(
             logging.getLogger(__name__).warning(
                 f"LLM request failed (attempt {attempt}/{max_attempts}): {exc}"
             )
+            if getattr(exc, 'status_code', None) in {400, 401, 402, 403, 404, 422}:
+                break  # Authentication/balance/contract errors need intervention, not retries.
             if attempt < max_attempts:
                 await asyncio.sleep(min(2 ** (attempt - 1), 8))
                 continue

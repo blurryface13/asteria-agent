@@ -19,6 +19,14 @@ async def emit(*_args, **_kwargs):
     pass
 
 
+def test_citation_receives_proposal_context_and_skips_table_headers():
+    from asteria_researcher.agentic.citation_agent import factual_lines
+    lines = factual_lines('# 综述\n## 候选研究方向\n### 方向 A\n建议消融：改变视角数量，实验尚未执行。\n| Method header | Dataset header |\n|---|---|\n| 方法一具有三维表示 | 只在室内验证 |')
+    assert len(lines) == 2
+    assert lines[0]['section'] == '综述 / 候选研究方向 / 方向 A'
+    assert lines[1]['text'].startswith('| 方法一')
+
+
 def test_bad_evidence_id_gets_one_contract_correction(tmp_path):
     calls = []
     async def model(_system, payload):

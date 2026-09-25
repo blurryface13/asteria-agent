@@ -10,12 +10,21 @@ import json
 from pathlib import Path
 import re
 import threading
+import unicodedata
 from typing import Literal
 from uuid import uuid4
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 PLOT_LOCK = threading.Lock()  # matplotlib has process-global state
+
+
+def normalized_excerpt(text):
+    # PDFs wrap words across lines and use typographic ligatures. These are
+    # layout differences, not factual edits. Preserve all words and numbers.
+    text = unicodedata.normalize('NFKC', text)
+    text = re.sub(r'(?<=\w)-\s*(?=\w)', '', text)
+    return re.sub(r'\s+', ' ', text).strip()
 
 
 class Datum(BaseModel):
@@ -33,9 +42,18 @@ class Chart(BaseModel):
     kind: Literal['matrix', 'bar']
     title: str = Field(min_length=1, max_length=120)
     caption: str = Field(min_length=1, max_length=1200)
-    columns: list[str] = Field(default_factory=list, max_length=5)
+    row_header: str = Field(default='方法 / 维度', max_length=50)
+    columns: list[str] = Field(default_factory=list, max_length=5, description='Headers for cells only; the label column has row_header')
     context: str = Field(default='', max_length=1000, description='Metric/unit/dataset/split/protocol, or qualitative classification basis')
     rows: list[Datum] = Field(min_length=2, max_length=12)
+
+    @model_validator(mode='after')
+    def separate_label_header(self):
+        # Common table notation includes the row-label header in columns.
+        # Move it without changing/removing any data, rather than reject a valid table.
+        if self.kind == 'matrix' and self.columns and all(len(r.cells) == len(self.columns)-1 for r in self.rows):
+            self.row_header, self.columns = self.columns[0], self.columns[1:]
+        return self
 
 
 class Analysis(BaseModel):
@@ -52,8 +70,7 @@ def validate_chart(chart: Chart, evidence: dict) -> None:
         raise ValueError('Bar chart needs common metric, unit, dataset and protocol')
     for row in chart.rows:
         item = evidence.get(row.evidence_id)
-        normalize = lambda s: re.sub(r'\s+', ' ', s).strip()
-        if not item or normalize(row.quote) not in normalize(item['text']):
+        if not item or normalized_excerpt(row.quote) not in normalized_excerpt(item['text']):
             raise ValueError(f'{row.label}: quote must be an exact excerpt from its evidence_id')
         if chart.kind == 'matrix':
             if len(row.cells) != len(chart.columns) or any(len(s) > 120 for s in row.cells):
@@ -76,37 +93,66 @@ def render_chart(chart: Chart, path: Path) -> None:
     from matplotlib.figure import Figure
     from matplotlib.backends.backend_agg import FigureCanvasAgg
     from matplotlib import font_manager, rc_context
-    import textwrap
     with PLOT_LOCK:
         installed = {f.name for f in font_manager.fontManager.ttflist}
         fonts = [f for f in ['Arial Unicode MS', 'Noto Sans CJK SC', 'SimHei', 'DejaVu Sans'] if f in installed]
         with rc_context({'font.family': fonts, 'axes.unicode_minus': False}):
-            fig = Figure(figsize=(11, max(3.2, .8 * len(chart.rows) + 1.5)), dpi=180)
+            # CJK glyphs occupy about twice an ASCII glyph's width. Reserve
+            # physical space per text line, then normalize table row heights.
+            # The previous axes-relative heights summed above 1 and overlapped
+            # the title; ordinary textwrap also undercounted Chinese widths.
+            measuring = Figure(figsize=(8.5, 1), dpi=180)
+            renderer = FigureCanvasAgg(measuring).get_renderer()
+            def wrap(text, width, size=11):
+                font = font_manager.FontProperties(family=fonts, size=size)
+                fits = lambda s: renderer.get_text_width_height_descent(s, font, False)[0] <= width
+                lines, line = [], ''
+                for token in re.findall(r'[A-Za-z0-9_./@%+\-]+|\n|[^\S\n]+|.', text):
+                    if token == '\n' or (line and not fits(line + token)):
+                        lines.append(line.rstrip())
+                        line = ''
+                    if token == '\n':
+                        continue
+                    for char in token:
+                        if line and not fits(line + char):
+                            lines.append(line.rstrip())
+                            line = ''
+                        line += char
+                return '\n'.join([*lines, line.rstrip()])
+            width = 8.5 * .95 * 180 / (len(chart.columns) + 1) * .86
+            cells = [[wrap(r.label, width), *[wrap(s, width) for s in r.cells]] for r in chart.rows]
+            headers = [wrap(s, width) for s in [chart.row_header, *chart.columns]]
+            heights = [.20 * max(s.count('\n') + 1 for s in row) + .20 for row in [headers, *cells]]
+            table_height = sum(heights)
+            title = wrap(chart.title, 8.1 * 180, size=13)
+            title_height = .28 * (title.count('\n') + 1) + .30
+            fig = Figure(figsize=(8.5, table_height + title_height + .25 if chart.kind == 'matrix' else max(3.2, .5*len(chart.rows)+1.5)), dpi=180)
             FigureCanvasAgg(fig)
-            ax = fig.add_subplot()
             if chart.kind == 'matrix':
+                ax = fig.add_axes([.025, .025, .95, table_height / fig.get_figheight()])
                 ax.axis('off')
-                wrap = lambda s: '\n'.join(textwrap.wrap(s, width=15, break_long_words=True))
-                table = ax.table(cellText=[[wrap(r.label), *map(wrap, r.cells)] for r in chart.rows],
-                                 colLabels=['Method / 方法', *chart.columns], cellLoc='left', loc='center')
+                table = ax.table(cellText=cells, colLabels=headers, cellLoc='left', bbox=[0, 0, 1, 1])
                 table.auto_set_font_size(False)
-                table.set_fontsize(9)
+                table.set_fontsize(11)
                 for (i, j), cell in table.get_celld().items():
                     cell.set_edgecolor('#dbe4ed')
                     cell.set_facecolor('#183c59' if i == 0 else '#f0f5fa' if i % 2 else '#ffffff')
                     cell.set_text_props(color='white' if i == 0 else '#16324f')
-                    cell.set_height(.12 if i == 0 else max(.12, .055 * max(len(wrap(s).splitlines()) for s in [chart.rows[i-1].label, *chart.rows[i-1].cells])))
+                    cell.set_height(heights[i] / table_height)
+                    cell.PAD = .055
+                fig.text(.025, .98, title, va='top', fontsize=13, color='#16324f')
             else:
+                ax = fig.add_subplot()
                 ax.barh([r.label for r in chart.rows], [r.value for r in chart.rows], color='#247e94')
                 ax.invert_yaxis()
                 ax.set_xlabel(chart.context)
                 ax.spines[['top', 'right']].set_visible(False)
-            ax.set_title(chart.title, fontsize=14, pad=22, color='#16324f')
+                ax.set_title(chart.title, fontsize=14, pad=22, color='#16324f')
             path.parent.mkdir(parents=True, exist_ok=True)
             fig.savefig(path, bbox_inches='tight', facecolor='white')
 
 
-async def analyze(model, event, folder: Path, task: str, synthesis: str, briefs: list, evidence: dict):
+async def analyze(model, event, folder: Path, task: str, synthesis: str, briefs: list, evidence: dict, *, cached_plan=None):
     """Optional analyst role with validation feedback; cannot collect new facts."""
     call_id = uuid4().hex
     await event('data_analyst', 'analyze', 'started', '从原文证据规划图表', call_id=call_id)
@@ -121,7 +167,7 @@ async def analyze(model, event, folder: Path, task: str, synthesis: str, briefs:
     payload = {'task': task, 'synthesis': synthesis, 'notes': briefs, 'evidence': evidence}
     try:
         for attempt in range(2):
-            raw = await model(system, payload)
+            raw = cached_plan.read_text() if attempt == 0 and cached_plan else await model(system, payload)
             (folder / f'analysis-attempt-{attempt+1}.txt').write_text(raw)
             try:
                 result = Analysis.model_validate_json(raw)
@@ -134,6 +180,8 @@ async def analyze(model, event, folder: Path, task: str, synthesis: str, briefs:
                 if attempt == 1:
                     raise
                 payload['validation_feedback'] = str(error)[:2500]
+                payload['previous_plan'] = raw
+                payload['repair_instruction'] = 'Correct only the reported issue in the previous plan; preserve valid rows and exact source excerpts.'
         assets, manifests = {}, []
         for chart in result.charts:
             key = 'figures/' + chart.id + '.png'

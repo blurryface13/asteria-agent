@@ -12,12 +12,20 @@ from uuid import uuid4
 from .pdf_fonts import embed_unicode_maps
 
 
-def escape(value: str) -> str:
+def escape(value: str, *, break_words=False) -> str:
+    if break_words:
+        # Break long protocol identifiers inside narrow table cells, without
+        # changing link targets or executing model-supplied TeX.
+        value = re.sub(r'([A-Za-z0-9]{8})(?=[A-Za-z0-9])', '\\1\u200b', value)
+        value = value.replace('/', '/\u200b').replace('-', '-\u200b')
     replacements = {"\\": r"\textbackslash{}", "{": r"\{", "}": r"\}",
                     "$": r"\$", "&": r"\&", "#": r"\#", "%": r"\%",
                     "_": r"\_", "~": r"\textasciitilde{}", "^": r"\textasciicircum{}",
                     "∪": r"\ensuremath{\cup}", "∩": r"\ensuremath{\cap}",
                     "∈": r"\ensuremath{\in}", "≤": r"\ensuremath{\leq}", "≥": r"\ensuremath{\geq}"}
+    replacements.update({'\u200b': r'\allowbreak{}', '≈': r'\ensuremath{\approx}',
+                         '≤': r'\ensuremath{\leq}', '≥': r'\ensuremath{\geq}',
+                         '→': r'\ensuremath{\rightarrow}', '←': r'\ensuremath{\leftarrow}'})
     return "".join(replacements.get(char, char) for char in value)
 
 
@@ -28,7 +36,7 @@ SAFE_MATH_COMMANDS = {
     "alpha", "beta", "gamma", "delta", "epsilon", "theta", "lambda", "mu", "pi", "sigma", "phi", "psi", "omega",
     "mathrm", "mathbf", "mathit", "mathsf", "operatorname", "text", "frac", "dfrac", "tfrac", "sqrt", "left", "right",
     "sum", "prod", "int", "lim", "log", "exp", "sin", "cos", "tan", "cdot", "times", "pm", "leq", "geq", "neq",
-    "approx", "infty", "to", "rightarrow", "leftarrow", "mapsto", "top", "mid", "perp", "forall", "exists", "in", "notin", "cup", "cap", "hat", "bar", "overline",
+    "approx", "ell", "infty", "to", "rightarrow", "leftarrow", "mapsto", "top", "mid", "perp", "forall", "exists", "in", "notin", "cup", "cap", "hat", "bar", "overline",
 }
 
 
@@ -82,11 +90,11 @@ def render_tex(markdown: str, profile: str = "academic", *, assets=()) -> str:
         for label, url in re.findall(r"\[([^\]]+)\]\((https?://[^)]+)\)", bibliography[1]):
             reference_labels.setdefault(url, label)
     in_references = False
-    def inline(text):
+    def inline(text, table_cell=False):
         parts, cursor = [], 0
         pattern = re.compile(r"(?<!\\)(\$\$([^$\n]+?)\$\$|\$([^$\n]+?)\$|\\\((.+?)\\\))|\[([^\]]+)\]\((https?://[^)]+)\)|\*\*(.+?)\*\*|`([^`]+)`")
         for match in pattern.finditer(text):
-            parts.append(escape(text[cursor:match.start()]))
+            parts.append(escape(text[cursor:match.start()], break_words=table_cell))
             if match[5] is not None:
                 url, label = match[6], match[5]
                 number = reference_numbers.setdefault(url, len(reference_numbers) + 1)
@@ -94,13 +102,13 @@ def render_tex(markdown: str, profile: str = "academic", *, assets=()) -> str:
                 display = f"[{number}] " + label if in_references else f"[{number}]"
                 parts.append(r"\href{" + escape(url) + "}{" + escape(display) + "}")
             elif match[7] is not None:
-                parts.append(r"\textbf{" + inline(match[7]) + "}")
+                parts.append(r"\textbf{" + inline(match[7], table_cell) + "}")
             elif match[8] is not None:
                 parts.append(r"\texttt{" + escape(match[8]) + "}")
             else:
                 parts.append(r"\(" + sanitize_math(match[2] or match[3] or match[4]) + r"\)")
             cursor = match.end()
-        parts.append(escape(text[cursor:]))
+        parts.append(escape(text[cursor:], break_words=table_cell))
         return "".join(parts)
     lines, index, list_kind = [], 0, None
     source = markdown.splitlines()
@@ -136,10 +144,10 @@ def render_tex(markdown: str, profile: str = "academic", *, assets=()) -> str:
             lines.append(r"\[" + sanitize_math(display[1] or display[2]) + r"\]")
             continue
         if "|" in line and index < len(source) and re.fullmatch(r"[\s|:\-]+", source[index]) and "-" in source[index]:
-            cells = lambda row: [inline(c.strip()) for c in row.strip().strip("|").split("|")]
+            cells = lambda row: [inline(c.strip(), table_cell=True) for c in row.strip().strip("|").split("|")]
             header = cells(line)
             index += 1
-            lines.extend([r"\par\smallskip\noindent", r"\begin{tabularx}{\linewidth}{" + "X" * len(header) + "}", r"\toprule", " & ".join(header) + r" \\", r"\midrule"])
+            lines.extend([r"\par\smallskip\noindent", r"\begin{tabularx}{\linewidth}{" + r">{\raggedright\arraybackslash}X" * len(header) + "}", r"\toprule", " & ".join(header) + r" \\", r"\midrule"])
             while index < len(source) and "|" in source[index] and source[index].strip():
                 row = cells(source[index])
                 if len(row) != len(header):

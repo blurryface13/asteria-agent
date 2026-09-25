@@ -63,6 +63,13 @@ class Action(BaseModel):
     outcome: Literal["completed", "incomplete"] = "completed"
 
 
+class DeliveryDecision(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    ready: bool
+    reason: str
+    limitations: list[str]
+
+
 def _normalize_plan_ids(payload):
     """Repair only duplicate/invalid planner identifiers, preserving plan semantics."""
     try:
@@ -472,19 +479,51 @@ class AutonomousReview:
         (self.folder / "plan.json").write_text(json.dumps(self.plan, ensure_ascii=False, indent=2))
         self.save_working_memory("approved_plan")
         result = await self.loop("lead", self.query, lead=True, steps=18)
-        if result["status"] != "completed":
-            raise RuntimeError("研究尚未达到交付条件：" + result["summary"])
-        return await self.deliver(result['summary'])
+        return await self.deliver(await self.delivery_handoff(result))
 
-    async def deliver(self, synthesis):
+    async def delivery_handoff(self, result):
+        """Lead distinguishes a research limitation from a blocked deliverable.
+
+        One bounded Lead decision, not a new Reviewer or another research batch.
+        Preserve the original exploration outcome and all reported gaps.
+        """
+        if result['status'] == 'completed':
+            return result['summary']
+        if not self.read_sources() or not self.evidence:
+            raise RuntimeError('研究无已读原文证据，不能交付报告')
+        if any(r.get('kind') != 'code_analysis' for r in self.plan.get('implementation_requirements', [])):
+            raise RuntimeError('请求的代码修改/实验执行尚未完成，不能以报告替代')
+        raw = await self.llm(
+            'You are the same Research Lead making the final editorial handoff, not a separate reviewer. '
+            'Assess whether the ACTUAL user request can be answered usefully from saved research. '
+            'Research completeness is not exhaustiveness. Unknown publication venue can be stated as unverified; '
+            'incomparable performance numbers require qualitative comparison, not fabricated numbers; '
+            'Writer and Data Analyst produce the requested formatting and illustrations after this handoff. '
+            'These are not blockers by themselves. Missing evidence for the core question, explicit source-count '
+            'shortfalls, or unperformed mandatory actions ARE blockers. Do not upgrade discovered abstracts '
+            'to read papers. Never remove a user requirement. Preserve material limitations in the report. '
+            'Return JSON: ' + json.dumps(DeliveryDecision.model_json_schema()),
+            {'task': self.query, 'plan': self.plan, 'handoff': result,
+             'subagent_results': writing_briefs(self.briefs), 'read_sources': sorted(self.read_sources()),
+             'evidence_sources': sorted({p.get('source', '') for e in self.evidence for p in e['passages']})})
+        decision = DeliveryDecision.model_validate_json(raw)
+        await self.event('lead', 'delivery_decision', 'completed' if decision.ready else 'incomplete',
+                         decision.reason, research_status=result['status'], limitations=decision.limitations)
+        if not decision.ready:
+            raise RuntimeError('研究尚未达到交付条件：' + decision.reason)
+        return result['summary'] + '\n\n必须保留的研究限制：\n' + '\n'.join(decision.limitations + result.get('gaps', []))
+
+    async def deliver(self, synthesis, *, analysis_plan=None, saved_draft=None):
         """Shared live/recovery delivery path, independent from more discovery."""
         if re.search(r'图表|带图|配图|可视化|示意图|chart|figure|visuali', self.query, re.I):
             from .illustrations import analyze
             from .citation_agent import visible_evidence
             self.figure_assets, self.analysis_manifest = await analyze(
                 self.llm, self.event, self.folder, self.query, synthesis, writing_briefs(self.briefs),
-                visible_evidence(evidence_catalog(self.evidence, self.read_sources())))
-        draft = await self.write_report(synthesis)
+                visible_evidence(evidence_catalog(self.evidence, self.read_sources())), cached_plan=analysis_plan)
+        draft = saved_draft if saved_draft is not None else await self.write_report(synthesis)
+        if saved_draft is not None and not validate_report_draft(saved_draft, self.read_sources())['ok']:
+            raise ValueError('续跑草稿必须先通过已读来源校验')
         from .citation_agent import CitationAgent
         citation_agent = CitationAgent(self.llm, self.event, self.folder)
         report = await citation_agent.attach_with_repair(draft, evidence_catalog(self.evidence, self.read_sources()),
@@ -1248,10 +1287,14 @@ class AutonomousReview:
             if self.capability == 'experiment_design' else
             "Write a Chinese Markdown literature review grounded in the supplied page-level ") +
             "evidence. Cite only read_sources: use Markdown links for public URLs and 〔KB:<20 hex>〕 markers "
+            "for lab material. Unread candidates may be named as future reading with an explicit disclaimer, "
+            "but MUST NOT have citation links or entries in the reference list. Use those KB markers "
             "for authenticated lab chunks, never render private KB IDs as public web URLs. "
             "Use source_types to identify institutional reports and academic preprints honestly; never present "
             "an institutional article or arXiv preprint as peer-reviewed solely because it was read. "
             "Preserve scope/date limits and material research gaps. Do not claim exhaustive coverage, "
+            "Do not infer 'no existing work' or 'never studied' from not finding evidence in the read subset. "
+            "Distinguish supporting quotes stored in the provenance manifest from text actually visible in a chart. "
             "verified experiments, or factual certainty based only on citation membership. "
             "Preserve reviewed answer kinds: distinguish author-reported facts, cross-source synthesis, "
             "qualified analysis and unknowns. Cite the supporting premises of an inference, never label "
@@ -1298,6 +1341,32 @@ class AutonomousReview:
                 break
             if attempt == 2:
                 raise ValueError("最终报告未通过引用来源/篇幅校验")
+            if unknown and validation['issues'] == ['报告引用了未读取来源']:
+                # Keep the working draft; repair only offending lines instead of
+                # regenerating a long report and reproducing the same references.
+                from .citation_agent import RepairPlan
+                lines = report.splitlines()
+                affected = {i for i, line in enumerate(lines)
+                            if {canonical(u) for u in urls(line)} & set(unknown)}
+                raw = await self.llm(
+                    'Repair only these lines containing unread citation URLs. Return JSON replacements. '
+                    'An explicitly UNREAD future-reading candidate may remain as a plain name without a URL; '
+                    'remove its bibliography entry (replace with an empty string). Do not present it as supporting '
+                    'evidence. Unsupported factual claims must be removed or qualified, never just strip a citation '
+                    'and retain factual certainty. Preserve valid citations, table shape, figure paths, and all '
+                    'other lines. Do not invent replacement sources. No newlines in replacements. '
+                    + json.dumps(RepairPlan.model_json_schema()),
+                    {'lines': [{'line_id': i, 'text': lines[i]} for i in sorted(affected)],
+                     'invalid_urls': unknown, 'read_sources': sorted(allowed_report_sources)})
+                patch = RepairPlan.model_validate_json(raw)
+                if {r.line_id for r in patch.replacements} != affected or len(patch.replacements) != len(affected):
+                    raise ValueError('引用修稿必须精确覆盖出错行')
+                for replacement in patch.replacements:
+                    if '\n' in replacement.text:
+                        raise ValueError('引用行修稿不能插入新行')
+                    lines[replacement.line_id] = replacement.text
+                report = '\n'.join(lines)
+                continue
             report = await self.llm("Repair the report. Only cite supplied read_sources, remove unsupported claims. "
                                     "Return full Chinese Markdown, not JSON. Preserve thematic synthesis and the "
                                     "user's core answers. When too long, actually shorten it: remove peripheral benchmark "

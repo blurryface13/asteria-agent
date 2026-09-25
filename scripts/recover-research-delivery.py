@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 
-async def main(source):
+async def main(source, checkpoint=None, resume_draft=False):
     from dotenv import load_dotenv
     load_dotenv(ROOT / '.env')
     load_dotenv(ROOT / '.env.lab', override=True)
@@ -52,10 +52,46 @@ async def main(source):
     (runtime.folder / 'recovery.json').write_text(json.dumps(state, ensure_ascii=False))
     print('RECOVERY ' + str(runtime.folder), flush=True)
     try:
-        result = await runtime.loop('lead', runtime.query, lead=True, steps=3)
-        if result['status'] != 'completed':
-            raise ValueError('Lead judged saved evidence insufficient: ' + result['summary'])
-        report = await runtime.deliver(result['summary'])
+        analysis_plan = None
+        saved_draft = None
+        if checkpoint:
+            checkpoint = checkpoint.resolve()
+            if not checkpoint.is_relative_to(ROOT/'outputs/delivery_recovery'):
+                raise ValueError('Checkpoint must be a saved delivery recovery')
+            prior = json.loads((checkpoint/'recovery.json').read_text())
+            if prior['source_review'] != str(source):
+                raise ValueError('Checkpoint belongs to different source research')
+            events = [json.loads(line) for line in (checkpoint/'events.jsonl').read_text().splitlines()]
+            handoff_events = events
+            ancestor, visited = checkpoint, set()
+            while not any(e['agent']=='lead' and e['tool']=='finish' and e['status']=='completed' for e in handoff_events):
+                if str(ancestor) in visited:
+                    raise ValueError('Cyclic recovery checkpoint')
+                visited.add(str(ancestor))
+                record = json.loads((ancestor/'recovery.json').read_text())
+                ancestor = Path(record['checkpoint']).resolve()
+                if not ancestor.is_relative_to(ROOT/'outputs/delivery_recovery'):
+                    raise ValueError('Invalid ancestor checkpoint')
+                if json.loads((ancestor/'recovery.json').read_text())['source_review'] != str(source):
+                    raise ValueError('Ancestor belongs to another research task')
+                handoff_events = [json.loads(line) for line in (ancestor/'events.jsonl').read_text().splitlines()]
+            result = next(e['result'] for e in reversed(handoff_events)
+                          if e['agent']=='lead' and e['tool']=='finish' and e['status']=='completed')
+            plans = sorted(checkpoint.glob('analysis-attempt-*.txt'))
+            analysis_plan = plans[-1] if plans else None
+            state['checkpoint'] = str(checkpoint)
+            if resume_draft:
+                checks = [e for e in events if e['tool']=='report_check']
+                if not checks or checks[-1]['status'] != 'completed':
+                    raise ValueError('Checkpoint has no validated report draft')
+                saved_draft = (checkpoint/f"draft-{checks[-1]['attempt']}.md").read_text()
+                runtime.format_profile = json.loads((checkpoint/'writing.json').read_text())['format_profile']
+                state['resumed_from'] = 'citation_agent'
+        else:
+            if resume_draft:
+                raise ValueError('--resume-draft requires --checkpoint')
+            result = await runtime.loop('lead', runtime.query, lead=True, steps=3)
+        report = await runtime.deliver(await runtime.delivery_handoff(result), analysis_plan=analysis_plan, saved_draft=saved_draft)
         paths = await publish(report, runtime.folder, profile=runtime.format_profile, assets=runtime.figure_assets)
         state.update(status='completed', paths=paths, model_calls=runtime.model_calls)
         print(json.dumps(state, ensure_ascii=False), flush=True)
@@ -69,4 +105,7 @@ async def main(source):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('source', type=Path)
-    asyncio.run(main(parser.parse_args().source))
+    parser.add_argument('--checkpoint', type=Path, help='Reuse completed Lead handoff and revalidate saved figure plan')
+    parser.add_argument('--resume-draft', action='store_true', help='Resume validated checkpoint draft at CitationAgent; no new Writer call')
+    args = parser.parse_args()
+    asyncio.run(main(args.source, args.checkpoint, args.resume_draft))
