@@ -243,7 +243,7 @@ class AutonomousReview:
         status, failure = "running", None
         try:
             result = await asyncio.wait_for(self._run(), int(os.getenv("REVIEW_DEADLINE_SECONDS", "2400")))
-            status = "completed"
+            status = "research_completed"
             return result
         except asyncio.CancelledError:
             status = "cancelled"
@@ -253,11 +253,14 @@ class AutonomousReview:
             await self.event("lead", "run", "failed", "研究任务未完成", error=failure, severity="fatal")
             raise
         finally:
+            from .delivery_state import runtime_identity
             self.library.save()
             (self.folder / "run.json").write_text(json.dumps({
                 "task": query, "online_rag": self.online_rag,
                 "skill_options": self.skill_options.model_dump(),
-                "status": status, "error": failure, "sufficiency_checks": len(self.assessments),
+                "status": status, "status_scope": "research_and_citation_only",
+                "authoritative_task_status": "research_runs.status", "runtime": runtime_identity(),
+                "error": failure, "sufficiency_checks": len(self.assessments),
                 "evidence_mode": "hybrid" if self.online_rag else "direct",
                 "elapsed_seconds": round(time.monotonic() - self.started_at, 2),
                 "model_calls": self.model_calls, "model_input_chars": self.input_chars,

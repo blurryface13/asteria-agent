@@ -121,8 +121,46 @@ def test_pdf_hyphenation_and_ligatures_are_not_false_evidence_mismatches():
     assert normalized_excerpt('scores 14.2') != normalized_excerpt('scores 12.4')
     bad = chart()
     bad.rows[0].cells = ['one']
-    with pytest.raises(ValueError, match='cell count'):
+    with pytest.raises(ValueError, match='expected .* cells'):
         validate_chart(bad, EVIDENCE)
+
+
+def test_long_display_text_is_layout_feedback_not_invalid_evidence():
+    value = chart()
+    value.rows[0].cells[0] = '详细说明仍然是有效数据' * 20
+    validate_chart(value, EVIDENCE)
+
+
+def test_matrix_cells_keep_individual_source_mapping():
+    value = chart()
+    value.rows[0].cell_evidence_ids = [['e1'], ['missing']]
+    with pytest.raises(ValueError, match='unknown evidence'):
+        validate_chart(value, EVIDENCE)
+    value.rows[0].cell_evidence_ids = [['e1'], ['e1']]
+    validate_chart(value, EVIDENCE)
+
+
+def test_same_table_different_metrics_are_not_one_chart():
+    bars = chart().model_copy(deep=True)
+    bars.kind, bars.context = 'bar', 'same table'
+    bars.rows[0].quote = bars.rows[1].quote
+    bars.rows[0].value, bars.rows[1].value = 12.5, 14.2
+    bars.rows[0].metric, bars.rows[1].metric = 'IoU', 'Success Rate'
+    with pytest.raises(ValueError, match='different metrics'):
+        validate_chart(bars, EVIDENCE)
+
+
+def test_long_condensed_labels_preserve_qualifications(tmp_path):
+    value = chart()
+    long_label = '具体方法及其详细适用条件' * 8 + '，仅限室内，尚未验证室外。'
+    value.rows[0].cells[0] = long_label
+    async def model(system, payload):
+        if 'editing figure labels' in system:
+            return json.dumps({'rows': [{'chart_id': value.id, 'row': 0, 'cells': value.rows[0].cells}]})
+        return json.dumps({'rationale': 'comparison', 'charts': [value.model_dump()]})
+    async def emit(*args, **kwargs): pass
+    _, manifest = asyncio.run(analyze(model, emit, tmp_path, '图表', '', [], EVIDENCE))
+    assert manifest['charts'][0]['display_cells'][0][0] == long_label
 
 
 def test_label_header_is_preserved_without_rejecting_valid_table_notation():

@@ -809,6 +809,13 @@
   font-size: 23px;
   margin: 15px 0;
 }
+.markdown img {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin: 20px 0;
+  border-radius: 8px;
+}
 .markdown h2 {
   font-size: 19px;
   margin: 20px 0 12px;

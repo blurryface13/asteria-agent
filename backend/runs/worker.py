@@ -104,6 +104,8 @@ async def execute(store, run, worker_id, execute_research=research, slot=None):
     sink = DurableSink(store, run, worker_id,slot)
     token = usage_sink.set(sink.send_json)
     async def work():
+        from asteria_researcher.agentic.delivery_state import runtime_identity
+        await sink.send_json({'type': 'runtime_version', 'output': runtime_identity()})
         await execute_research(sink, run['request'])
         # Hashing can take time; keep the lease alive through artifact indexing.
         return await asyncio.to_thread(artifact_index, sink.paths)

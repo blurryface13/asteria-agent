@@ -27,10 +27,13 @@ async def main(source):
     analysis = json.loads((source/'analysis.json').read_text())
     for record in analysis['charts']:
         chart = Chart.model_validate({k: record[k] for k in Chart.model_fields if k in record})
+        if 'display_cells' in record:
+            for row, cells in zip(chart.rows, record['display_cells']):
+                row.cells = cells
         name = f'figures/{chart.id}.png'
         render_chart(chart, folder/name)
         assets[name] = folder/name
-    notice = '**离线排版预览，非验收交付：正文来源链接已校验；CitationAgent 因模型余额不足中断，逐项引文支持尚未核对完成。研究建议尚未开展实验。**\n\n'
+    notice = '**离线排版预览，非验收交付：正文来源链接已校验；逐项引文支持尚未完成核对，不代表端到端任务成功。研究建议尚未开展实验。**\n\n'
     profile = json.loads((source/'writing.json').read_text())['format_profile']
     paths = await publish(notice+draft, folder, profile=profile, assets=assets)
     (folder/'preview.json').write_text(json.dumps({'source': str(source), 'authenticated_end_to_end': False,

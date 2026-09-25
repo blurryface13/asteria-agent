@@ -117,16 +117,33 @@ async def run_autonomous_review(query, logs_handler, research_kwargs, *, capabil
         public_search=search_public_sources,
         knowledge_search=build_knowledge_search(owner, knowledge_ids),
         capability=capability)
+    from asteria_researcher.agentic.delivery_state import record_delivery
+    runtime.folder.mkdir(parents=True, exist_ok=True)
+    record_delivery(runtime.folder, 'pending')
     try:
         report = await runtime.run(query)
-    except Exception:
+    except BaseException as error:
+        import asyncio
+        record_delivery(runtime.folder, 'cancelled' if isinstance(error, asyncio.CancelledError) else 'failed',
+                        error_type=type(error).__name__, failed_stage='research_or_citation')
         # Retain inspectable evidence even when research cannot be completed.
         diagnostics = {"diagnostic_" + p.stem.replace("-", "_"): str(p)
                        for p in runtime.folder.iterdir() if p.is_file() and p.suffix in {".json", ".jsonl", ".md"}}
         await logs_handler.send_json({"type": "diagnostic_paths", "output": diagnostics})
         raise
     await runtime.event("lead", "publish", "started", "编译 LaTeX 与 PDF")
-    artifacts = await publish(report, Path("outputs"), profile=runtime.format_profile, assets=runtime.figure_assets)
+    record_delivery(runtime.folder, 'publishing')
+    try:
+        artifacts = await publish(report, Path("outputs"), profile=runtime.format_profile, assets=runtime.figure_assets)
+    except BaseException as error:
+        import asyncio
+        path = record_delivery(runtime.folder, 'cancelled' if isinstance(error, asyncio.CancelledError) else 'failed',
+                               error_type=type(error).__name__)
+        await logs_handler.send_json({'type': 'diagnostic_paths', 'output': {
+            'diagnostic_delivery': str(path), 'diagnostic_run': str(runtime.folder/'run.json'),
+            'diagnostic_draft': str(runtime.folder/'report-with-citations.md')}})
+        raise
+    artifacts['delivery_state'] = str(record_delivery(runtime.folder, 'ready'))
     for key, path in runtime.figure_assets.items():
         artifacts['chart_' + path.stem] = str(path)
     artifacts["writing_selection"] = str(runtime.folder / "writing.json")

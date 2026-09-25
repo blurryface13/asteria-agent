@@ -19,6 +19,40 @@ async def emit(*_args, **_kwargs):
     pass
 
 
+def test_evidence_tail_and_late_ids_are_not_silently_deleted():
+    from asteria_researcher.agentic.citation_agent import visible_evidence
+    catalog = {f'e_{i}': {**CATALOG['e_1'], 'text': '背景' * 1400 + '关键结果位于末尾。'} for i in range(110)}
+    shown = visible_evidence(catalog)
+    assert len(shown) == 110 and shown['e_109']['text'].endswith('关键结果位于末尾。')
+    assert shown['e_109']['text'] == catalog['e_109']['text']
+
+
+def test_citation_can_read_omitted_full_passage_before_judging(tmp_path, monkeypatch):
+    import asteria_researcher.agentic.citation_agent as module
+    catalog = {**CATALOG, 'e_tail': {**CATALOG['e_1'], 'text': 'context ' * 600 + 'critical tail result'}}
+    monkeypatch.setattr(module, 'select_evidence', lambda lines, all_items: {'e_1': all_items['e_1']})
+    calls = []
+    async def model(system, payload):
+        calls.append(payload)
+        if len(calls) == 1:
+            assert any(x['id'] == 'e_tail' for x in payload['evidence_index'])
+            return json.dumps({'read_evidence_ids': ['e_tail']})
+        assert next(x for x in payload['evidence'] if x['id']=='e_tail')['text'].endswith('critical tail result')
+        return json.dumps({'findings': [{'line_id': 2, 'supported': True,
+            'evidence_ids': ['e_tail'], 'reason': 'Full tail supports the claim'}]})
+    assert SOURCE in asyncio.run(CitationAgent(model, emit, tmp_path).attach(REPORT, catalog, {SOURCE: {}}))
+    assert len(calls) == 2
+
+
+def test_evidence_retrieval_does_not_repeat_entire_catalog():
+    from asteria_researcher.agentic.citation_agent import select_evidence, visible_evidence
+    catalog = {f'e_{i}': {'source': f'https://example.org/{i}', 'text': ('background ' * 1000)} for i in range(30)}
+    catalog['e_match'] = {'source': SOURCE, 'text': 'critical complete source ' * 500}
+    chosen = select_evidence([{'text': f'Compare this method [source]({SOURCE})'}], visible_evidence(catalog))
+    assert 'e_match' in chosen and len(chosen) < len(catalog)
+    assert chosen['e_match']['text'] == catalog['e_match']['text']
+
+
 def test_citation_receives_proposal_context_and_skips_table_headers():
     from asteria_researcher.agentic.citation_agent import factual_lines
     lines = factual_lines('# 综述\n## 候选研究方向\n### 方向 A\n建议消融：改变视角数量，实验尚未执行。\n| Method header | Dataset header |\n|---|---|\n| 方法一具有三维表示 | 只在室内验证 |')

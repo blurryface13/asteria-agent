@@ -12,7 +12,9 @@ import SkillBrowser from "./SkillBrowser";
 import KnowledgePicker from "../knowledge/KnowledgePicker";
 import MemoryEditor from "../memory/MemoryEditor";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { getDisplayName, setDisplayName } from "@/helpers/auth";
+import { authFetch, getDisplayName, setDisplayName } from "@/helpers/auth";
+import { getHost } from "@/helpers/getHost";
+import { resolveResearchFigure } from "@/helpers/researchFigures";
 
 interface Props {
   conversationMode?: 'research' | 'chat';
@@ -180,17 +182,43 @@ function Thumbnail({ kind }: { kind: number }) {
   );
 }
 
-function Markdown({ value }: { value: string }) {
+function Markdown({ value, artifacts }: { value: string; artifacts?: Record<string, string> }) {
   const [html, setHtml] = useState("");
   useEffect(() => {
     let live = true;
-    markdownToHtml(value).then((v) => {
-      if (live) setHtml(v);
+    const controller = new AbortController();
+    const blobs: string[] = [];
+    markdownToHtml(value).then(async (v) => {
+      const doc = new DOMParser().parseFromString(v, 'text/html');
+      await Promise.all(Array.from(doc.querySelectorAll('img')).map(async (img) => {
+        const src = img.getAttribute('src') || '';
+        if (!src.startsWith('figures/')) return;
+        const path = resolveResearchFigure(src, artifacts || {});
+        try {
+          if (!path) throw new Error('pending');
+          const response = await authFetch(`${getHost()}/${path}`, {signal: controller.signal});
+          if (!response.ok) throw new Error('download');
+          const bytes = await response.arrayBuffer();
+          if (new Uint8Array(bytes).slice(0, 8).join(',') !== '137,80,78,71,13,10,26,10') throw new Error('format');
+          if (!live) return;
+          const blob = URL.createObjectURL(new Blob([bytes], {type: 'image/png'}));
+          blobs.push(blob);
+          img.setAttribute('src', blob);
+          img.setAttribute('loading', 'lazy');
+        } catch {
+          const note = doc.createElement('span');
+          note.textContent = path ? `图表暂时无法加载：${img.alt}` : `图表生成后展示：${img.alt}`;
+          img.replaceWith(note);
+        }
+      }));
+      if (live) setHtml(doc.body.innerHTML);
     });
     return () => {
       live = false;
+      controller.abort();
+      blobs.forEach((blob) => URL.revokeObjectURL(blob));
     };
-  }, [value]);
+  }, [value, artifacts]);
   return (
     <article
       className={s.markdown}
@@ -829,7 +857,7 @@ export default function ResearchHarness(p: Props) {
                     {sourceView ? (
                       <pre className={s.source}>{p.answer}</pre>
                     ) : (
-                      <Markdown value={p.answer} />
+                      <Markdown value={p.answer} artifacts={p.artifactPaths} />
                     )}
                   </>
                 ) : panel === "文件" ? (

@@ -13,14 +13,15 @@ export default function LatexPreview({
     [error, setError] = useState("");
   const safe = (path?: string) =>
     path &&
-    /^outputs\/scientific_[a-f0-9]{32}\/(report\.(tex|pdf)|compile\.txt)$/.test(
+    /^outputs\/scientific_[a-f0-9]{32}\/(report\.(tex|pdf)|report-bundle\.zip|compile\.txt)$/.test(
       path,
     )
       ? `${getHost()}/${path}`
       : "";
   const tex = safe(paths.tex),
     pdf = safe(paths.latex_pdf),
-    log = safe(paths.compile_log);
+    log = safe(paths.compile_log),
+    bundle = safe(paths.report_bundle);
   useEffect(() => {
     const controller = new AbortController();
     setSource("");
@@ -41,6 +42,7 @@ export default function LatexPreview({
   return (
     <div>
       <div className={s.reportTools}>
+        {bundle && <a href={bundle} download className={s.outline}>下载完整报告包</a>}
         <a href={tex} target="_blank" rel="noreferrer" className={s.outline}>
           下载 .tex
         </a>

@@ -30,10 +30,12 @@ def normalized_excerpt(text):
 class Datum(BaseModel):
     model_config = ConfigDict(extra='forbid')
     label: str = Field(min_length=1, max_length=70)
-    cells: list[str] = Field(default_factory=list, max_length=5)
+    cells: list[str] = Field(default_factory=list, max_length=5, description='Short display labels (prefer <=25 Chinese characters or 6 English words). Put detailed explanation in caption/context, not in chart cells.')
     value: float | None = Field(default=None, allow_inf_nan=False)
     evidence_id: str
     quote: str = Field(min_length=12, max_length=1500)
+    cell_evidence_ids: list[list[str]] = Field(default_factory=list, description='For matrices: one list per cell, linking that cell to supporting full evidence IDs. Empty cell list only for explicitly unknown/not applicable entries.')
+    metric: str = Field(default='', description='For bars: metric name including threshold/unit. Use ONE metric per chart.')
 
 
 class Chart(BaseModel):
@@ -63,6 +65,17 @@ class Analysis(BaseModel):
     limitations: list[str] = Field(default_factory=list)
 
 
+class DisplayRow(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    chart_id: str
+    row: int
+    cells: list[str]
+
+
+class DisplayLabels(BaseModel):
+    rows: list[DisplayRow]
+
+
 def validate_chart(chart: Chart, evidence: dict) -> None:
     if chart.kind == 'matrix' and not chart.columns:
         raise ValueError('Matrix needs column labels')
@@ -73,10 +86,15 @@ def validate_chart(chart: Chart, evidence: dict) -> None:
         if not item or normalized_excerpt(row.quote) not in normalized_excerpt(item['text']):
             raise ValueError(f'{row.label}: quote must be an exact excerpt from its evidence_id')
         if chart.kind == 'matrix':
-            if len(row.cells) != len(chart.columns) or any(len(s) > 120 for s in row.cells):
-                raise ValueError('Matrix cell count/length mismatch')
+            if len(row.cells) != len(chart.columns):
+                raise ValueError(f'{chart.id}/{row.label}: expected {len(chart.columns)} cells for columns {chart.columns}, got {len(row.cells)}')
             if row.value is not None:
                 raise ValueError('Qualitative matrices must not invent numeric scores')
+            if row.cell_evidence_ids:
+                if len(row.cell_evidence_ids) != len(row.cells):
+                    raise ValueError('Cell provenance must follow the matrix columns')
+                if any(key not in evidence for ids in row.cell_evidence_ids for key in ids):
+                    raise ValueError('Cell provenance references unknown evidence')
         else:
             numbers = re.findall(r'(?<![\w.])-?\d+(?:\.\d+)?', row.quote)
             if row.value is None or row.value not in [float(n) for n in numbers]:
@@ -85,6 +103,8 @@ def validate_chart(chart: Chart, evidence: dict) -> None:
         # Require a single original comparison table instead of trusting an LLM's
         # claim that results from independent papers share an evaluation protocol.
         raise ValueError('Numeric comparisons currently require one shared source excerpt/table')
+    if chart.kind == 'bar' and len({r.metric.strip().lower() for r in chart.rows}) > 1:
+        raise ValueError('Use separate charts for different metrics, even within the same paper/table')
 
 
 def render_chart(chart: Chart, path: Path) -> None:
@@ -163,7 +183,14 @@ async def analyze(model, event, folder: Path, task: str, synthesis: str, briefs:
               'protocol. Each row requires a verbatim quote and its evidence_id. An exact quote is provenance, '
               'not proof of your interpretation: cells must be directly supported. Distinguish unknown from absent. '
               'Use short readable labels. Choose chart count for usefulness, not a quota. If no useful supported '
-              'figure exists return charts=[] with an honest rationale. Return ONLY JSON: ' + json.dumps(Analysis.model_json_schema()))
+              'figure exists return charts=[] with an honest rationale. For method comparisons prefer one paper/method '
+              'per row with columns for representation, mechanism and limitation; do NOT place several papers under '
+              'one row and cite a single unrelated quotation. Provide cell_evidence_ids for every matrix cell: one '
+              'list per column, containing the original excerpts that actually support that cell. Do not confuse '
+              'similarly named papers: a source describing one method cannot establish another method\'s design. '
+              'For bars use exactly one named metric per chart, with identical dataset/split/protocol. '
+              'These charts support research decisions; hypotheses/experimental plans belong in the report, not '
+              'dense figures masquerading as published evidence. Return ONLY JSON: ' + json.dumps(Analysis.model_json_schema()))
     payload = {'task': task, 'synthesis': synthesis, 'notes': briefs, 'evidence': evidence}
     try:
         for attempt in range(2):
@@ -175,6 +202,16 @@ async def analyze(model, event, folder: Path, task: str, synthesis: str, briefs:
                     raise ValueError('Duplicate chart IDs')
                 for chart in result.charts:
                     validate_chart(chart, evidence)
+                crowded = [{'chart': c.id, 'row': r.label, 'column': c.columns[i], 'text': s}
+                           for c in result.charts if c.kind == 'matrix' for r in c.rows
+                           for i, s in enumerate(r.cells) if len(s) > 65]
+                if crowded and attempt == 0:
+                    payload['previous_plan'] = raw
+                    payload['layout_feedback'] = crowded
+                    payload['repair_instruction'] = ('Shorten ONLY crowded display cells to concise labels, ideally <=25 Chinese characters or 6 English words. '
+                        'Preserve meaning/conditions; keep original exact quotes/evidence IDs, rows and columns unchanged. '
+                        'Detailed evidence belongs in quotes and the report, not whole paragraphs inside a figure. This is layout editing, not new research.')
+                    continue
                 break
             except ValueError as error:
                 if attempt == 1:
@@ -182,6 +219,30 @@ async def analyze(model, event, folder: Path, task: str, synthesis: str, briefs:
                 payload['validation_feedback'] = str(error)[:2500]
                 payload['previous_plan'] = raw
                 payload['repair_instruction'] = 'Correct only the reported issue in the previous plan; preserve valid rows and exact source excerpts.'
+        # Rendering text is separate from the original data. Source quotes and
+        # full analysis remain immutable; only the visible labels are condensed.
+        crowded_rows = [{'chart_id': c.id, 'row': i, 'label': r.label, 'columns': c.columns, 'cells': r.cells}
+                        for c in result.charts if c.kind == 'matrix' for i, r in enumerate(c.rows)
+                        if any(len(s) > 65 for s in r.cells)]
+        display_rows = {}
+        if crowded_rows:
+            raw = await model('You are editing figure labels, not doing research. Condense each supplied cell to a short label '
+                '(prefer 8-20 Chinese characters or 3-6 English words). Preserve comparison meaning and uncertainty. '
+                'Do not add facts or numbers. Preserve chart_id, row, number/order of cells. Full descriptions and '
+                'quotes are retained separately, so do NOT reproduce them. Return JSON: '
+                + json.dumps(DisplayLabels.model_json_schema()), {'rows': crowded_rows})
+            (folder/'chart-display-labels.json').write_text(raw)
+            labels = DisplayLabels.model_validate_json(raw)
+            expected = {(r['chart_id'], r['row']): len(r['cells']) for r in crowded_rows}
+            for row in labels.rows:
+                key = (row.chart_id, row.row)
+                if key not in expected or key in display_rows or len(row.cells) != expected[key]:
+                    raise ValueError('Figure label editing changed row/column identity')
+                # Preserve all remaining text. Wrapping, never character slicing,
+                # handles long labels without dropping qualifications/numbers.
+                display_rows[key] = row.cells
+            if display_rows.keys() != expected.keys():
+                raise ValueError('Figure label editing omitted rows')
         assets, manifests = {}, []
         for chart in result.charts:
             key = 'figures/' + chart.id + '.png'
@@ -189,13 +250,18 @@ async def analyze(model, event, folder: Path, task: str, synthesis: str, briefs:
             render_id = uuid4().hex
             await event('data_analyst', 'render_chart', 'started', chart.title, call_id=render_id, parent_call_id=call_id)
             try:
-                await asyncio.to_thread(render_chart, chart, path)
+                display_chart = chart.model_copy(deep=True)
+                for i, row in enumerate(display_chart.rows):
+                    row.cells = display_rows.get((chart.id, i), row.cells)
+                await asyncio.to_thread(render_chart, display_chart, path)
             except BaseException:
                 await event('data_analyst', 'render_chart', 'failed', chart.title, call_id=render_id, parent_call_id=call_id)
                 raise
             assets[key] = path
             manifests.append({**chart.model_dump(), 'path': key,
-                              'sources': sorted({evidence[r.evidence_id]['source'] for r in chart.rows})})
+                              'display_cells': [r.cells for r in display_chart.rows],
+                              'sources': sorted({evidence[key]['source'] for r in chart.rows
+                                                 for key in [r.evidence_id, *[k for ids in r.cell_evidence_ids for k in ids]]})})
             await event('data_analyst', 'render_chart', 'completed', chart.title, call_id=render_id, parent_call_id=call_id, path=key)
         manifest = {**result.model_dump(), 'charts': manifests, 'validation': 'Exact quotes/IDs checked; semantic interpretation still requires review'}
         (folder / 'analysis.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2))
