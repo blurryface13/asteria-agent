@@ -68,7 +68,9 @@ def select_evidence(lines: list[dict], catalog: dict, budget=45000) -> dict:
     def terms(text):
         return set(re.findall(r'[a-z0-9][a-z0-9_-]{2,}|[\u4e00-\u9fff]{2}', text.lower()))
     query_terms = terms(query)
+    hinted_ids = set(re.findall(r'\be_[0-9a-f]{16}\b', query))
     ranked = sorted(catalog.items(), key=lambda pair: (
+        pair[0] in hinted_ids,
         _source_key(pair[1]['source']) in cited,
         len(query_terms & terms(pair[1]['text']))), reverse=True)
     chosen, size = {}, 0
@@ -225,6 +227,10 @@ class CitationAgent:
             for retry in range(5):
                 # Only malformed output gets one correction, not provider
                 # failures, cancellation or unsupported factual claims.
+                # Findings may cite only full passages present in this call.
+                # The independent read tool still exposes every catalog ID.
+                schema['$defs']['CitationFinding']['properties']['evidence_ids']['items']['enum'] = list(selected)
+                schema['properties']['read_evidence_ids']['items']['enum'] = list(visible)
                 raw = await self.model(
                     "You are the post-writing CitationAgent. Locate citations for factual report lines using ONLY "
                     "the supplied original passages. Keep each reason concise. Do not invent papers, URLs, evidence IDs or experiments. "
@@ -235,24 +241,35 @@ class CitationAgent:
                 (self.folder / f"citation-plan-{attempt}-{offset // 12 + 1}-{retry + 1}-raw.json").write_text(raw)
                 try:
                     batch = CitationPlan.model_validate_json(raw)
-                    if batch.read_evidence_ids:
-                        requested = set(batch.read_evidence_ids)
-                        if requested - set(visible):
-                            raise ValueError('CitationAgent 请求了不存在的原文证据')
+                    referenced = {key for item in batch.findings for key in item.evidence_ids}
+                    unknown = (referenced | set(batch.read_evidence_ids)) - set(visible)
+                    if unknown:
+                        raise ValueError('CitationAgent 使用了不存在的原文证据：' + ', '.join(sorted(unknown)))
+                    # A known ID selected from the index is an implicit read
+                    # request, NOT grounded support yet. Fetch and re-judge;
+                    # never accept a verdict based only on the short preview.
+                    unseen = referenced - set(selected)
+                    requested = set(batch.read_evidence_ids) | unseen
+                    if requested:
                         if reads >= 3 or retry == 4:
-                            raise ValueError('CitationAgent 补读预算耗尽，保留草稿而非误报证据不存在')
+                            raise RuntimeError('CitationAgent 补读预算耗尽，保留草稿而非误报证据不存在')
                         reads += 1
-                        selected.update({key: visible[key] for key in requested})
+                        # Neighboring chunks from the same paper often hold
+                        # the protocol/qualifications for this result. Read the
+                        # saved source together instead of chasing IDs one by one.
+                        requested_sources = {visible[key]['source'] for key in requested}
+                        expanded = {key: item for key, item in visible.items() if item['source'] in requested_sources}
+                        selected.update(expanded)
                         self.inspected.update(selected)
                         batch_payload['evidence'] = list(selected.values())
-                        await self.event('citation_agent', 'read_evidence', 'completed', '补读已保存的完整原文片段', evidence_ids=sorted(requested))
+                        batch_payload['read_feedback'] = {
+                            'evidence_ids': sorted(requested),
+                            'instruction': 'Full passages are now supplied. Reassess every line in this batch from the full evidence; prior findings were not accepted.'}
+                        await self.event('citation_agent', 'read_evidence', 'completed', '补读该来源已保存的完整原文片段', evidence_ids=sorted(expanded), requested_ids=sorted(requested))
                         continue
                     batch_ids = [item.line_id for item in batch.findings]
                     if len(batch_ids) != len(set(batch_ids)) or set(batch_ids) != {item["line_id"] for item in pending[offset:offset + 12]}:
                         raise ValueError("CitationAgent 批次正文位置不完整或重复")
-                    unknown = sorted({key for item in batch.findings for key in item.evidence_ids} - set(selected))
-                    if unknown:
-                        raise ValueError("CitationAgent 使用了不存在或不可见的原文证据：" + ", ".join(unknown[:12]))
                     break
                 except (ValidationError, ValueError) as error:
                     if format_failures or retry == 4:
@@ -298,6 +315,10 @@ class CitationAgent:
             raise CitationGapError(gaps)
         output = report.splitlines()
         for line_id, sources in by_line.items():
+            # Writer sometimes confuses an analyst evidence anchor with a
+            # private KB source. Only after this line is verified, discard its
+            # internal anchors and publish the actual checked source links.
+            output[line_id] = re.sub(r'〔(?:KB:)?e_[0-9a-f]{16}〕', '', output[line_id])
             existing = {_source_key(url) for url in urls(output[line_id]) | knowledge_refs(output[line_id])}
             additions = [url for url in sources if _source_key(url) not in existing]
             if additions:

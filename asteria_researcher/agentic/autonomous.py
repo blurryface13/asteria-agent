@@ -1293,6 +1293,8 @@ class AutonomousReview:
             "for lab material. Unread candidates may be named as future reading with an explicit disclaimer, "
             "but MUST NOT have citation links or entries in the reference list. Use those KB markers "
             "for authenticated lab chunks, never render private KB IDs as public web URLs. "
+            "Analyst evidence IDs (e_...) are internal pointers, not KB sources or publishable citations; "
+            "resolve them to their public source URLs before citing. "
             "Use source_types to identify institutional reports and academic preprints honestly; never present "
             "an institutional article or arXiv preprint as peer-reviewed solely because it was read. "
             "Preserve scope/date limits and material research gaps. Do not claim exhaustive coverage, "

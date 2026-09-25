@@ -35,6 +35,9 @@ def test_citation_can_read_omitted_full_passage_before_judging(tmp_path, monkeyp
     async def model(system, payload):
         calls.append(payload)
         if len(calls) == 1:
+            schema = json.loads(system.split('Return ONLY JSON ', 1)[1])
+            assert 'e_tail' not in schema['$defs']['CitationFinding']['properties']['evidence_ids']['items']['enum']
+            assert 'e_tail' in schema['properties']['read_evidence_ids']['items']['enum']
             assert any(x['id'] == 'e_tail' for x in payload['evidence_index'])
             return json.dumps({'read_evidence_ids': ['e_tail']})
         assert next(x for x in payload['evidence'] if x['id']=='e_tail')['text'].endswith('critical tail result')
@@ -51,6 +54,33 @@ def test_evidence_retrieval_does_not_repeat_entire_catalog():
     chosen = select_evidence([{'text': f'Compare this method [source]({SOURCE})'}], visible_evidence(catalog))
     assert 'e_match' in chosen and len(chosen) < len(catalog)
     assert chosen['e_match']['text'] == catalog['e_match']['text']
+
+
+@pytest.mark.parametrize('actually_supported', [True, False])
+def test_index_only_citation_fetches_full_text_and_rejudges(tmp_path, monkeypatch, actually_supported):
+    import asteria_researcher.agentic.citation_agent as module
+    catalog = {**CATALOG, 'e_tail': {**CATALOG['e_1'], 'text': 'preview ' * 100 + ' decisive full passage'}}
+    monkeypatch.setattr(module, 'select_evidence', lambda lines, items: {'e_1': items['e_1']})
+    calls, events = [], []
+    async def event(*args, **kwargs):
+        events.append(args)
+    async def model(system, payload):
+        calls.append(True)
+        if len(calls) == 1:
+            assert 'e_tail' not in {x['id'] for x in payload['evidence']}
+        else:
+            assert next(x for x in payload['evidence'] if x['id']=='e_tail')['text'].endswith('decisive full passage')
+            assert 'not accepted' in payload['read_feedback']['instruction']
+        return json.dumps({'findings': [{'line_id': 2, 'supported': True if len(calls)==1 else actually_supported,
+            'evidence_ids': ['e_tail'], 'reason': 'Reassessed against full text'}]})
+    run = CitationAgent(model, event, tmp_path).attach(REPORT, catalog, {SOURCE: {}})
+    if actually_supported:
+        assert SOURCE in asyncio.run(run)
+    else:
+        with pytest.raises(module.CitationGapError):
+            asyncio.run(run)
+    assert len(calls) == 2
+    assert not any(args[1]=='citation_contract_retry' for args in events)
 
 
 def test_citation_receives_proposal_context_and_skips_table_headers():
@@ -161,6 +191,15 @@ def test_citation_agent_places_source_at_checked_line(tmp_path):
     result = asyncio.run(CitationAgent(model, emit, tmp_path).attach(REPORT, CATALOG, {SOURCE: {}}))
     assert f"[来源]({SOURCE})" in result.splitlines()[2]
     assert json.loads((tmp_path / "citation-review.json").read_text())["status"] == "completed"
+
+
+def test_checked_public_citation_replaces_internal_evidence_marker(tmp_path):
+    report = REPORT.rstrip() + '〔KB:e_3621e7d33dcb2c02〕\n'
+    async def model(system, payload):
+        return json.dumps({'findings': [{'line_id': 2, 'supported': True,
+            'evidence_ids': ['e_1'], 'reason': 'Full passage supports the claim'}]})
+    result = asyncio.run(CitationAgent(model, emit, tmp_path).attach(report, CATALOG, {SOURCE: {}}))
+    assert 'KB:e_' not in result and f'[来源]({SOURCE})' in result
 
 
 def test_citation_agent_refuses_unsupported_claim(tmp_path):

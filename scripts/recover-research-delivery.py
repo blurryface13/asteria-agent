@@ -79,6 +79,17 @@ async def main(source, checkpoint=None, resume_draft=False):
                           if e['agent']=='lead' and e['tool']=='finish' and e['status']=='completed')
             plans = sorted(checkpoint.glob('analysis-attempt-*.txt'))
             analysis_plan = plans[-1] if plans else None
+            if (checkpoint/'analysis.json').is_file():
+                # Resume the accepted charts, not an earlier attempt containing
+                # an explicitly rejected optional figure. Revalidate/render
+                # them normally; no saved asset is silently trusted.
+                from asteria_researcher.agentic.illustrations import Analysis, Chart
+                manifest = json.loads((checkpoint/'analysis.json').read_text())
+                accepted = Analysis.model_validate({
+                    **{key: manifest[key] for key in Analysis.model_fields if key != 'charts'},
+                    'charts': [{key: chart[key] for key in Chart.model_fields} for chart in manifest['charts']]})
+                analysis_plan = runtime.folder/'accepted-analysis-plan.json'
+                analysis_plan.write_text(accepted.model_dump_json())
             state['checkpoint'] = str(checkpoint)
             if resume_draft:
                 checks = [e for e in events if e['tool']=='report_check']
