@@ -226,6 +226,19 @@ def test_analyst_renders_manifest_and_provenance(tmp_path):
     assert [e[0][2] for e in events] == ['started', 'started', 'completed', 'completed']
 
 
+def test_invalid_optional_numeric_chart_does_not_discard_supported_matrix(tmp_path):
+    bad = chart().model_copy(deep=True)
+    bad.id, bad.kind, bad.context = 'unsupported-numbers', 'bar', 'same source'
+    bad.rows[0].value, bad.rows[1].value = 99, 98
+    async def model(system, payload):
+        return json.dumps({'rationale': 'use evidence', 'charts': [chart().model_dump(), bad.model_dump()]})
+    async def emit(*args, **kwargs): pass
+    assets, manifest = asyncio.run(analyze(model, emit, tmp_path, '方法图，数字可选', '', [], EVIDENCE))
+    assert set(assets) == {'figures/method-map.png'}
+    assert 'unsupported-numbers' in manifest['limitations'][0]
+    assert (tmp_path/'rejected-charts.json').exists()
+
+
 @pytest.mark.skipif(not shutil.which('xelatex'), reason='Needs XeLaTeX')
 def test_real_illustrated_chinese_pdf(tmp_path):
     path = tmp_path / 'chart.png'

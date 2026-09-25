@@ -201,14 +201,25 @@ async def analyze(model, event, folder: Path, task: str, synthesis: str, briefs:
                 result = Analysis.model_validate_json(raw)
                 if len({c.id for c in result.charts}) != len(result.charts):
                     raise ValueError('Duplicate chart IDs')
-                issues = []
+                issues, supported_charts, rejected_charts = [], [], []
                 for chart in result.charts:
                     try:
                         validate_chart(chart, evidence)
+                        supported_charts.append(chart)
                     except ValueError as error:
                         issues.append(f'{chart.id}: {error}')
+                        rejected_charts.append({'chart': chart.model_dump(), 'reason': str(error)})
                 if issues:
-                    raise ValueError('\n'.join(issues))
+                    if attempt == 0 or not supported_charts:
+                        raise ValueError('\n'.join(issues))
+                    # A failed optional numeric figure must not discard valid
+                    # qualitative figures. Preserve its diagnostics and tell the
+                    # Writer exactly which evidence could not be visualized.
+                    (folder/'rejected-charts.json').write_text(json.dumps(rejected_charts, ensure_ascii=False, indent=2))
+                    result.charts = supported_charts
+                    result.limitations += ['未交付图表 ' + issue for issue in issues]
+                    await event('data_analyst', 'chart_omitted', 'incomplete',
+                                '保留有证据的图表，未通过校验的图表单独记录', issues=issues)
                 crowded = [{'chart': c.id, 'row': r.label, 'column': c.columns[i], 'text': s}
                            for c in result.charts if c.kind == 'matrix' for r in c.rows
                            for i, s in enumerate(r.cells) if len(s) > 65]
