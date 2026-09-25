@@ -260,6 +260,7 @@ class AutonomousReview:
             self.library.save()
             (self.folder / "run.json").write_text(json.dumps({
                 "task": query, "online_rag": self.online_rag,
+                "capability": self.capability,
                 "skill_options": self.skill_options.model_dump(),
                 "status": status, "status_scope": "research_and_citation_only",
                 "authoritative_task_status": "research_runs.status", "runtime": runtime_identity(),

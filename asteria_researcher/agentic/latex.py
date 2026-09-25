@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+from urllib.parse import urldefrag, urlparse, unquote
 import zipfile
 from uuid import uuid4
 from .pdf_fonts import embed_unicode_maps
@@ -38,7 +39,7 @@ SAFE_MATH_COMMANDS = {
     "alpha", "beta", "gamma", "delta", "epsilon", "eta", "theta", "lambda", "mu", "pi", "sigma", "phi", "psi", "omega",
     "mathrm", "mathbf", "mathit", "mathsf", "operatorname", "text", "frac", "dfrac", "tfrac", "sqrt", "left", "right",
     "sum", "prod", "int", "lim", "log", "exp", "sin", "cos", "tan", "cdot", "times", "pm", "leq", "geq", "neq",
-    "approx", "ell", "infty", "to", "rightarrow", "leftarrow", "mapsto", "top", "mid", "perp", "forall", "exists", "in", "notin", "cup", "cap", "hat", "bar", "overline",
+    "approx", "div", "ldots", "ell", "infty", "to", "rightarrow", "leftarrow", "mapsto", "top", "mid", "perp", "forall", "exists", "in", "notin", "cup", "cap", "hat", "bar", "overline",
 }
 
 
@@ -76,6 +77,17 @@ TEMPLATES = Path(__file__).with_name("templates")
 def format_profiles():
     return json.loads((TEMPLATES / "profiles.json").read_text())
 
+
+def source_reference_label(url: str) -> str:
+    """Readable fallback for model-generated [source]/[link] citation labels."""
+    parsed = urlparse(url)
+    filename = unquote(parsed.path.rsplit('/', 1)[-1])
+    if re.fullmatch(r'[0-9a-f-]{32,}\.pdf', filename, re.I):
+        filename = filename[:8] + '…pdf'
+    year = re.search(r'/(20\d{2})/', parsed.path)
+    parts = [part for part in (year.group(1) if year else '', filename, parsed.hostname or '') if part]
+    return ' · '.join(parts) or parsed.hostname or '原文链接'
+
 def render_tex(markdown: str, profile: str = "academic", *, assets=()) -> str:
     profiles = format_profiles()
     if profile not in profiles:
@@ -85,6 +97,17 @@ def render_tex(markdown: str, profile: str = "academic", *, assets=()) -> str:
         raise ValueError("Template must be a trusted local asset")
     reference_numbers = {}
     reference_labels = {}
+    generic_labels = {'来源', '链接', '原文', 'source', 'link'}
+    def remember_label(url, label):
+        key = urldefrag(url).url
+        current = reference_labels.get(key, '')
+        generic = (label.casefold() in generic_labels or
+                   bool(re.fullmatch(r'(?:第|PDF第)\s*\d+\s*页|p\.?\s*\d+', label, re.I)))
+        if not generic and (
+                not current or current.casefold() in generic_labels or current == source_reference_label(key)):
+            reference_labels[key] = label
+        elif not current:
+            reference_labels[key] = source_reference_label(key)
     # Honor bibliography order even when the body cites sources out of order.
     bibliography = REFERENCE_HEADING_RE.split(markdown, maxsplit=1)
     if len(bibliography) == 2:
@@ -92,9 +115,9 @@ def render_tex(markdown: str, profile: str = "academic", *, assets=()) -> str:
         # numbers from both before visiting body citations in a different order.
         for url in re.findall(r"https?://[^\s<>\[\]()]+", bibliography[1]):
             url = url.rstrip(".,;，。；")
-            reference_numbers.setdefault(url, len(reference_numbers) + 1)
+            reference_numbers.setdefault(urldefrag(url).url, len(reference_numbers) + 1)
         for label, url in re.findall(r"\[([^\]]+)\]\((https?://[^)]+)\)", bibliography[1]):
-            reference_labels.setdefault(url, label)
+            remember_label(url, label)
     in_references = False
     def inline(text, table_cell=False):
         # Writer may wrap a Markdown source link in Chinese citation brackets.
@@ -106,9 +129,10 @@ def render_tex(markdown: str, profile: str = "academic", *, assets=()) -> str:
             parts.append(escape(text[cursor:match.start()], break_words=table_cell))
             if match[5] is not None:
                 url, label = match[6], match[5]
-                number = reference_numbers.setdefault(url, len(reference_numbers) + 1)
-                reference_labels.setdefault(url, label)
-                display = f"[{number}] " + label if in_references else f"[{number}]"
+                key = urldefrag(url).url
+                number = reference_numbers.setdefault(key, len(reference_numbers) + 1)
+                remember_label(url, label)
+                display = f"[{number}] " + reference_labels[key] if in_references else f"[{number}]"
                 parts.append(r"\href{" + escape(url) + "}{" + escape(display) + "}")
             elif match[7] is not None:
                 parts.append(r"\textbf{" + inline(match[7], table_cell) + "}")

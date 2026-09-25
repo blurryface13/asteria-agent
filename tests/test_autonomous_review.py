@@ -401,3 +401,59 @@ def test_writer_repairs_length_and_keeps_audit_drafts(tmp_path):
     assert "three compact paragraphs" not in calls[0][0]
     assert "not a mandatory chapter outline" in calls[0][0]
     assert (runtime.folder / "draft-1.md").exists() and (runtime.folder / "draft-2.md").exists()
+
+
+def test_financial_writer_repairs_inverted_monetary_comparison(tmp_path):
+    source = 'https://s201.q4cdn.com/141608511/files/doc_financials/2026/q4/10K-NVDA.pdf'
+    wrong = f'# 财务分析\n952 亿美元的义务规模远超当期经营活动现金流（102,718 百万美元）。[原件]({source})'
+    corrected = wrong.replace('远超', '低于')
+    calls = []
+
+    async def model(system, payload):
+        if system.startswith('Select exactly ONE content skill'):
+            return json.dumps({'content_skill': 'financial_report', 'format_profile': 'brief',
+                               'reason': 'public filings'})
+        calls.append((system, json.loads(payload)))
+        return wrong if len(calls) == 1 else corrected
+
+    async def emit(*_args):
+        pass
+
+    runtime = AutonomousReview(model, None, emit, None, tmp_path,
+                               online_rag=False, capability='financial_research')
+    runtime.query, runtime.plan = '比较公司义务与现金流', {'perspectives': []}
+    runtime.library.papers[source] = {}
+    runtime.evidence = [{'agent': 'reader', 'query': 'financials',
+                         'passages': [{'source': source, 'page': 1, 'text': 'original'}]}]
+    report = asyncio.run(runtime.write_report('summary'))
+    assert report == corrected and len(calls) == 2
+    assert any('金额比较方向与单位换算不符' in issue for issue in calls[1][1]['validation_issues'])
+    assert (runtime.folder / 'draft-1.md').read_text() == wrong
+    assert (runtime.folder / 'draft-2.md').read_text() == corrected
+
+
+def test_financial_writer_paraphrases_oversized_filing_quote(tmp_path):
+    source = 'https://s201.q4cdn.com/141608511/files/doc_financials/2026/q4/10K-NVDA.pdf'
+    quote = ' '.join(['Risks may harm our business and financial results'] * 5)
+    verbose = f'# 风险\n公司披露：「{quote}」[原件]({source})'
+    concise = f'# 风险\n公司提示相关事项可能损害经营和财务结果。[原件]({source})'
+    drafts = iter([verbose, concise])
+
+    async def model(system, payload):
+        if system.startswith('Select exactly ONE content skill'):
+            return json.dumps({'content_skill': 'financial_report', 'format_profile': 'brief',
+                               'reason': 'public filing'})
+        return next(drafts)
+
+    async def emit(*_args):
+        pass
+
+    runtime = AutonomousReview(model, None, emit, None, tmp_path,
+                               online_rag=False, capability='financial_research')
+    runtime.query, runtime.plan = '简述披露的主要风险', {}
+    runtime.library.papers[source] = {}
+    runtime.evidence = [{'agent': 'reader', 'query': 'risk',
+                         'passages': [{'source': source, 'page': 1, 'text': 'risk excerpt'}]}]
+    assert asyncio.run(runtime.write_report('summary')) == concise
+    assert (runtime.folder / 'draft-1.md').read_text() == verbose
+    assert (runtime.folder / 'draft-2.md').read_text() == concise

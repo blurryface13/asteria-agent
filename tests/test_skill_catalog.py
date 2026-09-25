@@ -84,4 +84,14 @@ def test_financial_writing_excludes_academic_attribution_guidance():
         domain='financial_research'))
     assert selection.skill_ids == ['financial_report']
     assert "comparative column" in prompt
+    assert 'paraphrase disclosures in Chinese' in prompt
+    assert 'operating, investing and financing cash flows as separate measures' in prompt
     assert not any(entry['id'] == 'source_priority' for entry in trace)
+
+
+def test_financial_research_prefers_standalone_filing_over_multi_document_bundle():
+    session = SkillSession('research', domain='financial_research')
+    session.load('finance_assistance')
+    prompt = session.prompt()
+    assert '独立 Form 10-K' in prompt
+    assert '避免从封面逐页扫描' in prompt

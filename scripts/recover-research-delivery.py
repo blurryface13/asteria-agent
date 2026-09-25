@@ -20,7 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 
-def saved_citation_checkpoint(source: Path, destination: Path, read_sources: dict) -> dict:
+def saved_citation_checkpoint(source: Path, destination: Path, read_sources: dict, domain: str) -> dict:
     """Copy an accepted draft and charts; never alter the failed source Run."""
     from asteria_researcher.agentic.citation_agent import factual_lines
     from asteria_researcher.agentic.illustrations import Chart, validate_chart
@@ -36,7 +36,7 @@ def saved_citation_checkpoint(source: Path, destination: Path, read_sources: dic
     attempt = len(history)
     draft_path = source/f'citation-draft-{attempt}.md'
     draft = draft_path.read_text()
-    if not validate_report_draft(draft, read_sources)['ok']:
+    if not validate_report_draft(draft, read_sources, domain=domain)['ok']:
         raise ValueError('Saved citation draft does not pass the read-source contract')
     lines = draft.splitlines()
     body_ids = {line['line_id'] for line in factual_lines(draft)}
@@ -45,7 +45,7 @@ def saved_citation_checkpoint(source: Path, destination: Path, read_sources: dic
     assets, hashes = {}, {}
     for item in manifest['charts']:
         chart = Chart.model_validate({key: item[key] for key in Chart.model_fields})
-        validate_chart(chart, catalog)
+        validate_chart(chart, catalog, domain=domain)
         name = item['path']
         if name != f'figures/{chart.id}.png' or not re.fullmatch(r'figures/[a-z][a-z0-9-]{0,40}\.png', name):
             raise ValueError('Saved chart path is not an accepted figure asset')
@@ -73,7 +73,7 @@ def saved_citation_checkpoint(source: Path, destination: Path, read_sources: dic
             'profile': profile, 'source_draft': draft_path.name, 'figure_sha256': hashes}
 
 
-async def main(source, checkpoint=None, resume_draft=False):
+async def main(source, checkpoint=None, resume_draft=False, capability=None):
     from dotenv import load_dotenv
     load_dotenv(ROOT / '.env')
     load_dotenv(ROOT / '.env.lab', override=True)
@@ -87,9 +87,15 @@ async def main(source, checkpoint=None, resume_draft=False):
     if not source.is_relative_to(ROOT / 'outputs'):
         raise ValueError('Recovery only accepts this repository’s saved research directories')
     read = lambda name: json.loads((source / name).read_text())
-    runtime = AutonomousReview(configured_model(), None, emit, None, ROOT / 'outputs/delivery_recovery', online_rag=False)
+    source_run = read('run.json')
+    recorded_capability = source_run.get('capability')
+    if recorded_capability and capability and capability != recorded_capability:
+        raise ValueError('Recovery capability differs from the saved source Run')
+    capability = recorded_capability or capability or 'literature_review'
+    runtime = AutonomousReview(configured_model(), None, emit, None, ROOT / 'outputs/delivery_recovery',
+                               online_rag=False, capability=capability)
     runtime.folder.mkdir(parents=True, exist_ok=True)
-    runtime.query, runtime.plan = read('run.json')['task'], read('plan.json')
+    runtime.query, runtime.plan = source_run['task'], read('plan.json')
     runtime.user_scope = runtime.query
     runtime.evidence = read('evidence.json')
     runtime.lead_decisions = read('lead-decisions.json')
@@ -108,6 +114,7 @@ async def main(source, checkpoint=None, resume_draft=False):
     runtime.save_working_memory('delivery_recovery')
     (runtime.folder / 'plan.json').write_text(json.dumps(runtime.plan, ensure_ascii=False))
     state = {'source_review': str(source), 'mode': 'saved_evidence_delivery_recovery',
+             'capability': capability,
              'authenticated_end_to_end': False, 'status': 'running', 'pid': os.getpid(), 'started_at': time.time()}
     (runtime.folder / 'recovery.json').write_text(json.dumps(state, ensure_ascii=False))
     print('RECOVERY ' + str(runtime.folder), flush=True)
@@ -120,7 +127,7 @@ async def main(source, checkpoint=None, resume_draft=False):
             if not checkpoint.is_relative_to(ROOT/'outputs/delivery_recovery'):
                 raise ValueError('Checkpoint must be a saved delivery recovery')
             prior = json.loads((checkpoint/'recovery.json').read_text())
-            if prior['source_review'] != str(source):
+            if prior['source_review'] != str(source) or prior.get('capability', 'literature_review') != capability:
                 raise ValueError('Checkpoint belongs to different source research')
             events = [json.loads(line) for line in (checkpoint/'events.jsonl').read_text().splitlines()]
             handoff_events = events
@@ -177,7 +184,7 @@ async def main(source, checkpoint=None, resume_draft=False):
         elif resume_draft:
             if source.parent != ROOT/'outputs' or not source.name.startswith('review_'):
                 raise ValueError('Source-draft recovery requires an original saved review')
-            saved_source_checkpoint = saved_citation_checkpoint(source, runtime.folder, runtime.read_sources())
+            saved_source_checkpoint = saved_citation_checkpoint(source, runtime.folder, runtime.read_sources(), capability)
             saved_draft = saved_source_checkpoint['draft']
             runtime.analysis_manifest = saved_source_checkpoint['manifest']
             runtime.figure_assets = saved_source_checkpoint['assets']
@@ -226,5 +233,7 @@ if __name__ == '__main__':
     parser.add_argument('--checkpoint', type=Path, help='Reuse completed Lead handoff and revalidate saved figure plan')
     parser.add_argument('--resume-draft', action='store_true',
                         help='Resume saved draft at CitationAgent from this failed Run or a recovery checkpoint; no new research/Writer call')
+    parser.add_argument('--capability', choices=['literature_review', 'experiment_design', 'financial_research'],
+                        help='Required for legacy Run files without recorded capability when not literature_review')
     args = parser.parse_args()
-    asyncio.run(main(args.source, args.checkpoint, args.resume_draft))
+    asyncio.run(main(args.source, args.checkpoint, args.resume_draft, args.capability))

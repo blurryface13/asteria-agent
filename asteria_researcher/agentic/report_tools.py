@@ -20,6 +20,7 @@ MONEY_RE = re.compile(
     r'(?P<unit>百万|十亿|亿|万)?\s*(?P<currency>美元|USD)', re.I)
 MONEY_FACTORS_TO_MILLIONS = {'': 1e-6, '万': .01, '百万': 1, '亿': 100, '十亿': 1000}
 COMPARISON_RE = re.compile(r'远超|超过|明显高于|高于|大于|远低于|低于|小于|不及')
+ENGLISH_QUOTE_RE = re.compile(r'[「“"]([^」”"\n]+)[」”"]')
 
 
 def is_reference_heading(title: str) -> bool:
@@ -83,6 +84,16 @@ def financial_magnitude_issues(markdown: str) -> list[str]:
     return issues
 
 
+def financial_quote_issues(markdown: str) -> list[str]:
+    """Keep filing excerpts short enough for a readable Chinese analyst report."""
+    body = REFERENCE_HEADING_RE.split(markdown or '', maxsplit=1)[0]
+    passages = [match.group(1) for match in ENGLISH_QUOTE_RE.finditer(body)]
+    passages.extend(line.lstrip('> ').strip() for line in body.splitlines() if line.lstrip().startswith('> '))
+    if any(len(re.findall(r"[A-Za-z]+(?:['-][A-Za-z]+)*", passage)) > 25 for passage in passages):
+        return ['金融报告英文原文引述过长：改用中文概述，保留原文页码链接；只在措辞关键时引用短语。']
+    return []
+
+
 def validate_report_draft(
     markdown: str,
     allowed_urls: Iterable[str],
@@ -108,6 +119,7 @@ def validate_report_draft(
         issues.append("报告引用了未读取来源")
     if domain == 'financial_research':
         issues.extend(financial_magnitude_issues(markdown))
+        issues.extend(financial_quote_issues(markdown))
     length_issues = []
     if target_chars and length["length_units"] > target_chars * max_length_ratio:
         length_issues.append(f"篇幅超出要求：正文 {length['length_units']} 字/词，目标约 {target_chars}")

@@ -78,6 +78,24 @@ def test_pdf_keeps_emphasis_code_and_numbered_links():
     assert r'\href{https://example.org/b}{[2]}' in reordered
 
 
+def test_pdf_groups_page_anchors_under_one_named_document_reference():
+    base = 'https://example.org/2026/10K-NVDA.pdf'
+    tex = render_tex(f'[来源]({base}) [第51页]({base}#page=51) '
+                     f'[NVIDIA FY2026 10-K]({base}#page=55)')
+    assert r'\href{https://example.org/2026/10K-NVDA.pdf\#page=51}{[1]}' in tex
+    assert r'\href{https://example.org/2026/10K-NVDA.pdf\#page=55}{[1]}' in tex
+    assert tex.count(r'\noindent\href{https://example.org/2026/10K-NVDA.pdf}') == 1
+    assert '[1] NVIDIA FY2026 10-K' in tex
+    fallback = render_tex(f'[来源]({base})')
+    assert '[1] 2026 · 10K-NVDA.pdf · example.org' in fallback
+
+
+def test_financial_growth_formula_keeps_safe_division_and_ellipsis():
+    tex = render_tex(r'收入同比：$215{,}938 \div 130{,}497 - 1 = 0.6547\ldots \approx 65.5\%$')
+    assert r'\div' in tex and r'\ldots' in tex
+    assert r'\textbackslash{}div' not in tex
+
+
 def test_math_symbols_and_long_table_identifiers_remain_readable():
     tex = render_tex('a≈b $\\ell_{cons}$\n\n| 数据 | 来源 |\n|---|---|\n| ScanNet200/ARKitScenes mAP/AP@25/AP@50 | [原文](https://example.org/long/path) |')
     assert r'\ensuremath{\approx}' in tex and r'\ell_{cons}' in tex

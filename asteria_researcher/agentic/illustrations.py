@@ -171,11 +171,52 @@ def validate_chart(chart: Chart, evidence: dict, *, domain=None) -> None:
                 elif not normalized_excerpt(row.label).casefold().startswith(source_label.casefold()):
                     raise ValueError('Financial bar display label must retain the original category; do not translate or substitute geography')
     if chart.kind == 'bar' and len({r.evidence_id for r in chart.rows}) > 1:
-        # Require a single original comparison table instead of trusting an LLM's
-        # claim that results from independent papers share an evaluation protocol.
-        raise ValueError('Numeric comparisons currently require one shared source excerpt/table')
+        # Academic benchmarks need one shared evaluation protocol. Financial
+        # period comparisons may use independently read filings, but only after
+        # the row/column/value checks above and a common unit visible in each
+        # original excerpt (not merely claimed in the analyst's context).
+        million_usd = bool(re.search(r'百万美元|USD.{0,20}million|million.{0,20}USD', chart.context, re.I))
+        billion_usd = bool(re.search(r'十亿美元|亿美元|USD.{0,20}billion|billion.{0,20}USD', chart.context, re.I))
+        source_units_match = (
+            (million_usd and all(re.search(r'\bin millions\b|百万美元', evidence[r.evidence_id]['text'], re.I)
+                                 for r in chart.rows))
+            or (billion_usd and all(re.search(r'\bin billions\b|十亿美元|亿美元', evidence[r.evidence_id]['text'], re.I)
+                                    for r in chart.rows))
+        )
+        financial_periods = (domain == 'financial_research'
+                             and len({normalized_excerpt(r.source_label).casefold() for r in chart.rows}) == 1
+                             and all(r.source_column for r in chart.rows)
+                             and len({re.search(r'20\d{2}', r.source_column).group()
+                                      for r in chart.rows if re.search(r'20\d{2}', r.source_column)}) == len(chart.rows)
+                             and source_units_match)
+        if not financial_periods:
+            raise ValueError('Numeric comparisons currently require one shared source excerpt/table')
     if chart.kind == 'bar' and len({r.metric.strip().lower() for r in chart.rows}) > 1:
         raise ValueError('Use separate charts for different metrics, even within the same paper/table')
+
+
+def split_financial_metric_chart(chart: Chart) -> list[Chart]:
+    """Present distinct financial measures separately without changing their evidence."""
+    if chart.kind != 'bar':
+        return [chart]
+    groups: dict[str, list[Datum]] = {}
+    for row in chart.rows:
+        groups.setdefault(row.metric.strip().casefold(), []).append(row)
+    if len(groups) < 2:
+        return [chart]
+    parts = []
+    for index, rows in enumerate(groups.values(), 1):
+        if len(rows) < 2:
+            return [chart]  # Leave singleton metrics for ordinary validation/rejection.
+        suffix = f'-m{index}'
+        metric = rows[0].metric.strip() or rows[0].source_label
+        parts.append(chart.model_copy(update={
+            'id': chart.id[:41 - len(suffix)] + suffix,
+            'title': metric[:120],
+            'caption': f'本图仅显示 {metric}；{chart.caption}'[:1200],
+            'rows': rows,
+        }))
+    return parts
 
 
 def paginate_matrix(chart: Chart, *, rows_per_page: int = 3) -> list[Chart]:
@@ -313,6 +354,12 @@ async def analyze(model, event, folder: Path, task: str, synthesis: str, briefs:
                 result = Analysis.model_validate_json(raw)
                 if len({c.id for c in result.charts}) != len(result.charts):
                     raise ValueError('Duplicate chart IDs')
+                if domain == 'financial_research':
+                    result.charts = [part for chart in result.charts for part in split_financial_metric_chart(chart)]
+                    if len({c.id for c in result.charts}) != len(result.charts):
+                        raise ValueError('Split chart IDs collide')
+                    if len(result.charts) > 4:
+                        raise ValueError('Financial metric splitting exceeds the four-chart limit')
                 issues, supported_charts, rejected_charts, rejected_rows = [], [], [], []
                 for chart in result.charts:
                     try:
@@ -377,7 +424,9 @@ async def analyze(model, event, folder: Path, task: str, synthesis: str, briefs:
                 payload['repair_instruction'] = 'Correct only the reported issue in the previous plan; preserve valid rows and exact source excerpts.'
         # A many-row matrix becomes unreadable when LaTeX scales one tall PNG
         # to the page height. Split only after checking each row's evidence.
-        result.charts = [part for chart in result.charts for part in paginate_matrix(chart)]
+        result.charts = [part for chart in result.charts for part in paginate_matrix(
+            chart, rows_per_page=2 if domain == 'financial_research' and
+            chart.kind == 'matrix' and len(chart.rows) == 4 else 3)]
         if len({chart.id for chart in result.charts}) != len(result.charts):
             raise ValueError('Paginated chart IDs collide')
         # Rendering text is separate from the original data. Source quotes and

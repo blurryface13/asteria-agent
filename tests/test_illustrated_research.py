@@ -6,7 +6,7 @@ import shutil
 import pytest
 
 from asteria_researcher.agentic.anthropic_roles import role_guidance, ROOT
-from asteria_researcher.agentic.illustrations import Chart, analyze, paginate_matrix, render_chart, validate_chart
+from asteria_researcher.agentic.illustrations import Chart, analyze, paginate_matrix, render_chart, split_financial_metric_chart, validate_chart
 from asteria_researcher.agentic.latex import publish, render_tex
 from asteria_researcher.agentic.skill_catalog import SkillSession
 from asteria_researcher.agentic.tool_hooks import ToolHooks
@@ -240,6 +240,52 @@ def test_financial_period_bars_match_fiscal_year_header_to_value_position():
         validate_chart(missing_column, evidence, domain='financial_research')
 
 
+def test_financial_bars_split_metrics_then_compare_independent_filing_rows():
+    evidence = {
+        'fy26': {'source': 'https://example.org/fy26-10k.pdf', 'text':
+                 'NVIDIA Consolidated Statements (In millions) Year Ended Jan 25, 2026 Jan 26, 2025 '
+                 'Revenue 215,938 130,497 Net cash provided by operating activities 102,718 64,089'},
+        'fy25': {'source': 'https://example.org/fy25-10k.pdf', 'text':
+                 'NVIDIA Consolidated Statements (In millions) Year Ended Jan 26, 2025 Jan 28, 2024 '
+                 'Revenue 130,497 60,922 Net cash provided by operating activities 64,089 28,090'},
+    }
+    bars = Chart(id='income-and-cash', kind='bar', title='NVIDIA Revenue and cash flow',
+                 caption='Independent annual filings', context='NVIDIA, USD millions, consolidated statements', rows=[
+                     {'label': 'Revenue FY2025', 'source_label': 'Revenue', 'source_column': 'FY2025',
+                      'value': 130497, 'metric': 'Revenue (USD millions)', 'evidence_id': 'fy25',
+                      'quote': 'Revenue 130,497 60,922'},
+                     {'label': 'Revenue FY2026', 'source_label': 'Revenue', 'source_column': 'FY2026',
+                      'value': 215938, 'metric': 'Revenue (USD millions)', 'evidence_id': 'fy26',
+                      'quote': 'Revenue 215,938 130,497'},
+                     {'label': 'Net cash provided by operating activities FY2025',
+                      'source_label': 'Net cash provided by operating activities', 'source_column': 'FY2025',
+                      'value': 64089, 'metric': 'Net cash provided by operating activities (USD millions)',
+                      'evidence_id': 'fy25', 'quote': 'Net cash provided by operating activities 64,089 28,090'},
+                     {'label': 'Net cash provided by operating activities FY2026',
+                      'source_label': 'Net cash provided by operating activities', 'source_column': 'FY2026',
+                      'value': 102718, 'metric': 'Net cash provided by operating activities (USD millions)',
+                      'evidence_id': 'fy26', 'quote': 'Net cash provided by operating activities 102,718 64,089'},
+                 ])
+    parts = split_financial_metric_chart(bars)
+    assert [part.id for part in parts] == ['income-and-cash-m1', 'income-and-cash-m2']
+    for part in parts:
+        validate_chart(part, evidence, domain='financial_research')
+        with pytest.raises(ValueError, match='one shared source'):
+            validate_chart(part, evidence)
+    swapped = parts[0].model_copy(deep=True)
+    swapped.rows[0].value = 60922
+    with pytest.raises(ValueError, match='fiscal-year column'):
+        validate_chart(swapped, evidence, domain='financial_research')
+    no_unit = {**evidence, 'fy25': {**evidence['fy25'],
+               'text': evidence['fy25']['text'].replace('(In millions)', '')}}
+    with pytest.raises(ValueError, match='one shared source'):
+        validate_chart(parts[0], no_unit, domain='financial_research')
+    same_year = parts[0].model_copy(deep=True)
+    same_year.rows[0] = same_year.rows[1].model_copy(update={'evidence_id': 'fy26-copy'})
+    with pytest.raises(ValueError, match='one shared source'):
+        validate_chart(same_year, {**evidence, 'fy26-copy': evidence['fy26']}, domain='financial_research')
+
+
 def test_renderer_rejects_unregistered_and_escaping_images():
     with pytest.raises(ValueError):
         render_tex('![image](../../private.png)', assets=['../../private.png'])
@@ -326,6 +372,8 @@ def test_long_verified_matrix_is_paginated_without_dropping_rows():
                                            'method-taxonomy-matrix-p3', 'method-taxonomy-matrix-p4']
     assert [row.label for part in parts for row in part.rows] == [row.label for row in original.rows]
     assert len({part.id for part in parts}) == len(parts)
+    compact = original.model_copy(update={'rows': original.rows[:4]})
+    assert [len(part.rows) for part in paginate_matrix(compact, rows_per_page=2)] == [2, 2]
 
 
 @pytest.mark.skipif(not shutil.which('xelatex'), reason='Needs XeLaTeX')

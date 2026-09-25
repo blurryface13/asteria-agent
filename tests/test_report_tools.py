@@ -46,3 +46,13 @@ def test_financial_magnitude_guard_rejects_inverted_mixed_units():
     assert validate_report_draft(right, [source], domain='financial_research')['ok']
     ambiguous = f'# 财务分析\n另有 10 亿美元的存货，952 亿美元的义务规模高于 8,000 百万美元。[来源]({source})'
     assert validate_report_draft(ambiguous, [source], domain='financial_research')['ok']
+
+
+def test_financial_report_rewrites_long_english_filing_quote():
+    source = 'https://example.org/filing.pdf'
+    quote = ' '.join(['These risks may affect reported revenue and operating cash flow'] * 5)
+    long_report = f'公司风险披露：「{quote}」[原件]({source})'
+    issues = validate_report_draft(long_report, [source], domain='financial_research')['issues']
+    assert any('英文原文引述过长' in issue for issue in issues)
+    brief = f'公司提示收入与现金流可能受相关风险影响。[原件]({source})'
+    assert validate_report_draft(brief, [source], domain='financial_research')['ok']
