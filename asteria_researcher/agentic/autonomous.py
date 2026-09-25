@@ -1312,10 +1312,18 @@ class AutonomousReview:
                 record = {"agent": "writer", "query": goal["description"], "passages": json.loads(passages)}
                 evidence.append(record)
                 self.evidence.append(record)
+        from .evidence_view import choose_writer_evidence
+        writer_evidence, evidence_mode, original_chars, sent_chars = choose_writer_evidence(
+            evidence, enabled=os.getenv('ASTERIA_WRITER_EVIDENCE_DEDUP', '0') == '1')
+        await self.event('writer', 'evidence_view', 'completed', '统计 Writer 输入证据',
+                         mode=evidence_mode,
+                         original_passages=sum(len(group['passages']) for group in evidence),
+                         sent_passages=sum(len(group['passages']) for group in writer_evidence),
+                         original_chars=original_chars, sent_chars=sent_chars)
         from .illustrations import writer_chart_brief
         payload = {"task": self.query, "today": str(date.today()), "plan": self.plan, "synthesis": synthesis,
                    "data_analyst": writer_chart_brief(self.analysis_manifest),
-                   "subagent_results": writing_briefs(self.briefs), "evidence": evidence,
+                   "subagent_results": writing_briefs(self.briefs), "evidence": writer_evidence,
                    "read_sources": list(self.read_sources()),
                    "source_types": {**{key: source_type(key) for key in self.library.papers},
                                     **{key: "lab_knowledge" for key in self.knowledge_sources}},
@@ -1441,7 +1449,7 @@ class AutonomousReview:
                                      "length_edit": {"current_body_units": actual_chars, "target_body_units": target_chars,
                                         "suggested_cut_units": max(0, actual_chars - int(target_chars * .95))} if target_chars and length_issues else None,
                                      "validation_issues": validation["issues"],
-                                     "read_sources": sorted(allowed_report_sources), "evidence": evidence})
+                                     "read_sources": sorted(allowed_report_sources), "evidence": writer_evidence})
         image_paths = re.findall(r'!\[[^\]]*\]\(([^)]+)\)', report)
         if set(image_paths) - self.figure_assets.keys():
             raise ValueError('报告包含未注册的图表路径')

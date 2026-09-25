@@ -6,6 +6,7 @@ offline report-stage verification, not a new authenticated end-to-end Run.
 import argparse
 import asyncio
 import json
+import os
 from pathlib import Path
 import sys
 
@@ -13,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 
-async def main(source, draft=None):
+async def main(source, draft=None, *, writer_evidence_dedup=False, max_model_calls=20):
     from dotenv import load_dotenv
     load_dotenv(ROOT / '.env')
     load_dotenv(ROOT / '.env.lab', override=True)
@@ -23,6 +24,8 @@ async def main(source, draft=None):
     from asteria_researcher.agentic.sufficiency import evidence_catalog
     from asteria_researcher.agentic.latex import publish
     from asteria_researcher.agentic.report_tools import report_length
+    from asteria_researcher.utils.usage_context import usage_sink, track_usage_stage
+    from scripts.report_token_usage import summarize
 
     async def emit(*args):
         pass
@@ -31,7 +34,15 @@ async def main(source, draft=None):
                               or (source / draft).suffix != '.md'
                               or not (source / draft).resolve().is_relative_to(source)):
         raise ValueError('Draft must name an existing Markdown file inside the source review')
-    runtime = AutonomousReview(configured_model(), None, emit, None,
+    configured = configured_model()
+    calls = 0
+    async def bounded_model(system, payload):
+        nonlocal calls
+        if calls >= max_model_calls:
+            raise RuntimeError('Report replay model-call cap reached')
+        calls += 1
+        return await configured(system, payload)
+    runtime = AutonomousReview(bounded_model, None, emit, None,
                                ROOT/'outputs'/'report_replay', online_rag=False)
     runtime.folder.mkdir(parents=True, exist_ok=True)
     read = lambda name: json.loads((source/name).read_text())
@@ -59,29 +70,56 @@ async def main(source, draft=None):
             runtime.figure_assets[name] = path
     synthesis = next(d['summary'] for d in reversed(runtime.lead_decisions) if d['tool'] == 'finish')
     print('Replay output: '+str(runtime.folder), flush=True)
-    if draft is None:
-        report = await runtime.write_report(synthesis)
-    else:
-        report = (source / draft).read_text()
-        runtime.format_profile = read('writing.json')['format_profile']
-    (runtime.folder / 'replay-input.json').write_text(json.dumps({
-        'source_review': str(source), 'source_draft': draft,
-        'mode': 'citation_stage_replay' if draft else 'report_stage_replay',
-        'authenticated_end_to_end': False}, ensure_ascii=False, indent=2))
-    citation = CitationAgent(runtime.llm, runtime.event, runtime.folder)
-    report = await citation.attach_with_repair(report, evidence_catalog(runtime.evidence, runtime.read_sources()), runtime.read_sources())
-    (runtime.folder/'report-with-citations.md').write_text(report)
-    paths = await publish(report, runtime.folder, profile=runtime.format_profile, assets=runtime.figure_assets)
-    result = {'source_review':str(source),'source_draft':draft,
-              'mode':'citation_stage_replay' if draft else 'report_stage_replay','paths':paths,
-              'model_calls':runtime.model_calls,**report_length(report)}
-    (runtime.folder/'replay.json').write_text(json.dumps(result,ensure_ascii=False,indent=2))
-    print(json.dumps(result,ensure_ascii=False,indent=2))
+    previous_mode = os.environ.get('ASTERIA_WRITER_EVIDENCE_DEDUP')
+    os.environ['ASTERIA_WRITER_EVIDENCE_DEDUP'] = '1' if writer_evidence_dedup else '0'
+    usage_events = []
+    async def capture_usage(event):
+        usage_events.append({key: event.get(key) for key in
+                             ('type', 'model', 'provider', 'attempt', 'stage', 'usage', 'available', 'latency_ms')})
+    usage_token = usage_sink.set(capture_usage)
+    try:
+        if draft is None:
+            with track_usage_stage('writer'):
+                report = await runtime.write_report(synthesis)
+        else:
+            report = (source / draft).read_text()
+            runtime.format_profile = read('writing.json')['format_profile']
+        (runtime.folder / 'replay-input.json').write_text(json.dumps({
+            'source_review': str(source), 'source_draft': draft,
+            'mode': 'citation_stage_replay' if draft else 'report_stage_replay',
+            'writer_evidence_dedup': writer_evidence_dedup,
+            'max_model_calls': max_model_calls,
+            'authenticated_end_to_end': False}, ensure_ascii=False, indent=2))
+        citation = CitationAgent(runtime.llm, runtime.event, runtime.folder)
+        with track_usage_stage('citation_agent'):
+            report = await citation.attach_with_repair(
+                report, evidence_catalog(runtime.evidence, runtime.read_sources()), runtime.read_sources())
+        (runtime.folder/'report-with-citations.md').write_text(report)
+        paths = await publish(report, runtime.folder, profile=runtime.format_profile, assets=runtime.figure_assets)
+        result = {'source_review':str(source),'source_draft':draft,
+                  'mode':'citation_stage_replay' if draft else 'report_stage_replay','paths':paths,
+                  'writer_evidence_dedup': writer_evidence_dedup,
+                  'model_calls':runtime.model_calls,**report_length(report)}
+        (runtime.folder/'replay.json').write_text(json.dumps(result,ensure_ascii=False,indent=2))
+        print(json.dumps(result,ensure_ascii=False,indent=2))
+    finally:
+        usage_sink.reset(usage_token)
+        if previous_mode is None:
+            os.environ.pop('ASTERIA_WRITER_EVIDENCE_DEDUP', None)
+        else:
+            os.environ['ASTERIA_WRITER_EVIDENCE_DEDUP'] = previous_mode
+        (runtime.folder/'usage.jsonl').write_text(''.join(json.dumps(event, ensure_ascii=False) + '\n'
+                                                  for event in usage_events))
+        (runtime.folder/'usage-summary.json').write_text(json.dumps(summarize(usage_events), ensure_ascii=False, indent=2))
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('source',type=Path)
     parser.add_argument('--draft', help='Replay only citation/publication from this saved Markdown filename')
+    parser.add_argument('--writer-evidence-dedup', action='store_true',
+                        help='Replay Writer with exact evidence de-duplication (default: baseline)')
+    parser.add_argument('--max-model-calls', type=int, default=20)
     args = parser.parse_args()
-    asyncio.run(main(args.source, args.draft))
+    asyncio.run(main(args.source, args.draft, writer_evidence_dedup=args.writer_evidence_dedup,
+                     max_model_calls=args.max_model_calls))
