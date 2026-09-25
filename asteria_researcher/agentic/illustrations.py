@@ -94,6 +94,22 @@ def writer_chart_brief(manifest: dict) -> dict:
                        'from the absence of one in this reading sample. Omitted charts were not delivered.'}
 
 
+def citation_chart_brief(manifest: dict) -> dict:
+    """Only the rendered cells needed to check prose/figure consistency.
+
+    Evidence excerpts remain in CitationAgent's separately verified catalog;
+    repeating analyst drafts and source quotes in every citation batch would
+    inflate context and risk treating a chart as original evidence.
+    """
+    return {'charts': [{
+        'id': chart['id'],
+        'title': chart['title'],
+        'columns': chart.get('columns', []),
+        'row_labels': [row['label'] for row in chart.get('rows', [])],
+        'display_cells': chart.get('display_cells', []),
+    } for chart in manifest.get('charts', [])]}
+
+
 def validate_chart(chart: Chart, evidence: dict) -> None:
     if chart.kind == 'matrix' and not chart.columns:
         raise ValueError('Matrix needs column labels')

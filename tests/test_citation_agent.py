@@ -193,6 +193,44 @@ def test_citation_agent_places_source_at_checked_line(tmp_path):
     assert json.loads((tmp_path / "citation-review.json").read_text())["status"] == "completed"
 
 
+def test_citation_and_targeted_repair_receive_actual_figure_context(tmp_path):
+    figures = {'charts': [{'display_cells': [['GALA', '渲染特征图 + 码本']],
+                           'id': 'methods'}]}
+    source = 'https://arxiv.org/abs/2508.14278'
+    catalog = {'e_1': {'source': source, 'page': 4,
+                       'text': 'GALA renders a language feature map with codebook attention.'}}
+    report = '# 方法综述\n\n图中的码本方法都直接查询三维结构，因此它们完全不需要渲染特征图。\n'
+    reviewed = False
+    async def model(system, payload):
+        nonlocal reviewed
+        assert payload['figures'] == figures
+        if 'Repair ONLY' in system:
+            assert 'repair the prose to match' in system
+            reviewed = True
+            return json.dumps({'replacements': [{'line_id': 2,
+                'text': '图中的 GALA 仍通过渲染特征图与码本查询，不能把所有码本方法归为直接三维查询。'}]})
+        assert 'cross-check, not independent proof' in payload['instruction']
+        return json.dumps({'findings': [{'line_id': 2, 'supported': reviewed,
+            'evidence_ids': ['e_1'] if reviewed else [],
+            'reason': 'The displayed GALA cell contradicts the all-direct-query summary'}]})
+    result = asyncio.run(CitationAgent(model, emit, tmp_path, figures=figures).attach_with_repair(report, catalog, {source: {}}))
+    assert reviewed and '不能把所有码本方法归为直接三维查询' in result and source in result
+
+
+def test_citation_figure_handoff_excludes_analyst_drafts_and_quotes():
+    from asteria_researcher.agentic.illustrations import citation_chart_brief
+    manifest = {'rationale': 'stale plan', 'charts': [{
+        'id': 'methods', 'title': '方法对照', 'columns': ['查询接口'],
+        'rows': [{'label': 'GALA', 'quote': 'source excerpt', 'cells': ['outdated cell']}],
+        'display_cells': [['渲染特征图 + 码本']], 'caption': 'stale caption',
+    }]}
+    brief = citation_chart_brief(manifest)
+    assert brief['charts'][0] == {
+        'id': 'methods', 'title': '方法对照', 'columns': ['查询接口'],
+        'row_labels': ['GALA'], 'display_cells': [['渲染特征图 + 码本']]}
+    assert 'source excerpt' not in json.dumps(brief)
+
+
 def test_checked_public_citation_replaces_internal_evidence_marker(tmp_path):
     report = REPORT.rstrip() + '〔KB:e_3621e7d33dcb2c02〕\n'
     async def model(system, payload):

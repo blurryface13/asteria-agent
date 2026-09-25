@@ -528,7 +528,9 @@ class AutonomousReview:
         if saved_draft is not None and not validate_report_draft(saved_draft, self.read_sources())['ok']:
             raise ValueError('续跑草稿必须先通过已读来源校验')
         from .citation_agent import CitationAgent
-        citation_agent = CitationAgent(self.llm, self.event, self.folder)
+        from .illustrations import citation_chart_brief
+        citation_agent = CitationAgent(self.llm, self.event, self.folder,
+                                       figures=citation_chart_brief(self.analysis_manifest))
         report = await citation_agent.attach_with_repair(draft, evidence_catalog(self.evidence, self.read_sources()),
                                              self.read_sources())
         final_check = validate_report_draft(report, self.read_sources())
