@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 from typing import Any
 import asyncio
 
@@ -123,13 +124,15 @@ async def create_chat_completion(
     max_attempts = 1 if (stream and websocket is not None) else retry_attempts
     last_exception: Exception | None = None
     for attempt in range(1, max_attempts + 1):
+        started = time.monotonic()
         try:
             response = await provider.get_chat_response(
                 messages, stream, websocket, **kwargs
             )
         except Exception as exc:
             from .usage_context import record_usage
-            await record_usage(model, llm_provider, attempt, None, type(exc).__name__)
+            await record_usage(model, llm_provider, attempt, None, type(exc).__name__,
+                               latency_ms=round((time.monotonic() - started) * 1000))
             last_exception = exc
             logging.getLogger(__name__).warning(
                 f"LLM request failed (attempt {attempt}/{max_attempts}): {exc}"
@@ -142,7 +145,8 @@ async def create_chat_completion(
             break
 
         from .usage_context import record_usage
-        await record_usage(model, llm_provider, attempt, getattr(provider, 'last_usage_metadata', None))
+        await record_usage(model, llm_provider, attempt, getattr(provider, 'last_usage_metadata', None),
+                           latency_ms=round((time.monotonic() - started) * 1000))
         if not response:
             last_exception = RuntimeError("Empty response from LLM provider")
             logging.getLogger(__name__).warning(

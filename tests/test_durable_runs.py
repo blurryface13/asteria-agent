@@ -159,15 +159,23 @@ def test_usage_context_parallel():
 
 
 async def usage_context_parallel():
-    from asteria_researcher.utils.usage_context import usage_sink, record_usage
+    from asteria_researcher.utils.usage_context import usage_sink, record_usage, track_usage_stage
     events = []
     async def collect(value):
         events.append(value)
     token = usage_sink.set(collect)
     try:
-        await asyncio.gather(*[record_usage('test','test',1,{'input_tokens':i}) for i in (1,2,3)])
+        async def report(stage, amount):
+            with track_usage_stage(stage):
+                await asyncio.sleep(0)
+                await record_usage('test','test',1,{'input_tokens':amount,
+                    'input_token_details':{'cache_read':amount // 2}})
+        await asyncio.gather(report('research_lead', 2), report('research_subagent', 4),
+                             report('citation_agent', 6))
     finally:
         usage_sink.reset(token)
     assert len(events) == 3
+    assert {event['stage'] for event in events} == {'research_lead', 'research_subagent', 'citation_agent'}
+    assert sum(event['usage']['input_token_details']['cache_read'] for event in events) == 6
     await record_usage('test','test',1,None)
     assert len(events) == 3

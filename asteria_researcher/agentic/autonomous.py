@@ -23,6 +23,7 @@ from .coding_contract import passages
 from .base_agent import BaseAgent, AgentFinish, AgentStop
 from .anthropic_roles import role_guidance
 from .tool_hooks import ToolHooks
+from asteria_researcher.utils.usage_context import track_usage_stage, usage_stage
 from .collaboration import (Assignment, allocation_report, run_parallel, ArtifactReview, LEAD, RESEARCHER)
 from .sufficiency import (ASSESSOR_PROMPT, ASSESSOR_REVIEW_PROMPT, ReviewPlan, SufficiencyReport, evidence_catalog,
                           process_checks, validate_contract, validate_report, ScopePartition, partition_contract)
@@ -234,7 +235,8 @@ class AutonomousReview:
         serialized = json.dumps(payload, ensure_ascii=False)
         self.input_chars += len(system) + len(serialized)
         async with self.model_slots:
-            output = await self.model(system, serialized)
+            with track_usage_stage(usage_stage.get() or "research_lead"):
+                output = await self.model(system, serialized)
             self.output_chars += len(output)
             return output
 
@@ -525,18 +527,21 @@ class AutonomousReview:
         elif re.search(r'图表|带图|配图|可视化|示意图|chart|figure|visuali', self.query, re.I):
             from .illustrations import analyze
             from .citation_agent import visible_evidence
-            self.figure_assets, self.analysis_manifest = await analyze(
-                self.llm, self.event, self.folder, self.query, synthesis, writing_briefs(self.briefs),
-                visible_evidence(evidence_catalog(self.evidence, self.read_sources())), cached_plan=analysis_plan)
-        draft = saved_draft if saved_draft is not None else await self.write_report(synthesis)
+            with track_usage_stage("data_analyst"):
+                self.figure_assets, self.analysis_manifest = await analyze(
+                    self.llm, self.event, self.folder, self.query, synthesis, writing_briefs(self.briefs),
+                    visible_evidence(evidence_catalog(self.evidence, self.read_sources())), cached_plan=analysis_plan)
+        with track_usage_stage("writer"):
+            draft = saved_draft if saved_draft is not None else await self.write_report(synthesis)
         if saved_draft is not None and not validate_report_draft(saved_draft, self.read_sources())['ok']:
             raise ValueError('续跑草稿必须先通过已读来源校验')
         from .citation_agent import CitationAgent
         from .illustrations import citation_chart_brief
         citation_agent = CitationAgent(self.llm, self.event, self.folder,
                                        figures=citation_chart_brief(self.analysis_manifest))
-        report = await citation_agent.attach_with_repair(draft, evidence_catalog(self.evidence, self.read_sources()),
-                                             self.read_sources(), initial_verified=citation_verified)
+        with track_usage_stage("citation_agent"):
+            report = await citation_agent.attach_with_repair(draft, evidence_catalog(self.evidence, self.read_sources()),
+                                                 self.read_sources(), initial_verified=citation_verified)
         final_check = validate_report_draft(report, self.read_sources())
         if not final_check["ok"]:
             raise ValueError("引文修稿后的交付校验失败：" + "；".join(final_check["issues"]))
@@ -765,11 +770,12 @@ class AutonomousReview:
                     self.actions += 1
                     return True
                 role_tools = {**self.coding_tools, **build_paper_tools(self, coding_agent)}
-                result = await run_coding(assignment, self.llm, role_tools, help_research, self.event,
-                                          consume_action=consume,
-                                          agent_id=coding_agent,
-                                          context={"scope": self.query, "goals": goals,
-                                                   **getattr(self, "collaboration_context", {})})
+                with track_usage_stage("coding_subagent"):
+                    result = await run_coding(assignment, self.llm, role_tools, help_research, self.event,
+                                              consume_action=consume,
+                                              agent_id=coding_agent,
+                                              context={"scope": self.query, "goals": goals,
+                                                       **getattr(self, "collaboration_context", {})})
                 self.coding_results.append(result)
                 (self.folder / "coding-results.json").write_text(json.dumps(self.coding_results, ensure_ascii=False, indent=2))
                 return result
@@ -1238,9 +1244,10 @@ class AutonomousReview:
             return (set(profile.tool_scope) - (set() if self.online_rag else {'retrieve'})
                     - (set() if self.public_search else {'search_public'})
                     - (set() if self.knowledge_search else {'search_knowledge'}))
-        completed = await BaseAgent(profile, max_turns=steps).run(
-            decide=decide, parse=Action.model_validate_json, execute=execute_action,
-            observe_error=observe_error, available=available)
+        with track_usage_stage("research_lead" if lead else "research_subagent"):
+            completed = await BaseAgent(profile, max_turns=steps).run(
+                decide=decide, parse=Action.model_validate_json, execute=execute_action,
+                observe_error=observe_error, available=available)
         if completed is not None:
             return completed
         result = {"status": "incomplete", "agent": agent, "summary": "行动预算耗尽，需主 Agent 处理未完成研究目标",

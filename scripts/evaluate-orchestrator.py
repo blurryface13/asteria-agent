@@ -48,7 +48,7 @@ async def main():
     model.intent_embeddings = actual.intent_embeddings
     model.routing_identity = actual.routing_identity
     async def capture(event):
-        usage.append({k:event.get(k) for k in ('model','provider','usage','available')})
+        usage.append({k:event.get(k) for k in ('model','provider','stage','usage','available','latency_ms')})
     async def frozen_search(query):
         search_calls.append(query)
         await asyncio.sleep(.02)

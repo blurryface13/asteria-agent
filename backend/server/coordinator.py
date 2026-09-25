@@ -146,7 +146,7 @@ async def execute_turn(body, email):
     async def record(event):
         if event.get('type') != 'usage':
             return
-        event = {k: event.get(k) for k in ('type','model','provider','attempt','usage','available')}
+        event = {k: event.get(k) for k in ('type','model','provider','attempt','stage','usage','available','latency_ms')}
         async with pool.acquire() as c:
             await c.execute('''UPDATE coordinator_turns SET usage=usage || $3::jsonb
                 WHERE conversation_id=$1 AND request_id=$2''', body.conversation_id, body.request_id, [event])
