@@ -516,9 +516,13 @@ class AutonomousReview:
             raise RuntimeError('研究尚未达到交付条件：' + decision.reason)
         return result['summary'] + '\n\n必须保留的研究限制：\n' + '\n'.join(decision.limitations + result.get('gaps', []))
 
-    async def deliver(self, synthesis, *, analysis_plan=None, saved_draft=None):
+    async def deliver(self, synthesis, *, analysis_plan=None, saved_draft=None,
+                      saved_figures=False, citation_verified=None):
         """Shared live/recovery delivery path, independent from more discovery."""
-        if re.search(r'图表|带图|配图|可视化|示意图|chart|figure|visuali', self.query, re.I):
+        if saved_figures:
+            if saved_draft is None or not self.analysis_manifest or not self.figure_assets:
+                raise ValueError('图表续跑需要已验证草稿和已保存图表')
+        elif re.search(r'图表|带图|配图|可视化|示意图|chart|figure|visuali', self.query, re.I):
             from .illustrations import analyze
             from .citation_agent import visible_evidence
             self.figure_assets, self.analysis_manifest = await analyze(
@@ -532,7 +536,7 @@ class AutonomousReview:
         citation_agent = CitationAgent(self.llm, self.event, self.folder,
                                        figures=citation_chart_brief(self.analysis_manifest))
         report = await citation_agent.attach_with_repair(draft, evidence_catalog(self.evidence, self.read_sources()),
-                                             self.read_sources())
+                                             self.read_sources(), initial_verified=citation_verified)
         final_check = validate_report_draft(report, self.read_sources())
         if not final_check["ok"]:
             raise ValueError("引文修稿后的交付校验失败：" + "；".join(final_check["issues"]))

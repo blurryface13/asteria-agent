@@ -87,6 +87,15 @@ def test_math_symbols_and_long_table_identifiers_remain_readable():
     assert r'\(\eta=0.9\)' in render_tex(r'$\eta=0.9$')
 
 
+def test_pdf_uses_breakable_tables_and_single_numbered_citation_brackets():
+    tex = render_tex('正文〔[论文](https://example.org/paper)〕\n\n| 第一列 | 第二列 |\n|---|---|\n| 内容 | 数据 |')
+    assert r'\usepackage{amsmath,hyperref,xcolor,ltablex,booktabs}' in tex
+    assert r'\keepXColumns' in tex
+    assert r'\begin{tabularx}' in tex
+    assert r'〔\href' not in tex
+    assert r'\href{https://example.org/paper}{[1]}' in tex
+
+
 def test_escaped_math_literals_do_not_become_tex_comments():
     from asteria_researcher.agentic.latex import sanitize_math
     assert sanitize_math(r's_0=15\%') == r's_0=15\%'

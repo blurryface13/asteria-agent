@@ -114,6 +114,24 @@ def test_repair_rechecks_only_changed_lines(tmp_path):
     assert judged == [[2, 4], [4]] and SOURCE in result
 
 
+def test_saved_citation_judgment_reused_only_for_unchanged_line(tmp_path):
+    calls = []
+    async def model(_system, payload):
+        calls.append([row['line_id'] for row in payload['report_lines']])
+        return json.dumps({'findings': [{'line_id': row['line_id'], 'supported': True,
+            'kind': 'factual', 'evidence_ids': ['e_1'], 'reason': 'Original text supports this line'}
+            for row in payload['report_lines']]})
+    saved = {'line_id': 2, 'supported': True, 'kind': 'factual',
+             'evidence_ids': ['e_1'], 'reason': 'Previously checked against original text'}
+    same = asyncio.run(CitationAgent(model, emit, tmp_path).attach_with_repair(
+        REPORT, CATALOG, {SOURCE: {}}, initial_verified={2: (REPORT.splitlines()[2], saved)}))
+    assert SOURCE in same and calls == []
+    changed = REPORT.replace('模型结构', '模型结构及训练细节')
+    asyncio.run(CitationAgent(model, emit, tmp_path).attach_with_repair(
+        changed, CATALOG, {SOURCE: {}}, initial_verified={2: (REPORT.splitlines()[2], saved)}))
+    assert calls == [[2]]
+
+
 def test_bad_evidence_id_gets_one_contract_correction(tmp_path):
     calls = []
     async def model(_system, payload):

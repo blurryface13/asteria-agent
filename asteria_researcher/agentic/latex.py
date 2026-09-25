@@ -97,6 +97,9 @@ def render_tex(markdown: str, profile: str = "academic", *, assets=()) -> str:
             reference_labels.setdefault(url, label)
     in_references = False
     def inline(text, table_cell=False):
+        # Writer may wrap a Markdown source link in Chinese citation brackets.
+        # The numbered PDF link already supplies its own brackets.
+        text = re.sub(r'〔(\[[^\]]+\]\(https?://[^)]+\))〕', r'\1', text)
         parts, cursor = [], 0
         pattern = re.compile(r"(?<!\\)(\$\$([^$\n]+?)\$\$|\$([^$\n]+?)\$|\\\((.+?)\\\))|\[([^\]]+)\]\((https?://[^)]+)\)|\*\*(.+?)\*\*|`([^`]+)`")
         for match in pattern.finditer(text):

@@ -1,19 +1,76 @@
 """Explicit offline recovery from saved evidence; never changes the original Run.
 
-No new research is performed. Lead decides whether existing material supports
-delivery, then the normal Analyst/Writer/CitationAgent/publisher path executes.
-This is not an authenticated end-to-end acceptance result.
+Default recovery resumes the Lead handoff and delivery path. --resume-draft
+on a failed source Run resumes only CitationAgent and publishing from its last
+saved draft, accepted charts, and still-valid audited body lines. Neither path
+counts as an authenticated end-to-end acceptance result.
 """
 import argparse
 import asyncio
+import hashlib
 import json
 import os
+import re
+import shutil
 import time
 from pathlib import Path
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+
+
+def saved_citation_checkpoint(source: Path, destination: Path, read_sources: dict) -> dict:
+    """Copy an accepted draft and charts; never alter the failed source Run."""
+    from asteria_researcher.agentic.citation_agent import factual_lines
+    from asteria_researcher.agentic.illustrations import Chart, validate_chart
+    from asteria_researcher.agentic.report_tools import validate_report_draft
+    from asteria_researcher.agentic.sufficiency import evidence_catalog
+
+    run = json.loads((source/'run.json').read_text())
+    history = json.loads((source/'citation-history.json').read_text())
+    audit = json.loads((source/'citation-review.json').read_text())
+    if (run['status'] != 'failed' or not history or history[-1]['status'] != 'incomplete'
+            or audit['status'] != 'incomplete'):
+        raise ValueError('Only a failed CitationAgent checkpoint may resume from a source draft')
+    attempt = len(history)
+    draft_path = source/f'citation-draft-{attempt}.md'
+    draft = draft_path.read_text()
+    if not validate_report_draft(draft, read_sources)['ok']:
+        raise ValueError('Saved citation draft does not pass the read-source contract')
+    lines = draft.splitlines()
+    body_ids = {line['line_id'] for line in factual_lines(draft)}
+    catalog = evidence_catalog(json.loads((source/'evidence.json').read_text()), read_sources)
+    manifest = json.loads((source/'analysis.json').read_text())
+    assets, hashes = {}, {}
+    for item in manifest['charts']:
+        chart = Chart.model_validate({key: item[key] for key in Chart.model_fields})
+        validate_chart(chart, catalog)
+        name = item['path']
+        if name != f'figures/{chart.id}.png' or not re.fullmatch(r'figures/[a-z][a-z0-9-]{0,40}\.png', name):
+            raise ValueError('Saved chart path is not an accepted figure asset')
+        original = source/name
+        if original.is_symlink() or not original.is_file() or not original.read_bytes().startswith(b'\x89PNG\r\n\x1a\n'):
+            raise ValueError('Saved figure is missing or is not a PNG: ' + name)
+        target = destination/name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(original, target)
+        if name in assets:
+            raise ValueError('Duplicate saved chart path')
+        assets[name] = target
+        hashes[name] = hashlib.sha256(target.read_bytes()).hexdigest()
+    embedded = set(re.findall(r'!\[[^\]]*\]\((figures/[a-z][a-z0-9-]{0,40}\.png)\)', draft))
+    if embedded != set(assets):
+        raise ValueError('Saved draft and accepted figures have different image sets')
+    gaps = {gap['line_id'] for gap in audit['gaps']}
+    verified = {}
+    for finding in audit['findings']:
+        line_id = finding['line_id']
+        if line_id in body_ids and line_id not in gaps and finding['supported']:
+            verified[line_id] = (lines[line_id], finding)
+    profile = json.loads((source/'writing.json').read_text())['format_profile']
+    return {'draft': draft, 'manifest': manifest, 'assets': assets, 'verified': verified,
+            'profile': profile, 'source_draft': draft_path.name, 'figure_sha256': hashes}
 
 
 async def main(source, checkpoint=None, resume_draft=False):
@@ -57,6 +114,7 @@ async def main(source, checkpoint=None, resume_draft=False):
     try:
         analysis_plan = None
         saved_draft = None
+        saved_source_checkpoint = None
         if checkpoint:
             checkpoint = checkpoint.resolve()
             if not checkpoint.is_relative_to(ROOT/'outputs/delivery_recovery'):
@@ -116,9 +174,19 @@ async def main(source, checkpoint=None, resume_draft=False):
                         raise ValueError('Writing profile belongs to a different research task')
                 runtime.format_profile = json.loads((profile_source/'writing.json').read_text())['format_profile']
                 state['resumed_from'] = 'citation_agent'
+        elif resume_draft:
+            if source.parent != ROOT/'outputs' or not source.name.startswith('review_'):
+                raise ValueError('Source-draft recovery requires an original saved review')
+            saved_source_checkpoint = saved_citation_checkpoint(source, runtime.folder, runtime.read_sources())
+            saved_draft = saved_source_checkpoint['draft']
+            runtime.analysis_manifest = saved_source_checkpoint['manifest']
+            runtime.figure_assets = saved_source_checkpoint['assets']
+            runtime.format_profile = saved_source_checkpoint['profile']
+            state.update(mode='saved_citation_checkpoint', resumed_from='citation_agent',
+                         source_draft=saved_source_checkpoint['source_draft'],
+                         reused_citation_lines=len(saved_source_checkpoint['verified']),
+                         figure_sha256=saved_source_checkpoint['figure_sha256'])
         else:
-            if resume_draft:
-                raise ValueError('--resume-draft requires --checkpoint')
             events = [json.loads(line) for line in (source/'events.jsonl').read_text().splitlines()]
             finished = [e['result'] for e in events if e.get('agent')=='lead' and e.get('tool')=='finish'
                         and e.get('status')=='completed' and 'result' in e]
@@ -134,7 +202,12 @@ async def main(source, checkpoint=None, resume_draft=False):
         # not run finally and must not erase the next recovery's provenance.
         state['phase'] = 'citation_agent' if saved_draft is not None else 'delivery'
         (runtime.folder / 'recovery.json').write_text(json.dumps(state, ensure_ascii=False, indent=2))
-        report = await runtime.deliver(await runtime.delivery_handoff(result), analysis_plan=analysis_plan, saved_draft=saved_draft)
+        if saved_source_checkpoint:
+            report = await runtime.deliver('', saved_draft=saved_draft, saved_figures=True,
+                                           citation_verified=saved_source_checkpoint['verified'])
+        else:
+            report = await runtime.deliver(await runtime.delivery_handoff(result),
+                                           analysis_plan=analysis_plan, saved_draft=saved_draft)
         state['phase'] = 'publishing'
         (runtime.folder / 'recovery.json').write_text(json.dumps(state, ensure_ascii=False, indent=2))
         paths = await publish(report, runtime.folder, profile=runtime.format_profile, assets=runtime.figure_assets)
@@ -151,6 +224,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('source', type=Path)
     parser.add_argument('--checkpoint', type=Path, help='Reuse completed Lead handoff and revalidate saved figure plan')
-    parser.add_argument('--resume-draft', action='store_true', help='Resume validated checkpoint draft at CitationAgent; no new Writer call')
+    parser.add_argument('--resume-draft', action='store_true',
+                        help='Resume saved draft at CitationAgent from this failed Run or a recovery checkpoint; no new research/Writer call')
     args = parser.parse_args()
     asyncio.run(main(args.source, args.checkpoint, args.resume_draft))

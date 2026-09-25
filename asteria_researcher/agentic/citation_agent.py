@@ -183,9 +183,11 @@ class CitationAgent:
         return [{'line_id': conflict.line_id, 'reason': '图文矛盾：' + conflict.reason}
                 for conflict in checked.conflicts]
 
-    async def attach_with_repair(self, report, catalog, read_sources, *, max_repairs=2):
+    async def attach_with_repair(self, report, catalog, read_sources, *, max_repairs=2, initial_verified=None):
         history = []
-        verified = {}
+        # A checkpoint may reuse judgments for unchanged body lines. The
+        # normal attach path still validates their evidence IDs and URLs.
+        verified = dict(initial_verified or {})
         catalog = visible_evidence(catalog)
         for attempt in range(max_repairs + 1):
             (self.folder / f"citation-draft-{attempt + 1}.md").write_text(report)
