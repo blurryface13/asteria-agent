@@ -7,6 +7,8 @@ This is not an authenticated end-to-end acceptance result.
 import argparse
 import asyncio
 import json
+import os
+import time
 from pathlib import Path
 import sys
 
@@ -48,7 +50,8 @@ async def main(source, checkpoint=None, resume_draft=False):
     runtime.actions = runtime.max_actions  # Explicitly close research tools, not the final handoff.
     runtime.save_working_memory('delivery_recovery')
     (runtime.folder / 'plan.json').write_text(json.dumps(runtime.plan, ensure_ascii=False))
-    state = {'source_review': str(source), 'mode': 'saved_evidence_delivery_recovery', 'authenticated_end_to_end': False}
+    state = {'source_review': str(source), 'mode': 'saved_evidence_delivery_recovery',
+             'authenticated_end_to_end': False, 'status': 'running', 'pid': os.getpid(), 'started_at': time.time()}
     (runtime.folder / 'recovery.json').write_text(json.dumps(state, ensure_ascii=False))
     print('RECOVERY ' + str(runtime.folder), flush=True)
     try:
@@ -127,7 +130,13 @@ async def main(source, checkpoint=None, resume_draft=False):
                 analysis_plan = plans[-1] if plans else None
             else:
                 result = await runtime.loop('lead', runtime.query, lead=True, steps=3)
+        # Persist ancestry before any slow model call; abrupt process loss does
+        # not run finally and must not erase the next recovery's provenance.
+        state['phase'] = 'citation_agent' if saved_draft is not None else 'delivery'
+        (runtime.folder / 'recovery.json').write_text(json.dumps(state, ensure_ascii=False, indent=2))
         report = await runtime.deliver(await runtime.delivery_handoff(result), analysis_plan=analysis_plan, saved_draft=saved_draft)
+        state['phase'] = 'publishing'
+        (runtime.folder / 'recovery.json').write_text(json.dumps(state, ensure_ascii=False, indent=2))
         paths = await publish(report, runtime.folder, profile=runtime.format_profile, assets=runtime.figure_assets)
         state.update(status='completed', paths=paths, model_calls=runtime.model_calls)
         print(json.dumps(state, ensure_ascii=False), flush=True)
