@@ -27,11 +27,15 @@ def configured_model(config_path=None):
         nonlocal selected_roles
         try:
             from backend.model_settings.service import snapshot
+            # Auxiliary calls can be untagged and not every older stage has a
+            # dedicated setting. The general role is the frontend-configured
+            # fallback, so a fresh Docker install needs no provider key in .env.
             stage = usage_stage.get()
             async with selection_lock:
                 if selected_roles is None:
                     selected_roles = await snapshot()
-            selected_model, role_key = selected_roles.get(stage, (cfg.smart_llm_model, None))
+            selected_model, role_key = selected_roles.get(
+                stage, selected_roles.get('general_chat', (cfg.smart_llm_model, None)))
             provider = 'deepseek' if selected_model in {'deepseek-chat', 'deepseek-reasoner'} else cfg.smart_llm_provider
             kwargs = dict(cfg.llm_kwargs)
             if role_key:
