@@ -8,7 +8,11 @@ def configured_model(config_path=None):
     import hashlib
     import json
     import os
+    import asyncio
+    from asteria_researcher.utils.usage_context import usage_stage
     embedding_instance = None
+    selected_roles = None
+    selection_lock = asyncio.Lock()
     async def intent_embeddings(texts):
         nonlocal embedding_instance
         import asyncio
@@ -20,12 +24,23 @@ def configured_model(config_path=None):
 
     async def model(system, user):
         import asyncio
+        nonlocal selected_roles
         try:
+            from backend.model_settings.service import snapshot
+            stage = usage_stage.get()
+            async with selection_lock:
+                if selected_roles is None:
+                    selected_roles = await snapshot()
+            selected_model, role_key = selected_roles.get(stage, (cfg.smart_llm_model, None))
+            provider = 'deepseek' if selected_model in {'deepseek-chat', 'deepseek-reasoner'} else cfg.smart_llm_provider
+            kwargs = dict(cfg.llm_kwargs)
+            if role_key:
+                kwargs['openai_api_key'] = role_key
             result = await asyncio.wait_for(create_chat_completion(
                 messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
-                model=cfg.smart_llm_model, llm_provider=cfg.smart_llm_provider,
+                model=selected_model, llm_provider=provider,
                 temperature=0, max_tokens=int(os.getenv('ASTERIA_AGENT_MAX_OUTPUT_TOKENS', '12000')),
-                llm_kwargs=cfg.llm_kwargs), timeout=180)
+                llm_kwargs=kwargs), timeout=180)
             # Providers sometimes wrap valid structured JSON in a Markdown fence.
             # Remove only that transport wrapper; Pydantic still validates content.
             import re
@@ -45,12 +60,17 @@ def configured_model(config_path=None):
         'embedding_kwargs':cfg.embedding_kwargs,
         'endpoints':{key:os.getenv(key) for key in ('OLLAMA_BASE_URL','OPENAI_BASE_URL','DEEPSEEK_BASE_URL')}
         },sort_keys=True,default=str).encode()).hexdigest()
+    async def routing_identity():
+        from backend.model_settings.service import revision
+        current = await revision()
+        return hashlib.sha256((model.routing_identity + ':' + current).encode()).hexdigest()
+    model.routing_identity_hook = routing_identity
     model.intent_embeddings = intent_embeddings
     return model
 
 
 async def run_agentic_task(query, capability, logs_handler, research_kwargs):
-    if capability in {"literature_review", "experiment_design"}:
+    if capability in {"literature_review", "experiment_design", "financial_research"}:
         return await run_autonomous_review(query, logs_handler, research_kwargs, capability=capability)
     if capability != "general_research":
         raise ValueError("Unknown research capability")
@@ -59,6 +79,7 @@ async def run_agentic_task(query, capability, logs_handler, research_kwargs):
     from pathlib import Path
     from backend.server.specialists import run_specialist
     from backend.server.specialists import search_public_sources
+    from backend.finance.client import search as search_financial_sources
     from asteria_researcher.agentic.capabilities import Profile
     from asteria_researcher.agentic.latex import publish
     profile = Profile('general_research', '公开资料研究助手', '围绕请求自主检索公开资料、综合研究报告并标明来源限制',
@@ -114,7 +135,7 @@ async def run_autonomous_review(query, logs_handler, research_kwargs, *, capabil
         Memory(cfg.embedding_provider, cfg.embedding_model, **cfg.embedding_kwargs).get_embeddings() if online_rag else None,
         emit, logs_handler.request_feedback, online_rag=online_rag,
         skill_options=getattr(logs_handler, "skill_options", None), coding_tools=build_coding_tools(owner),
-        public_search=search_public_sources,
+        public_search=search_financial_sources if capability == 'financial_research' else search_public_sources,
         knowledge_search=build_knowledge_search(owner, knowledge_ids),
         capability=capability)
     from asteria_researcher.agentic.delivery_state import record_delivery

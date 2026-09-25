@@ -76,6 +76,11 @@ class AgentOrchestrator:
                 'metadata':{'turn_id':req.request_id,'needs_clarification':True,'routing':intent.routing_trace}}
             return result
         decision = self._route_decision(intent)
+        # A requested financial *report* uses the durable Lead/researcher/writer/
+        # citation pipeline. Brief financial questions keep the specialist loop.
+        if (req.research_request is not None and intent.capability == 'financial_research'
+                and intent.report_requested):
+            decision = RoutingDecision('research_lead', (), intent.reason, intent.confidence)
         # Validate the entire registry before starting any role.
         if any(role not in self.executors for role in decision.agent_types):
             raise ValueError('Unregistered executor in routing decision')

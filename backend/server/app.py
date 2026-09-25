@@ -155,6 +155,8 @@ from backend.watermark_lab.routes import router as watermark_lab_router
 app.include_router(watermark_lab_router)
 from backend.evaluation.routes import router as evaluation_router
 app.include_router(evaluation_router)
+from backend.model_settings.routes import router as model_settings_router
+app.include_router(model_settings_router)
 
 # Mount static files for frontend
 # Get the absolute path to the frontend directory

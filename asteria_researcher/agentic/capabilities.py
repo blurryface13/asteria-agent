@@ -33,7 +33,7 @@ PROFILES = {
                 'company_assistance',('load_skill','search_public_sources',)),
     )
 }
-RESEARCH = {'literature_review','experiment_design','general_research'}
+RESEARCH = {'literature_review','experiment_design','general_research','financial_research'}
 CAPABILITIES = RESEARCH | {'general_chat','knowledge_chat'} | set(PROFILES)
 
 

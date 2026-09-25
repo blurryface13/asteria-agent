@@ -142,6 +142,10 @@ async def run_agent(task, report_type, report_source, source_urls, document_urls
     # interactive WebSocket path. REST/mobile contracts stay unchanged.
     from asteria_researcher.agentic.capabilities import RESEARCH
     capability = coordinator_capability
+    durable_finance = (capability == 'financial_research' and
+                       isinstance(getattr(logs_handler, 'run', None), dict))
+    if capability == 'financial_research' and not durable_finance:
+        raise ValueError('financial_research 报告须通过 Coordinator 提交持久化任务')
     if capability is not None and capability not in RESEARCH:
         raise ValueError(f"{capability} 请求应通过 AgentOrchestrator（旧 Coordinator 入口）处理，不得创建研究任务")
     if coordinator_capability:
@@ -161,6 +165,8 @@ async def run_agent(task, report_type, report_source, source_urls, document_urls
             await logs_handler.send_json({"type": "logs", "content": "intent_resolved", "output": intent.model_dump()})
             raise ValueError(f"{intent.capability} 请求应通过 AgentOrchestrator（旧 Coordinator 入口）处理，不得创建研究任务")
         capability = intent.capability
+        if capability == 'financial_research':
+            raise ValueError('financial_research 报告须通过 Coordinator 提交持久化任务')
         await logs_handler.send_json({"type": "logs", "content": "intent_resolved", "output": intent.model_dump()})
     options = getattr(logs_handler, "skill_options", None)
     if not capability and options and (options.skill_ids or options.format_profile):

@@ -11,6 +11,7 @@ import LatexPreview from "./LatexPreview";
 import SkillBrowser from "./SkillBrowser";
 import KnowledgePicker from "../knowledge/KnowledgePicker";
 import MemoryEditor from "../memory/MemoryEditor";
+import AgentModelSettings from "./AgentModelSettings";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { authFetch, getDisplayName, setDisplayName } from "@/helpers/auth";
 import { getHost } from "@/helpers/getHost";
@@ -926,7 +927,7 @@ export default function ResearchHarness(p: Props) {
             <aside className={s.dialogRail}>
               <h2>{modal}</h2>
               {(modal === "Agent"
-                ? ["人格", "记忆", "技能", "SSH 服务器"]
+                ? ["人格", "记忆", "技能", "模型", "SSH 服务器"]
                 : ["概览", "存储", "环境", "桌面", "终端", "设置"]
               ).map((tab) => (
                 <button
@@ -941,6 +942,8 @@ export default function ResearchHarness(p: Props) {
                         ? "memory"
                         : tab === "技能"
                           ? "skill"
+                          : tab === "模型"
+                            ? "agent"
                           : tab === "SSH 服务器"
                             ? "cloud"
                             : "agent"
@@ -1135,16 +1138,20 @@ export default function ResearchHarness(p: Props) {
                     ? "定义研究偏好、证据要求和输出习惯。"
                     : section === "记忆"
                       ? "管理可复用的研究偏好与项目经验。"
-                      : section === "技能"
+                    : section === "技能"
                         ? "按需加载研究方法、工具约束与输出规范。"
+                        : section === "模型"
+                          ? "为 Agent 角色设置实际调用的模型与服务端密钥。"
                         : "管理授权服务器、允许目录与实验执行权限。"}
                 </p>
-                {!['技能','记忆'].includes(section) && <div className={s.pendingBadge}>待接入运行时</div>}
+                {!['技能','记忆','模型'].includes(section) && <div className={s.pendingBadge}>待接入运行时</div>}
                 {section === "记忆" ? (
                   <MemoryEditor projectId={memoryProjectId} projectName={projects.find(item=>item.id===memoryProjectId)?.name} onDirtyChange={setMemoryDirty}/>
                 ) : section === "技能" ? (
                   <SkillBrowser settings={p.settings} onChange={next => p.setSettings(next)}
                     locked={p.loading || p.chatting} supported={p.skillsSupported !== false && mode === "research"} />
+                ) : section === "模型" ? (
+                  <AgentModelSettings />
                 ) : (
                   <div className={s.placeholder}>
                     <Icon

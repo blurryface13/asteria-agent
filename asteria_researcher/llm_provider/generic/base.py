@@ -40,6 +40,7 @@ _SUPPORTED_PROVIDERS = {
 }
 
 NO_SUPPORT_TEMPERATURE_MODELS = [
+    "deepseek-reasoner",
     "deepseek/deepseek-reasoner",
     "o1-mini",
     "o1-mini-2024-09-12",
@@ -222,8 +223,13 @@ class GenericLLMProvider:
             _check_pkg("langchain_openai")
             from langchain_openai import ChatOpenAI
 
+            # A server-side per-role credential may override the environment;
+            # never mutate os.environ because concurrent roles can use different keys.
+            key = kwargs.pop('openai_api_key', None) or os.environ.get('DEEPSEEK_API_KEY')
+            if not key:
+                raise ValueError('DeepSeek API Key 未配置')
             llm = ChatOpenAI(openai_api_base='https://api.deepseek.com',
-                     openai_api_key=os.environ["DEEPSEEK_API_KEY"],
+                     openai_api_key=key,
                      **kwargs
                 )
         elif provider == "atlascloud":

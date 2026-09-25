@@ -168,10 +168,11 @@ class AutonomousReview:
     def __init__(self, model, embeddings, emit, approve, root=Path("outputs"), *, max_actions=None, online_rag=True, skill_options=None, coding_tools=None, public_search=None, knowledge_search=None, capability='literature_review'):
         if type(online_rag) is not bool:
             raise ValueError("online_rag must be a boolean")
-        if capability not in {'literature_review','experiment_design'}:
-            raise ValueError('Unsupported scientific capability')
+        if capability not in {'literature_review','experiment_design','financial_research'}:
+            raise ValueError('Unsupported research capability')
         self.capability = capability
-        self.research_skill = 'experiment_research' if capability == 'experiment_design' else 'literature_review'
+        self.research_skill = ('finance_assistance' if capability == 'financial_research' else
+                               'experiment_research' if capability == 'experiment_design' else 'literature_review')
         self.online_rag, self.started_at = online_rag, time.monotonic()
         self.input_chars, self.output_chars = 0, 0
         self.direct_passages, self.direct_chars = set(), 0
@@ -209,7 +210,7 @@ class AutonomousReview:
         self.research_skills = SkillSession("research", self.skill_options)
         self.research_skills.load(self.research_skill, origin="system")
         self.skill = self.research_skills.prompt()
-        self.format_profile = "academic"
+        self.format_profile = "brief" if capability == 'financial_research' else "academic"
         async def bibliography_model(system, payload):
             return await self.llm(system, json.loads(payload))
         self.library.model = bibliography_model
@@ -430,7 +431,8 @@ class AutonomousReview:
     async def research(self):
         # User links and explicitly labelled arXiv IDs are seeds, never
         # inferred paper identities or silently truncated to the first three.
-        for url in urls(self.query) | explicit_arxiv_urls(self.query):
+        seeds = urls(self.query) | (set() if self.capability == 'financial_research' else explicit_arxiv_urls(self.query))
+        for url in seeds:
             try:
                 self.library.add({"url": url, "title": url})
             except ValueError:
@@ -440,6 +442,10 @@ class AutonomousReview:
                          skills=self.research_skills.trace(), phase="research")
         user_scope = self.query
         plan = await self.plan_with_contract(
+            ("Plan a public financial/industry research report using original company filings, exchange/regulator disclosures and official statistics. "
+             "Separate reporting period, units, currencies and accounting basis; distinguish actuals, forecasts and opinions. "
+             "Do not use academic paper counts or arXiv as an evidence target. Do not propose trading or guaranteed returns. "
+             if self.capability == 'financial_research' else "") +
             "Define scope, time range, inclusion criteria and complementary research objectives. "
             "This is a revisable research plan, not a fixed workflow. Do not infer paper titles or identities "
             "from URL identifiers: unknown URL identities must be verified by tools during research. "
@@ -1235,13 +1241,24 @@ class AutonomousReview:
             finally:
                 self.tool_hooks.parent.reset(parent_token)
         profile = LEAD if lead else RESEARCHER
+        if self.capability == 'financial_research':
+            system += (" FINANCIAL SOURCE POLICY OVERRIDES SCHOLARLY GUIDANCE ABOVE: use search_public to discover "
+                "official filings, exchange/regulator disclosures and official statistics; use read and read_passage "
+                "to inspect original financial documents. search and references are unavailable; do not seek arXiv papers. "
+                "Search snippets are not factual evidence. State fiscal period, currency, unit, reporting basis and "
+                "source date for every material number. Cross-company ratios require comparable definitions. "
+                "A source inaccessible to this reader is a disclosed limitation, never a license to infer its numbers. "
+                "Avoid personalized investment advice or trade execution. The Anthropic finance skills guide analysis "
+                "and do not grant a commercial data feed. For a sector landscape, load anthropic_sector_overview; "
+                "for a user-supplied financial model update, load anthropic_model_update. These are guidance only.")
         def available(turn):
             limit = self.max_actions if lead else max(0, self.max_actions - 5)
             # Final handoffs never compete with parallel workers for a last
             # research action. Reserve calls for all children and the Lead.
             if limit - self.actions <= 1 or self.model_calls >= self.max_actions:
                 return {'finish'}
-            return (set(profile.tool_scope) - (set() if self.online_rag else {'retrieve'})
+            return (set(profile.tool_scope) - ({'search','references'} if self.capability == 'financial_research' else set())
+                    - (set() if self.online_rag else {'retrieve'})
                     - (set() if self.public_search else {'search_public'})
                     - (set() if self.knowledge_search else {'search_knowledge'}))
         with track_usage_stage("research_lead" if lead else "research_subagent"):
@@ -1260,7 +1277,15 @@ class AutonomousReview:
         await self.event("lead", "write", "started", "综合研究结果并核对引用")
         async def writing_model(system, payload):
             return await self.llm(system, json.loads(payload))
-        selection, writing_prompt, skill_trace = await select_writing(writing_model, self.query, self.plan, self.skill_options)
+        writing_options = self.skill_options
+        if self.capability == 'financial_research':
+            selected = list(writing_options.skill_ids)
+            from .skill_catalog import catalog
+            content_ids = {entry['id'] for entry in catalog('writing') if entry['kind'] == 'content'}
+            if not content_ids.intersection(selected):
+                selected.insert(0, 'general_writing')
+            writing_options = SkillOptions(skill_ids=selected, format_profile=writing_options.format_profile or 'brief')
+        selection, writing_prompt, skill_trace = await select_writing(writing_model, self.query, self.plan, writing_options)
         self.format_profile = selection.format_profile
         (self.folder / "writing.json").write_text(json.dumps({**selection.model_dump(), "skills": skill_trace,
             "user_selection": self.skill_options.model_dump(), "injected_prompt": writing_prompt}, ensure_ascii=False, indent=2))
@@ -1299,7 +1324,12 @@ class AutonomousReview:
                            t for result in self.coding_results for t in result.get("tool_results", [])),
                        implementation_review=self.artifact_review,
                        read_sources=sorted(allowed_report_sources))
-        report = await self.llm(("Write a Chinese Markdown experiment protocol; include 基线、数据、指标、环境、验收; "
+        report = await self.llm(("Write a Chinese Markdown financial/industry research report from original public disclosures; "
+            "show period, units, currencies, comparable definitions, assumptions, conflicts and source dates. "
+            "Do not give personalized investment instructions or imply live prices without current evidence. "
+            "This is an analyst draft for human review, not investment advice. Ground it in the supplied page-level "
+            if self.capability == 'financial_research' else
+            "Write a Chinese Markdown experiment protocol; include 基线、数据、指标、环境、验收; "
             "explicitly state experiments have NOT been executed. Ground it in the supplied page-level "
             if self.capability == 'experiment_design' else
             "Write a Chinese Markdown literature review grounded in the supplied page-level ") +

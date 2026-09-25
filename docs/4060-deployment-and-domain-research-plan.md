@@ -1,13 +1,15 @@
 # 4060 实验室部署与跨领域研究报告计划
 
-状态：设计方案，**尚未打包或在 Windows 4060 主机验收**。现有学术 Run 的成功和金融短问答的成功不等同于本方案已实施。
+状态：按角色 DeepSeek 管理界面及金融长报告运行路线已接入；Mac 本地完成一条受限 NVIDIA 年报真实报告冒烟，**尚未打包或在 Windows 4060 主机验收**。单个报告成功不等于跨主题稳定性或性能达标。
 
 ## 1. 当前边界与决策
 
 - 主模型当前为远端 DeepSeek。4060 首先用于 Ollama `bge-m3` Embedding；用户数与长报告吞吐仍受 API 额度、研究 Worker 槽位、外部检索、数据库、磁盘和网络影响，不能用显存推断并发容量。
 - DeepSeek 对相同输入前缀默认尝试缓存；Claude 的 `cache_control` 属于 Anthropic 请求格式。借鉴其“工具／稳定角色／稳定背景在前，本轮用户输入与工具观察在后”布局和缓存用量指标；只有切换到 Anthropic 供应商时才加供应商专属断点，并做冷／热 A/B，不向 DeepSeek 请求盲传该字段。
-- 学术长链路已有 Lead／并行子 Agent／Data Analyst／Writer／CitationAgent。金融意图目前是 `financial_research` 短工具循环，只有 `load_skill` 与 `search_public_sources`，搜索摘要不能充当已读财报原文。一次真实检索中，“官方资料”请求的结果仍混入 Wikipedia，作为来源质量 BadCase 保留。
-- 推荐 Docker Compose 交付 API、独立 Worker、前端、PostgreSQL、Redis；Ollama 可以先放在 Windows 宿主机，通过 `host.docker.internal` 访问。论文／知识库索引依赖 modular-rag-engine，必须作为明确的外部服务或纳入 Compose，不允许静默缺失。
+- 学术长链路已有 Lead／并行子 Agent／Data Analyst／Writer／CitationAgent。金融简答仍走 `financial_research` Specialist；用户要求报告时由 AgentOrchestrator 交给持久化 Research Lead，复用同一交付链。金融 `search_public` 只登记允许列表中的官方链接，原文 `read` 成功后才可形成证据。历史“官方资料”短答复混入 Wikipedia 的 BadCase 仍保留，短答路线尚未完成同等严格的一手来源约束。
+- 前端会给普通对话也附带研究参数；因此是否进入金融长报告不能以 `research_request` 是否存在单独判断，而由意图结果中的 `report_requested` 表示实际交付需求。短问答保持 Specialist 路径，不因界面默认参数误触发收费长链路。
+- 管理员可在工作台 Agent → 模型中给意图路由、Lead、子 Agent、Writer、CitationAgent 等分别选择 DeepSeek 模型及 API Key。数据库仅存加密密文，界面只显示密钥尾号；不配置时沿用服务端环境变量。配置快照按一次调用链冻结，下一任务才切换。API 与 Worker 必须持有同一 `ASTERIA_MODEL_SETTINGS_SECRET`（未设置时从稳定的 `JWT_SECRET` 派生）；变更密钥前要导出备份并规划重加密，否则旧密文无法读取。管理员会话和传输仍需 HTTPS 防护。
+- 推荐 Docker Compose 交付 API、独立 Worker、前端、PostgreSQL、Redis；4060 首先承担宿主机 Ollama `bge-m3` Embedding，通过容器 `host.docker.internal` 访问。论文／知识库索引依赖 modular-rag-engine，必须作为明确的外部服务或纳入 Compose，不允许静默缺失。
 
 ## 2. 4060 交付顺序
 
@@ -23,11 +25,11 @@
 
 保留 `financial_research` 短问答：概念解释和少量公开资料查询不应都付出完整报告的时延与费用。用户要求跨期分析、行业比较或正式报告时，入口改投**持久化的通用研究任务**，复用 Lead 分解互补子目标、并行检索／阅读、综合、Writer、CitationAgent 和产物发布。路由条件应包含所需交付物与证据深度，而非仅凭“金融”关键词。
 
-难点在证据层，不在换人设：当前长链路的 `PaperLibrary`、arXiv 搜索、允许阅读的域名和写作提示都偏学术。先定义跨领域 `Source`／`Evidence` 契约：URL、机构、文件类型、发布日期、报告期、页码或章节、已发现／已读状态、原文摘录、版本与访问时间。学术与金融分别提供搜索／原文读取适配器；保持同一个任务证据账本、RAG 检索、图表、CitationAgent 核验与报告交付链。金融适配器优先公司投资者关系、交易所和监管披露，二手新闻可作线索但不得被标成原始财报；网页读取需防 SSRF、限制大小与重定向。
+难点在证据层，不在换人设：现已为长任务加金融源白名单与官方来源优先的公开检索包装，仍共用已读来源、页段、RAG、图表、CitationAgent 和产物账本。本地 `asteria-public-finance` MCP 用 `discover_financial_sources` 搜索公开官网链接，随后 `read` 工具才读取原文；与 Anthropic 金融 Skills 的提示词指导分开。未授权商业数据连接器不参与运行；可读取的 SEC、央行、交易所、统计机构及少量投资者关系站点采用明确主机列表和 HTTPS，网页读取仍限制大小与重定向。NVIDIA 官网目录页可登记其年度报告 PDF 链接与来源边，目录页本身不冒充年报。白名单不是所有企业财报都可访问的承诺；未覆盖的公司或反爬网页必须报告资料缺口，不拿摘要凑证据。下一步应增加报告期、币种、单位、发布日期的机器可检查元数据，并扩展实际需要的官方主机。
 
 金融 Lead 可按实际问题分派“公司披露与财务口径”“行业／竞争与公开政策”“风险与反证”等互补子目标，不固定人数或章节。Data Analyst 只把有来源、同币种／单位／期间的数字制图；Writer 区分披露事实、模型推断和建议；CitationAgent 核验具体原文位置及数字口径。原有 Anthropic 金融 Skills 提供分析方法，**不能替代原文工具或数据授权**。
 
-第一条完整验收任务建议选一家有公开年度报告的公司：要求比较两个已披露年度的收入与经营现金流、解释一个明确风险，给出原文链接／页码、报告期和单位，并生成 Markdown／PDF。测试包含官方来源优先、数字单位与跨期一致性、资料不可读时的降级、引文位置、图表来源及“未提供个性化交易指令”。不以报告篇幅、路由命中或 LLM 自评单独判通过。
+第一条完整验收任务选 NVIDIA FY2026 与 FY2025：比较收入与经营现金流、解释一项风险，给出原文链接／页码、报告期和单位，并生成 Markdown／PDF。已完成一次 Mac 本地真实模型冒烟，过程与局限见 `docs/financial-report-acceptance.md`。仍需在认证工作台路径与 Windows 4060 上复验，并加入其他行业、非美国主体及资料不可读的样本；不以报告篇幅、路由命中或 LLM 自评单独判通过。
 
 ## 4. Token 与缓存评估
 

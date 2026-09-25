@@ -23,7 +23,7 @@ def validate_request(request):
     if type(request.get('online_rag', True)) is not bool:
         raise HTTPException(422, 'online_rag must be boolean')
     capability = request.get('coordinator_capability')
-    if capability is not None and capability not in {'literature_review', 'experiment_design', 'general_research'}:
+    if capability is not None and capability not in {'literature_review', 'experiment_design', 'general_research', 'financial_research'}:
         raise HTTPException(422, 'invalid coordinator capability')
     try:
         SkillOptions(skill_ids=request.get('skill_ids', []), format_profile=request.get('format_profile'))

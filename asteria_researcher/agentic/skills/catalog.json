@@ -128,7 +128,8 @@
     "selectable": false,
     "version": "1",
     "phases": [
-      "assistance"
+      "assistance",
+      "research"
     ],
     "description": "公开资料分析与风险边界，不执行交易",
     "files": [

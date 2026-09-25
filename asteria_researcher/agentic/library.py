@@ -117,6 +117,11 @@ class PaperLibrary:
                         paper = await read_paper(self.nodes[key]["url"], consume_bytes=self.consume)
                     self.papers[key] = paper
                     self.nodes[key]["status"] = "read"
+                    for linked in paper.get('linked_sources', []):
+                        node = self.add(linked)
+                        self.edges[(key, node['id'])] = {
+                            'source': key, 'target': node['id'], 'relation': 'official_portal_links_to',
+                            'provenance': 'read_official_investor_relations_html'}
                     digest = hashlib.sha256(key.encode()).hexdigest()[:20]
                     (self.folder / f"paper-{digest}.json").write_text(json.dumps(paper, ensure_ascii=False))
                 except Exception as error:
@@ -128,7 +133,10 @@ class PaperLibrary:
                     self.save()
             paper = self.papers[key]
             return {"id": key, "pages": len(paper["pages"]), "bytes": paper["bytes"],
-                    "preview": paper["text"][:2400], "next": "retrieve relevant evidence or inspect references"}
+                    "preview": paper["text"][:2400],
+                    "linked_sources": [{k: row[k] for k in ('url', 'title')}
+                                       for row in paper.get('linked_sources', [])],
+                    "next": "retrieve relevant evidence or inspect linked original documents"}
 
     async def retrieve(self, query, paper_ids=None, top_k=12):
         # Reuse existing BM25+dense RRF retrieval and its bounded embedding

@@ -20,7 +20,19 @@ ACADEMIC_PUBLISHERS = frozenset({"aclanthology.org", "openaccess.thecvf.com", "p
 INSTITUTIONAL_HOSTS = frozenset({"anthropic.com", "www.anthropic.com", "www-cdn.anthropic.com",
                                  "openai.com", "www.openai.com", "cdn.openai.com",
                                  "x.ai", "www.x.ai", "data.x.ai"})
-HOSTS = ACADEMIC_ARCHIVES | ACADEMIC_PUBLISHERS | INSTITUTIONAL_HOSTS
+# Explicit public issuers/regulators, not an arbitrary user-controlled domain
+# wildcard. Search snippets are discovery only; documents must be read.
+FINANCIAL_HOSTS = frozenset({
+    "sec.gov", "www.sec.gov", "data.sec.gov", "www.federalreserve.gov", "www.bls.gov",
+    "www.bea.gov", "www.imf.org", "www.worldbank.org", "www.oecd.org",
+    "www.hkexnews.hk", "www.hkex.com.hk", "www.sse.com.cn", "www.szse.cn",
+    "www.csrc.gov.cn", "www.stats.gov.cn", "www.pbc.gov.cn",
+    "investor.nvidia.com", "investor.apple.com", "www.microsoft.com",
+    "ir.aboutamazon.com", "abc.xyz", "investor.tsmc.com",
+    # NVIDIA's investor-relations page links its annual-report PDFs here.
+    "s201.q4cdn.com",
+})
+HOSTS = ACADEMIC_ARCHIVES | ACADEMIC_PUBLISHERS | INSTITUTIONAL_HOSTS | FINANCIAL_HOSTS
 _atom_unavailable_until = 0.0
 MAX_BYTES = int(os.getenv("REVIEW_PAPER_MAX_MIB", "64")) * 1024 * 1024
 if not 1024 * 1024 <= MAX_BYTES <= 256 * 1024 * 1024:
@@ -158,7 +170,9 @@ def validate_url(url):
     parsed = urlparse(url)
     if (parsed.scheme != "https" or parsed.hostname not in HOSTS or
             parsed.username or parsed.password or parsed.port not in (None, 443)):
-        raise ValueError("原文工具仅允许已登记学术及机构来源的 HTTPS 地址")
+        raise ValueError("原文工具仅允许已登记学术、监管及机构来源的 HTTPS 地址")
+    if parsed.hostname == 's201.q4cdn.com' and not parsed.path.startswith('/141608511/files/doc_financials/'):
+        raise ValueError('仅允许已核验的 NVIDIA 投资者关系文档路径')
     return url
 
 
@@ -166,6 +180,8 @@ def source_type(url):
     """Classify the host, not the content's claimed academic status."""
     validate_url(url)
     host = urlparse(url).hostname
+    if host in FINANCIAL_HOSTS:
+        return "financial_primary"
     if host in INSTITUTIONAL_HOSTS:
         return "institutional_report"
     if host in ACADEMIC_ARCHIVES:
@@ -206,7 +222,9 @@ async def read_paper(url, *, consume_bytes=None):
 async def _read_paper(url, *, consume_bytes=None):
     target = paper_url(url)
     context = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-    async with httpx.AsyncClient(verify=context, timeout=25, follow_redirects=False) as client:
+    user_agent = os.getenv('ASTERIA_SOURCE_USER_AGENT', 'AsteriaResearch/1.0')
+    async with httpx.AsyncClient(verify=context, timeout=25, follow_redirects=False,
+                                 headers={'User-Agent': user_agent}) as client:
         for _ in range(4):
             validate_url(target)
             async with client.stream("GET", target) as response:
@@ -229,10 +247,30 @@ async def _read_paper(url, *, consume_bytes=None):
                     downloaded.flush()
                     text, pages = await asyncio.to_thread(extract_file, downloaded.name,
                                                           response.headers.get("content-type", ""))
+                    linked = []
+                    if 'html' in response.headers.get('content-type', '') and urlparse(target).hostname == 'investor.nvidia.com':
+                        from bs4 import BeautifulSoup
+                        with open(downloaded.name, 'rb') as source:
+                            soup = BeautifulSoup(source.read(), 'html.parser')
+                        for anchor in soup.find_all('a', href=True):
+                            label = anchor.get_text(' ', strip=True)
+                            candidate = urljoin(target, anchor['href'])
+                            if not candidate.lower().split('?', 1)[0].endswith('.pdf') or 'report' not in label.lower():
+                                continue
+                            try:
+                                validate_url(candidate)
+                            except ValueError:
+                                continue
+                            year = re.search(r'/files/doc_financials/(20\d{2})/', candidate)
+                            linked.append({'url': candidate,
+                                           'title': ((year[1] + ' ') if year else '') + label[:140],
+                                           'linked_from': target})
+                            if len(linked) >= 30:
+                                break
                 if not text.strip():
                     raise ValueError("研究来源没有可提取文本，需 OCR 工具，未伪造内容")
                 return {"url": target, "requested_url": url, "text": text,
-                        "pages": pages, "bytes": size, "extraction_limit": None}
+                        "pages": pages, "bytes": size, "extraction_limit": None, "linked_sources": linked}
     raise ValueError("论文重定向次数超过限制")
 
 
