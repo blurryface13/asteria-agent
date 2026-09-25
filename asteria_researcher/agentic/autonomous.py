@@ -207,7 +207,7 @@ class AutonomousReview:
         self.user_scope = ""
         self.successful_searches = 0
         self.skill_options = skill_options or SkillOptions()
-        self.research_skills = SkillSession("research", self.skill_options)
+        self.research_skills = SkillSession("research", self.skill_options, domain=self.capability)
         self.research_skills.load(self.research_skill, origin="system")
         self.skill = self.research_skills.prompt()
         self.format_profile = "brief" if capability == 'financial_research' else "academic"
@@ -536,11 +536,13 @@ class AutonomousReview:
             with track_usage_stage("data_analyst"):
                 self.figure_assets, self.analysis_manifest = await analyze(
                     self.llm, self.event, self.folder, self.query, synthesis, writing_briefs(self.briefs),
-                    visible_evidence(evidence_catalog(self.evidence, self.read_sources())), cached_plan=analysis_plan)
+                    visible_evidence(evidence_catalog(self.evidence, self.read_sources())),
+                    cached_plan=analysis_plan, domain=self.capability)
         with track_usage_stage("writer"):
             draft = saved_draft if saved_draft is not None else await self.write_report(synthesis)
-        if saved_draft is not None and not validate_report_draft(saved_draft, self.read_sources())['ok']:
-            raise ValueError('续跑草稿必须先通过已读来源校验')
+        if saved_draft is not None and not validate_report_draft(
+                saved_draft, self.read_sources(), domain=self.capability)['ok']:
+            raise ValueError('续跑草稿必须先通过来源与领域校验')
         from .citation_agent import CitationAgent
         from .illustrations import citation_chart_brief
         citation_agent = CitationAgent(self.llm, self.event, self.folder,
@@ -548,7 +550,7 @@ class AutonomousReview:
         with track_usage_stage("citation_agent"):
             report = await citation_agent.attach_with_repair(draft, evidence_catalog(self.evidence, self.read_sources()),
                                                  self.read_sources(), initial_verified=citation_verified)
-        final_check = validate_report_draft(report, self.read_sources())
+        final_check = validate_report_draft(report, self.read_sources(), domain=self.capability)
         if not final_check["ok"]:
             raise ValueError("引文修稿后的交付校验失败：" + "；".join(final_check["issues"]))
         (self.folder / "report-with-citations.md").write_text(report)
@@ -912,7 +914,7 @@ class AutonomousReview:
 
     async def loop(self, agent, objective, *, lead=False, steps=16, assignment_context=None):
         observations, seen, local_evidence = [], set(), []
-        skills = SkillSession("research", self.skill_options)
+        skills = SkillSession("research", self.skill_options, domain=self.capability)
         skills.load(self.research_skill, origin="system")
         await self.event(agent, "skill", "completed", "加载本研究会话的技能", skills=skills.trace(), phase="research")
         await self.event(agent, "agent", "started", objective)
@@ -1281,11 +1283,13 @@ class AutonomousReview:
         if self.capability == 'financial_research':
             selected = list(writing_options.skill_ids)
             from .skill_catalog import catalog
-            content_ids = {entry['id'] for entry in catalog('writing') if entry['kind'] == 'content'}
+            content_ids = {entry['id'] for entry in catalog('writing', self.capability)
+                           if entry['kind'] == 'content'}
             if not content_ids.intersection(selected):
-                selected.insert(0, 'general_writing')
+                selected.insert(0, 'financial_report')
             writing_options = SkillOptions(skill_ids=selected, format_profile=writing_options.format_profile or 'brief')
-        selection, writing_prompt, skill_trace = await select_writing(writing_model, self.query, self.plan, writing_options)
+        selection, writing_prompt, skill_trace = await select_writing(
+            writing_model, self.query, self.plan, writing_options, domain=self.capability)
         self.format_profile = selection.format_profile
         (self.folder / "writing.json").write_text(json.dumps({**selection.model_dump(), "skills": skill_trace,
             "user_selection": self.skill_options.model_dump(), "injected_prompt": writing_prompt}, ensure_ascii=False, indent=2))
@@ -1326,6 +1330,7 @@ class AutonomousReview:
                        read_sources=sorted(allowed_report_sources))
         report = await self.llm(("Write a Chinese Markdown financial/industry research report from original public disclosures; "
             "show period, units, currencies, comparable definitions, assumptions, conflicts and source dates. "
+            "Convert monetary amounts to the same unit before claiming one exceeds another. "
             "Do not give personalized investment instructions or imply live prices without current evidence. "
             "This is an analyst draft for human review, not investment advice. Ground it in the supplied page-level "
             if self.capability == 'financial_research' else
@@ -1375,7 +1380,8 @@ class AutonomousReview:
                                                target_chars=target_chars,
                                                min_length_ratio=0 if "不超过" in self.query else 0.8,
                                                max_length_ratio=1.0 if "不超过" in self.query else 1.2,
-                                               enforce_length="不超过" in self.query)
+                                               enforce_length="不超过" in self.query,
+                                               domain=self.capability)
             if self.capability == 'experiment_design':
                 validation['issues'].extend('缺失实验方案部分：' + word for word in ('基线','数据','指标','环境','验收') if word not in report)
                 validation['ok'] = not validation['issues']
@@ -1384,7 +1390,7 @@ class AutonomousReview:
             actual_chars = validation["length_units"]
             length_issues = [i for i in validation["issues"] + validation["warnings"] if "篇幅" in i]
             await self.event("lead", "report_check", "completed" if validation["ok"] else "failed",
-                             "核对报告篇幅与引用来源", attempt=attempt + 1, chinese_chars=validation["chinese_chars"],
+                             "核对报告篇幅、引用与领域规则", attempt=attempt + 1, chinese_chars=validation["chinese_chars"],
                              length_units=actual_chars, length_convention=validation["length_convention"],
                              target_chars=target_chars, invalid_urls=unknown, citation_count=len(cited),
                              issues=validation["issues"], warnings=validation["warnings"], headings=validation["headings"])
@@ -1393,7 +1399,7 @@ class AutonomousReview:
             if validation["ok"]:
                 break
             if attempt == 2:
-                raise ValueError("最终报告未通过引用来源/篇幅校验")
+                raise ValueError("最终报告未通过来源、篇幅或领域规则校验：" + "；".join(validation["issues"]))
             if unknown and validation['issues'] == ['报告引用了未读取来源']:
                 # Keep the working draft; repair only offending lines instead of
                 # regenerating a long report and reproducing the same references.
@@ -1421,6 +1427,8 @@ class AutonomousReview:
                 report = '\n'.join(lines)
                 continue
             report = await self.llm("Repair the report. Only cite supplied read_sources, remove unsupported claims. "
+                                    "Correct any monetary comparison whose direction conflicts with unit conversion; "
+                                    "preserve the sourced amounts and explain the corrected inference. "
                                     "Return full Chinese Markdown, not JSON. Preserve thematic synthesis and the "
                                     "user's core answers. When too long, actually shorten it: remove peripheral benchmark "
                                     "catalogues, merge repeated caveats and summarize mechanisms. Do not return the same "
@@ -1442,5 +1450,5 @@ class AutonomousReview:
         (self.folder / "evidence.json").write_text(json.dumps(self.evidence, ensure_ascii=False))
         self.library.save()
         await self.emit("citation_graph", self.library.snapshot())
-        await self.event("lead", "write", "completed", "报告引用来源校验通过（非逐句事实核验）")
+        await self.event("lead", "write", "completed", "报告交付规则校验通过（非逐句事实核验）")
         return report

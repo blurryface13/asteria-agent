@@ -7,6 +7,7 @@ import json
 import re
 import time
 from pathlib import Path
+from urllib.parse import urldefrag
 
 from .primary_sources import read_paper, search_papers, source_type, validate_url, ScholarlyRateLimit
 
@@ -17,8 +18,9 @@ _search_cooldown_until = 0.
 
 def canonical(url):
     validate_url(url)
-    match = re.search(r"arxiv.org/(?:abs|pdf)/(\d{4}\.\d{4,5})", url)
-    return "https://arxiv.org/abs/" + match[1] if match else url
+    document_url = urldefrag(url).url
+    match = re.search(r"arxiv.org/(?:abs|pdf)/(\d{4}\.\d{4,5})", document_url)
+    return "https://arxiv.org/abs/" + match[1] if match else document_url
 
 
 def normalized(text):

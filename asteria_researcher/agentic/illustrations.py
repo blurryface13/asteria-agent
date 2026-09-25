@@ -32,6 +32,8 @@ def normalized_excerpt(text):
 class Datum(BaseModel):
     model_config = ConfigDict(extra='forbid')
     label: str = Field(min_length=1, max_length=70)
+    source_label: str = Field(default='', max_length=100, description='For financial bars: exact source-table row label; category comparisons retain it in display labels, while period comparisons use source_column.')
+    source_column: str = Field(default='', max_length=100, description='For financial time-series bars: the source-table fiscal year, e.g. FY2025.')
     cells: list[str] = Field(default_factory=list, max_length=5, description='Short display labels (prefer <=25 Chinese characters or 6 English words). Put detailed explanation in caption/context, not in chart cells.')
     value: float | None = Field(default=None, allow_inf_nan=False)
     evidence_id: str
@@ -111,7 +113,7 @@ def citation_chart_brief(manifest: dict) -> dict:
     } for chart in manifest.get('charts', [])]}
 
 
-def validate_chart(chart: Chart, evidence: dict) -> None:
+def validate_chart(chart: Chart, evidence: dict, *, domain=None) -> None:
     if chart.kind == 'matrix' and not chart.columns:
         raise ValueError('Matrix needs column labels')
     if chart.kind == 'bar' and not chart.context.strip():
@@ -131,9 +133,43 @@ def validate_chart(chart: Chart, evidence: dict) -> None:
                 if any(key not in evidence for ids in row.cell_evidence_ids for key in ids):
                     raise ValueError('Cell provenance references unknown evidence')
         else:
-            numbers = re.findall(r'(?<![\w.])-?\d+(?:\.\d+)?', row.quote)
-            if row.value is None or row.value not in [float(n) for n in numbers]:
+            number_pattern = r'(?<![\w.])-?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?'
+            numbers = [float(n.replace(',', '')) for n in re.findall(number_pattern, row.quote)]
+            if row.value is None or row.value not in numbers:
                 raise ValueError('Bar value must appear in the quoted source; derived numbers need a separate calculation tool')
+            if domain == 'financial_research':
+                quote = normalized_excerpt(row.quote)
+                source_label = normalized_excerpt(row.source_label)
+                if not source_label or not quote.casefold().startswith(source_label.casefold()):
+                    raise ValueError('Financial bar quote must start with the verbatim source-table category')
+                row_values = quote[len(source_label):]
+                for other in chart.rows:
+                    other_label = normalized_excerpt(other.source_label)
+                    if other is row or not other_label:
+                        continue
+                    next_row = row_values.casefold().find(other_label.casefold())
+                    if next_row >= 0:
+                        row_values = row_values[:next_row]
+                row_numbers = [float(n.replace(',', '')) for n in re.findall(number_pattern, row_values)]
+                if row.value not in row_numbers:
+                    raise ValueError('Financial bar value must follow its own source-table category')
+                same_category = all(normalized_excerpt(other.source_label).casefold() == source_label.casefold()
+                                    for other in chart.rows)
+                if same_category:
+                    column_year = re.search(r'20\d{2}', row.source_column)
+                    if not column_year or column_year.group() not in row.label:
+                        raise ValueError('Financial period bar must name its source-table fiscal year in the display label')
+                    source_text = normalized_excerpt(item['text'])
+                    header = source_text[:source_text.find(quote)]
+                    years = re.findall(r'\b20\d{2}\b', header)[-len(row_numbers):]
+                    if len(years) != len(row_numbers) or years.count(column_year.group()) != 1:
+                        raise ValueError('Financial bar cannot identify the source-table fiscal-year column')
+                    if row_numbers[years.index(column_year.group())] != row.value:
+                        raise ValueError('Financial bar value does not match its source-table fiscal-year column')
+                    if source_label.casefold() not in normalized_excerpt(chart.title + ' ' + row.metric).casefold():
+                        raise ValueError('Financial period chart must retain the source-table metric')
+                elif not normalized_excerpt(row.label).casefold().startswith(source_label.casefold()):
+                    raise ValueError('Financial bar display label must retain the original category; do not translate or substitute geography')
     if chart.kind == 'bar' and len({r.evidence_id for r in chart.rows}) > 1:
         # Require a single original comparison table instead of trusting an LLM's
         # claim that results from independent papers share an evaluation protocol.
@@ -198,7 +234,12 @@ def render_chart(chart: Chart, path: Path) -> None:
             table_height = sum(heights)
             title = wrap(chart.title, 8.1 * 180, size=13)
             title_height = .36 * (title.count('\n') + 1) + .52
-            fig = Figure(figsize=(8.5, table_height + title_height + .25 if chart.kind == 'matrix' else max(3.2, .5*len(chart.rows)+1.5)), dpi=180)
+            bar_title_text = chart.title
+            if len(bar_title_text) > 65:
+                bar_title_text = re.sub(r'\s*[（(][^()（）]{0,60}[）)]\s*$', '', bar_title_text)
+            bar_title = wrap(bar_title_text, 7.6 * 180, size=13)
+            bar_height = max(3.2, .5 * len(chart.rows) + 1.5) + .35 * bar_title.count('\n')
+            fig = Figure(figsize=(8.5, table_height + title_height + .25 if chart.kind == 'matrix' else bar_height), dpi=180)
             FigureCanvasAgg(fig)
             if chart.kind == 'matrix':
                 ax = fig.add_axes([.025, .025, .95, table_height / fig.get_figheight()])
@@ -215,16 +256,25 @@ def render_chart(chart: Chart, path: Path) -> None:
                 fig.text(.025, .98, title, va='top', fontsize=13, color='#16324f')
             else:
                 ax = fig.add_subplot()
-                ax.barh([r.label for r in chart.rows], [r.value for r in chart.rows], color='#247e94')
+                bars = ax.barh([r.label for r in chart.rows], [r.value for r in chart.rows], color='#247e94')
+                ax.bar_label(bars, labels=[f'{r.value:,.0f}' for r in chart.rows], padding=4, fontsize=10)
+                low, high = min(0, *(r.value for r in chart.rows)), max(0, *(r.value for r in chart.rows))
+                span = max(high - low, 1)
+                ax.set_xlim(low - .12 * span if low < 0 else 0, high + .18 * span)
                 ax.invert_yaxis()
-                ax.set_xlabel(chart.context)
+                axis_context = chart.context
+                if len(axis_context) > 65:
+                    unit = next((part.strip() for part in re.split(r'[；;]', axis_context)
+                                 if '单位' in part or 'unit' in part.lower()), '')
+                    axis_context = unit or axis_context
+                ax.set_xlabel(wrap(axis_context, 7.5 * 180, size=10))
                 ax.spines[['top', 'right']].set_visible(False)
-                ax.set_title(chart.title, fontsize=14, pad=22, color='#16324f')
+                ax.set_title(bar_title, fontsize=13, pad=22, color='#16324f')
             path.parent.mkdir(parents=True, exist_ok=True)
             fig.savefig(path, bbox_inches='tight', facecolor='white')
 
 
-async def analyze(model, event, folder: Path, task: str, synthesis: str, briefs: list, evidence: dict, *, cached_plan=None):
+async def analyze(model, event, folder: Path, task: str, synthesis: str, briefs: list, evidence: dict, *, cached_plan=None, domain=None):
     """Optional analyst role with validation feedback; cannot collect new facts."""
     call_id = uuid4().hex
     await event('data_analyst', 'analyze', 'started', '从原文证据规划图表', call_id=call_id)
@@ -244,7 +294,15 @@ async def analyze(model, event, folder: Path, task: str, synthesis: str, briefs:
               'These charts support research decisions; hypotheses/experimental plans belong in the report, not '
               'dense figures masquerading as published evidence. Before reporting a date anomaly, compare the '
               'claimed publication month against today; an arXiv YYMM earlier than today is not itself anomalous. '
-              'Return ONLY JSON: ' + json.dumps(Analysis.model_json_schema()))
+              + ('For financial bar charts, source_label is REQUIRED and must copy the original table row/category label exactly; '
+                 'start the short quote at that label. For a fiscal-year comparison of ONE metric row (e.g. Revenue), '
+                 'all bars share source_label and each row MUST set source_column to its fiscal year (e.g. FY2025); '
+                 'the display label must include that year, and the evidence passage must contain the fiscal-year column headers '
+                 'before the quoted metric row in the same order as the values. For different category rows (e.g. Taiwan '
+                 'versus China), visible labels must begin with the exact original category label. Never substitute a '
+                 'translated or similar geography. Omit a bar chart if the category/value or year/value pair is unclear. '
+                 if domain == 'financial_research' else '')
+              + 'Return ONLY JSON: ' + json.dumps(Analysis.model_json_schema()))
     payload = {'task': task, 'today': str(date.today()), 'synthesis': synthesis,
                'notes': briefs, 'evidence': evidence}
     try:
@@ -258,7 +316,7 @@ async def analyze(model, event, folder: Path, task: str, synthesis: str, briefs:
                 issues, supported_charts, rejected_charts, rejected_rows = [], [], [], []
                 for chart in result.charts:
                     try:
-                        validate_chart(chart, evidence)
+                        validate_chart(chart, evidence, domain=domain)
                         supported_charts.append(chart)
                     except ValueError as error:
                         # Give the Analyst one chance to correct a bad quote.
@@ -268,14 +326,14 @@ async def analyze(model, event, folder: Path, task: str, synthesis: str, briefs:
                             valid_rows, invalid_rows = [], []
                             for row in chart.rows:
                                 try:
-                                    validate_chart(chart.model_copy(update={'rows': [row]}), evidence)
+                                    validate_chart(chart.model_copy(update={'rows': [row]}), evidence, domain=domain)
                                     valid_rows.append(row)
                                 except ValueError as row_error:
                                     invalid_rows.append({'chart_id': chart.id, 'row': row.label,
                                                          'reason': str(row_error)})
                             if len(valid_rows) >= 2 and invalid_rows:
                                 narrowed = chart.model_copy(update={'rows': valid_rows})
-                                validate_chart(narrowed, evidence)
+                                validate_chart(narrowed, evidence, domain=domain)
                                 supported_charts.append(narrowed)
                                 rejected_rows.extend(invalid_rows)
                                 continue

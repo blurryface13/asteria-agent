@@ -16,16 +16,18 @@ class Manifest(BaseModel):
     selectable: bool
     version: str
     phases: list[Literal["research", "writing", "formatting", "assistance"]]
+    domains: list[Literal["literature_review", "experiment_design", "financial_research"]] | None = None
     description: str
     source: str
     files: list[str] = Field(min_length=1)
 
 
-def catalog(phase=None):
+def catalog(phase=None, domain=None):
     entries = [Manifest.model_validate(e).model_dump() for e in json.loads((ROOT / "catalog.json").read_text())]
     if len({e["id"] for e in entries}) != len(entries):
         raise ValueError("Duplicate skill IDs in catalog")
-    return [e for e in entries if phase is None or phase in e["phases"]]
+    return [e for e in entries if (phase is None or phase in e["phases"])
+            and (domain is None or e["domains"] is None or domain in e["domains"])]
 
 
 def skill_detail(skill_id):
@@ -64,10 +66,10 @@ class SkillOptions(BaseModel):
 
 
 class SkillSession:
-    def __init__(self, phase, options=None):
+    def __init__(self, phase, options=None, *, domain=None):
         self.phase, self.loaded = phase, {}
         # Freeze bodies and metadata together: discoveries cannot change mid-session.
-        self.entries = {e["id"]: skill_detail(e["id"]) for e in catalog(phase)}
+        self.entries = {e["id"]: skill_detail(e["id"]) for e in catalog(phase, domain)}
         self.options = options or SkillOptions()
         for skill_id in self.options.skill_ids:
             if skill_id in self.entries:
@@ -109,11 +111,11 @@ class WritingChoice(BaseModel):
     reason: str = Field(min_length=1, max_length=600)
 
 
-async def select_writing(model, task, context, options=None):
+async def select_writing(model, task, context, options=None, *, domain=None):
     """Model selects guidance; validation enforces pins and exclusive content roles."""
     from .latex import format_profiles
     options = options or SkillOptions()
-    session = SkillSession("writing", options)
+    session = SkillSession("writing", options, domain=domain)
     profiles = format_profiles()
     content_ids = [i for i, e in session.entries.items() if e["selectable"] and e["kind"] == "content"]
     guidance_ids = [i for i, e in session.entries.items() if e["selectable"] and e["kind"] == "guidance"]

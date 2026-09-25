@@ -276,6 +276,14 @@ def test_canonical_deduplicates_arxiv_versions():
     assert canonical(URL + "v7") == canonical("https://arxiv.org/pdf/1706.03762v1.pdf")
 
 
+def test_canonical_page_anchor_is_same_read_filing_not_an_unread_source():
+    filing = 'https://s201.q4cdn.com/141608511/files/doc_financials/2026/q4/10K-NVDA.pdf'
+    assert canonical(filing + '#page=51') == filing
+    assert canonical(filing + '?download=1#page=51') != filing
+    other_filing = 'https://s201.q4cdn.com/141608511/files/doc_financials/2025/q4/10K-NVDA.pdf'
+    assert canonical(other_filing + '#page=51') != filing
+
+
 def test_embedding_preflight_stops_before_model_spending(tmp_path):
     async def model(*args):
         pytest.fail("must not spend LLM quota when retrieval dependency is down")

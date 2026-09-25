@@ -32,3 +32,17 @@ def test_report_tool_accepts_only_recorded_private_knowledge_citations():
     assert validate_report_draft(report, [marker])["ok"]
     invalid = validate_report_draft(report, ["KB:" + "b" * 20])
     assert not invalid["ok"] and invalid["invalid_urls"] == [marker]
+
+
+def test_financial_magnitude_guard_rejects_inverted_mixed_units():
+    source = 'https://s201.q4cdn.com/141608511/files/doc_financials/2026/q4/10K-NVDA.pdf'
+    wrong = f'# 财务分析\n952 亿美元的义务规模远超当期经营活动现金流（102,718 百万美元）。[来源]({source})'
+    result = validate_report_draft(wrong, [source], domain='financial_research')
+    assert not result['ok']
+    assert any('95,200.00 百万美元' in issue and '102,718.00 百万美元' in issue
+               for issue in result['issues'])
+    assert validate_report_draft(wrong, [source])['ok']  # Academic prose is not financially audited.
+    right = wrong.replace('远超', '低于')
+    assert validate_report_draft(right, [source], domain='financial_research')['ok']
+    ambiguous = f'# 财务分析\n另有 10 亿美元的存货，952 亿美元的义务规模高于 8,000 百万美元。[来源]({source})'
+    assert validate_report_draft(ambiguous, [source], domain='financial_research')['ok']

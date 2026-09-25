@@ -68,3 +68,20 @@ def test_model_contract_separates_primary_skill_from_guidance():
                            'format_profile': 'academic', 'reason': '单一综述结构与一手来源规范'})
     selection, _, _ = asyncio.run(select_writing(model, '综述', {}))
     assert selection.skill_ids == ['report_writing', 'source_priority']
+
+
+def test_financial_writing_excludes_academic_attribution_guidance():
+    async def model(system, payload):
+        schema = json.loads(system.split('Return ONLY JSON: ', 1)[1])
+        assert 'financial_report' in schema['properties']['content_skill']['enum']
+        assert 'report_writing' not in schema['properties']['content_skill']['enum']
+        assert 'source_priority' not in schema['properties']['guidance_skills']['items']['enum']
+        return json.dumps({'content_skill': 'financial_report', 'guidance_skills': [],
+                           'format_profile': 'brief', 'reason': '两份财报原文核对'})
+    selection, prompt, trace = asyncio.run(select_writing(
+        model, '对比两份独立的年度报告', {},
+        SkillOptions(skill_ids=['financial_report'], format_profile='brief'),
+        domain='financial_research'))
+    assert selection.skill_ids == ['financial_report']
+    assert "comparative column" in prompt
+    assert not any(entry['id'] == 'source_priority' for entry in trace)

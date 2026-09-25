@@ -15,6 +15,11 @@ _REFERENCE_TITLE = (r"(?:(?:[一二三四五六七八九十百]+|\d+(?:\.\d+)*)[
                     r"(?:\s*[（(][^（）()\n]{0,80}[）)])?")
 REFERENCE_TITLE_RE = re.compile(rf"^{_REFERENCE_TITLE}$", re.I)
 REFERENCE_HEADING_RE = re.compile(rf"^#{{1,6}}\s+{_REFERENCE_TITLE}\s*$", re.I | re.M)
+MONEY_RE = re.compile(
+    r'(?<![\d,])(?P<amount>(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)\s*'
+    r'(?P<unit>百万|十亿|亿|万)?\s*(?P<currency>美元|USD)', re.I)
+MONEY_FACTORS_TO_MILLIONS = {'': 1e-6, '万': .01, '百万': 1, '亿': 100, '十亿': 1000}
+COMPARISON_RE = re.compile(r'远超|超过|明显高于|高于|大于|远低于|低于|小于|不及')
 
 
 def is_reference_heading(title: str) -> bool:
@@ -51,6 +56,33 @@ def report_length(markdown: str) -> dict:
             "length_units": chinese + words, "length_convention": "body_cjk_plus_latin_words_v1"}
 
 
+def financial_magnitude_issues(markdown: str) -> list[str]:
+    """Catch clear inverted two-amount USD comparisons after unit conversion.
+
+    Only prose sentences with exactly one USD amount on each side of an
+    explicit comparison are checked. Ambiguous multi-value tables are left for
+    evidence review rather than guessed by this guardrail.
+    """
+    issues = []
+    for sentence in re.split(r'[。！？\n]', markdown or ''):
+        comparison = COMPARISON_RE.search(sentence)
+        amounts = list(MONEY_RE.finditer(sentence))
+        if not comparison or len(amounts) != 2:
+            continue
+        first, second = amounts
+        if not (first.end() <= comparison.start() and second.start() >= comparison.end()):
+            continue
+        values = [float(item['amount'].replace(',', '')) * MONEY_FACTORS_TO_MILLIONS[item['unit'] or '']
+                  for item in amounts]
+        claims_greater = comparison.group() in {'远超', '超过', '明显高于', '高于', '大于'}
+        if (claims_greater and values[0] <= values[1]) or (not claims_greater and values[0] >= values[1]):
+            issues.append('金额比较方向与单位换算不符：'
+                          f'{first.group()}≈{values[0]:,.2f} 百万美元，'
+                          f'{second.group()}≈{values[1]:,.2f} 百万美元；'
+                          f'原句使用“{comparison.group()}”。请据此修正判断。')
+    return issues
+
+
 def validate_report_draft(
     markdown: str,
     allowed_urls: Iterable[str],
@@ -59,6 +91,7 @@ def validate_report_draft(
     max_length_ratio: float = 1.4,
     min_length_ratio: float = 0.0,
     enforce_length: bool = True,
+    domain: str | None = None,
 ) -> dict:
     """Return machine-checkable report issues without judging scientific truth."""
     cited = sorted(urls(markdown or "") | knowledge_refs(markdown or ""))
@@ -73,6 +106,8 @@ def validate_report_draft(
         issues.append("报告缺少可追溯引用")
     if invalid:
         issues.append("报告引用了未读取来源")
+    if domain == 'financial_research':
+        issues.extend(financial_magnitude_issues(markdown))
     length_issues = []
     if target_chars and length["length_units"] > target_chars * max_length_ratio:
         length_issues.append(f"篇幅超出要求：正文 {length['length_units']} 字/词，目标约 {target_chars}")

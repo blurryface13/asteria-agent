@@ -187,6 +187,59 @@ def test_bars_cannot_invent_scores_or_merge_different_protocols():
         validate_chart(bars, {**EVIDENCE, 'e2': EVIDENCE['e1']})
 
 
+def test_financial_bars_keep_source_category_and_its_own_value():
+    source = 'Taiwan (2) 42,345 23,600 14,912 China (including Hong Kong) 19,677 25,048 12,330'
+    evidence = {'filing': {'source': 'https://investor.nvidia.com/filing.pdf', 'text': source}}
+    bars = Chart(id='geography-revenue', kind='bar', title='Geographic revenue',
+                 caption='FY2026 comparison', context='USD millions, FY2026', rows=[
+                     {'label': 'Taiwan (2) FY2026', 'source_label': 'Taiwan (2)',
+                      'value': 42345, 'metric': 'revenue (USD millions)', 'evidence_id': 'filing',
+                      'quote': 'Taiwan (2) 42,345 23,600 14,912'},
+                     {'label': 'China (including Hong Kong) FY2026',
+                      'source_label': 'China (including Hong Kong)', 'value': 19677,
+                      'metric': 'revenue (USD millions)', 'evidence_id': 'filing',
+                      'quote': 'China (including Hong Kong) 19,677 25,048 12,330'},
+                 ])
+    validate_chart(bars, evidence, domain='financial_research')
+
+    mislabeled = bars.model_copy(deep=True)
+    mislabeled.rows[0].label = '中国香港 FY2026'
+    with pytest.raises(ValueError, match='original category'):
+        validate_chart(mislabeled, evidence, domain='financial_research')
+
+    wrong_row = bars.model_copy(deep=True)
+    wrong_row.rows[0].value = 19677
+    wrong_row.rows[0].quote = source
+    with pytest.raises(ValueError, match='own source-table category'):
+        validate_chart(wrong_row, evidence, domain='financial_research')
+
+
+def test_financial_period_bars_match_fiscal_year_header_to_value_position():
+    filing = ('Consolidated Statements of Income (In millions) Year Ended '
+              'Jan 25, 2026 Jan 26, 2025 Jan 28, 2024 '
+              + 'Other financial-statement rows and values. ' * 12
+              + 'Revenue $ 215,938 $ 130,497 $ 60,922 Cost of revenue 62,475 32,639 16,621')
+    evidence = {'filing': {'source': 'https://investor.nvidia.com/filing.pdf', 'text': filing}}
+    bars = Chart(id='revenue-comparison', kind='bar', title='Revenue fiscal-year comparison',
+                 caption='FY2025 versus FY2026', context='Revenue, USD millions, US GAAP', rows=[
+                     {'label': 'FY2025', 'source_label': 'Revenue', 'source_column': 'FY2025',
+                      'value': 130497, 'metric': 'Revenue (USD millions)', 'evidence_id': 'filing',
+                      'quote': 'Revenue $ 215,938 $ 130,497 $ 60,922'},
+                     {'label': 'FY2026', 'source_label': 'Revenue', 'source_column': 'FY2026',
+                      'value': 215938, 'metric': 'Revenue (USD millions)', 'evidence_id': 'filing',
+                      'quote': 'Revenue $ 215,938 $ 130,497 $ 60,922'},
+                 ])
+    validate_chart(bars, evidence, domain='financial_research')
+    swapped = bars.model_copy(deep=True)
+    swapped.rows[0].value = 215938
+    with pytest.raises(ValueError, match='fiscal-year column'):
+        validate_chart(swapped, evidence, domain='financial_research')
+    missing_column = bars.model_copy(deep=True)
+    missing_column.rows[0].source_column = ''
+    with pytest.raises(ValueError, match='fiscal year'):
+        validate_chart(missing_column, evidence, domain='financial_research')
+
+
 def test_renderer_rejects_unregistered_and_escaping_images():
     with pytest.raises(ValueError):
         render_tex('![image](../../private.png)', assets=['../../private.png'])

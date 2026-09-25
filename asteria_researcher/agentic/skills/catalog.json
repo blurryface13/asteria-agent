@@ -8,6 +8,7 @@
     "phases": [
       "research"
     ],
+    "domains": ["literature_review"],
     "description": "证据获取、预算与有边界的文献调研；基础规范。",
     "files": [
       "literature_review.md"
@@ -24,6 +25,7 @@
       "research",
       "writing"
     ],
+    "domains": ["literature_review"],
     "description": "核对原创贡献与历史归因，避免将后续综述当成最初发现。",
     "files": [
       "vendor/gallant/source_priority.md",
@@ -40,6 +42,7 @@
     "phases": [
       "writing"
     ],
+    "domains": ["literature_review"],
     "description": "按主题综合证据，对比方法、实验与研究空白。",
     "files": [
       "report_writing.md"
@@ -62,6 +65,18 @@
     "source": "Asteria"
   },
   {
+    "id": "financial_report",
+    "title": "金融公开资料研究报告",
+    "kind": "content",
+    "selectable": true,
+    "version": "1",
+    "phases": ["writing"],
+    "domains": ["financial_research"],
+    "description": "面向财报比较与行业调研；区分原文事实、计算值及分析判断，按需呈现表图。",
+    "files": ["financial_report.md"],
+    "source": "Asteria；参考 anthropics/financial-services 的来源归因与报告质检原则"
+  },
+  {
     "id": "experiment_research",
     "title": "复现实验研究规范",
     "kind": "policy",
@@ -70,6 +85,7 @@
     "phases": [
       "research"
     ],
+    "domains": ["experiment_design"],
     "description": "为复现实验方案收集环境、数据与方法证据。",
     "files": [
       "experiment_design.md"
@@ -85,6 +101,7 @@
     "phases": [
       "writing"
     ],
+    "domains": ["experiment_design"],
     "description": "环境、数据、基线与指标；不宣称执行了未运行的实验。",
     "files": [
       "experiment_writing.md"
@@ -131,6 +148,7 @@
       "assistance",
       "research"
     ],
+    "domains": ["financial_research"],
     "description": "公开资料分析与风险边界，不执行交易",
     "files": [
       "finance_assistance.md"
@@ -193,6 +211,7 @@
       "writing",
       "assistance"
     ],
+    "domains": ["financial_research"],
     "description": "按行业结构、竞争格局、增长驱动、估值口径组织金融/企业调研；不用于纯学术综述。",
     "files": [
       "vendor/anthropic/financial-services/sector-overview.md",
@@ -211,6 +230,7 @@
       "writing",
       "assistance"
     ],
+    "domains": ["financial_research"],
     "description": "核对最新实际值与旧估计，追踪假设和估值差异；需要已有财务模型/资料。",
     "files": [
       "vendor/anthropic/financial-services/model-update.md",
