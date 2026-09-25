@@ -19,9 +19,22 @@ def test_usage_summary_separates_stages_and_unknown_cache():
     assert report['total']['input_tokens'] == 210
     assert report['total']['cache_read_tokens'] == 70
     assert report['total']['cache_read_ratio'] is None
+    assert report['total']['non_cached_input_tokens'] is None
     assert report['by_stage']['research_lead']['cache_read_ratio'] == .4
+    assert report['by_stage']['research_lead']['non_cached_input_tokens'] == 60
     assert report['by_stage']['citation_agent']['input_tokens'] == 60
+    assert report['by_stage']['citation_agent']['non_cached_input_tokens'] == 30
     assert report['by_stage']['writer']['missing_usage'] == 1
+    assert report['by_stage']['writer']['non_cached_input_tokens'] is None
+
+
+def test_usage_summary_reports_non_cached_input_only_with_complete_cache_metadata():
+    report = summarize([{'type': 'usage', 'stage': 'writer', 'usage': {
+        'input_tokens': 100, 'output_tokens': 12,
+        'input_token_details': {'cache_read': 25}}}])
+    assert report['total']['input_tokens'] == 100
+    assert report['total']['non_cached_input_tokens'] == 75
+    assert report['by_stage']['writer']['non_cached_input_tokens'] == 75
 
 
 def test_model_call_emits_research_stage_without_sibling_leak(tmp_path):

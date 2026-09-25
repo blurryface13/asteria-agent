@@ -58,13 +58,28 @@ def summarize(events):
     totals = {key: sum(row[key] for row in by_stage.values()) for key in next(iter(by_stage.values()), {})}
     totals['cache_read_ratio'] = (round(totals['cache_read_tokens'] / totals['input_tokens'], 4)
                                   if totals.get('input_tokens') and
-                                  totals.get('cache_measured_calls') == totals.get('measured_calls') else None)
+                                  totals.get('cache_measured_calls') == totals.get('measured_calls') and
+                                  not totals.get('missing_usage') else None)
+    # Unknown cache metadata must not silently be treated as zero cache reads.
+    totals['non_cached_input_tokens'] = (
+        totals['input_tokens'] - totals['cache_read_tokens']
+        if totals.get('measured_calls') and not totals['missing_usage'] and
+        totals['cache_measured_calls'] == totals['measured_calls']
+        else None
+    )
     for row in by_stage.values():
         row['cache_read_ratio'] = (round(row['cache_read_tokens'] / row['input_tokens'], 4)
-                                   if row['input_tokens'] and row['cache_measured_calls'] == row['measured_calls']
+                                   if row['input_tokens'] and not row['missing_usage'] and
+                                   row['cache_measured_calls'] == row['measured_calls']
                                    else None)
+        row['non_cached_input_tokens'] = (
+            row['input_tokens'] - row['cache_read_tokens']
+            if row['measured_calls'] and not row['missing_usage'] and
+            row['cache_measured_calls'] == row['measured_calls']
+            else None
+        )
     return {'total': totals, 'by_stage': by_stage,
-            'note': 'Logical input tokens include cache reads. A null cache ratio means cache metadata is incomplete; this is not a price estimate.'}
+            'note': 'Logical input tokens include cache reads. Non-cached input is a diagnostic count, not a price estimate or a reduction in logical tokens. Null means cache metadata is incomplete.'}
 
 
 def read_events(path):
