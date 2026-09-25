@@ -200,7 +200,8 @@ def test_model_selection_is_role_scoped_and_frozen_for_a_task(monkeypatch):
     async def fake_snapshot():
         snapshots.append(True)
         return {'research_lead': ('deepseek-reasoner', 'lead-secret'),
-                'writer': ('deepseek-chat', 'writer-secret')}
+                'writer': ('deepseek-chat', 'writer-secret'),
+                'general_chat': ('deepseek-chat', 'general-secret')}
 
     monkeypatch.setattr(config_module, 'Config', FakeConfig)
     monkeypatch.setattr(llm_module, 'create_chat_completion', fake_completion)
@@ -214,7 +215,9 @@ def test_model_selection_is_role_scoped_and_frozen_for_a_task(monkeypatch):
             await model('system', 'user')
         with track_usage_stage('intent_router'):
             await model('system', 'user')
+        await model('system', 'user')
         assert calls == [('deepseek-reasoner', 'lead-secret'),
-                         ('deepseek-chat', 'writer-secret'), ('deepseek-chat', None)]
+                         ('deepseek-chat', 'writer-secret'), ('deepseek-chat', 'general-secret'),
+                         ('deepseek-chat', 'general-secret')]
         assert len(snapshots) == 1
     asyncio.run(run())
