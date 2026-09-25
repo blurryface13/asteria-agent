@@ -27,6 +27,29 @@ def test_citation_receives_proposal_context_and_skips_table_headers():
     assert lines[1]['text'].startswith('| 方法一')
 
 
+def test_methodological_judgment_needs_no_invented_citation(tmp_path):
+    async def model(_system, payload):
+        return json.dumps({'findings': [{'line_id': 2, 'supported': True, 'kind': 'analysis',
+            'evidence_ids': [], 'reason': 'Methodological framing, no empirical claim'}]})
+    report = '# 报告\n\n以下比较按评价协议组织，用于指导实验设计。\n'
+    assert asyncio.run(CitationAgent(model, emit, tmp_path).attach(report, CATALOG, {SOURCE: {}})) == report
+
+
+def test_repair_rechecks_only_changed_lines(tmp_path):
+    report = REPORT + '\n尚无证据却宣称精度提高百分之九十，需要修正。\n'
+    judged = []
+    async def model(system, payload):
+        if 'Repair ONLY' in system:
+            return json.dumps({'replacements': [{'line_id': 4, 'text': '建议未来对准确率进行实验评估，目前尚未执行。'}]})
+        judged.append([r['line_id'] for r in payload['report_lines']])
+        return json.dumps({'findings': [{'line_id': r['line_id'], 'supported': r['line_id']==2 or len(judged)>1,
+            'kind': 'factual' if r['line_id']==2 else 'recommendation',
+            'evidence_ids': ['e_1'] if r['line_id']==2 else [], 'reason': 'source or explicit proposed experiment'}
+            for r in payload['report_lines']]})
+    result = asyncio.run(CitationAgent(model, emit, tmp_path).attach_with_repair(report, CATALOG, {SOURCE: {}}))
+    assert judged == [[2, 4], [4]] and SOURCE in result
+
+
 def test_bad_evidence_id_gets_one_contract_correction(tmp_path):
     calls = []
     async def model(_system, payload):

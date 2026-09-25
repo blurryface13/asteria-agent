@@ -98,15 +98,23 @@ class CitationAgent:
 
     async def attach_with_repair(self, report, catalog, read_sources, *, max_repairs=2):
         history = []
+        verified = {}
         catalog = visible_evidence(catalog)
         for attempt in range(max_repairs + 1):
             (self.folder / f"citation-draft-{attempt + 1}.md").write_text(report)
             try:
-                output = await self.attach(report, catalog, read_sources, attempt=attempt + 1)
+                output = await self.attach(report, catalog, read_sources, attempt=attempt + 1, verified=verified)
                 history.append({"attempt": attempt + 1, "status": "completed"})
                 return output
             except CitationGapError as error:
                 history.append({"attempt": attempt + 1, "status": "incomplete", "gaps": error.gaps})
+                # Only changed/gap lines need another model judgment. Rechecking
+                # the entire report was expensive and reopened settled lines.
+                audit = json.loads((self.folder/'citation-review.json').read_text())
+                gaps = {g['line_id'] for g in error.gaps}
+                for finding in audit['findings']:
+                    if finding['line_id'] not in gaps:
+                        verified[finding['line_id']] = (report.splitlines()[finding['line_id']], finding)
                 if attempt == max_repairs:
                     raise
                 await self.event("writer", "citation_repair", "started", "按引文缺口定向修正原稿", attempt=attempt + 1)
@@ -151,7 +159,7 @@ class CitationAgent:
             finally:
                 (self.folder / "citation-history.json").write_text(json.dumps(history, ensure_ascii=False, indent=2))
 
-    async def attach(self, report: str, catalog: dict, read_sources: dict, *, attempt: int = 1) -> str:
+    async def attach(self, report: str, catalog: dict, read_sources: dict, *, attempt: int = 1, verified=None) -> str:
         lines = factual_lines(report)
         if not lines or not catalog:
             raise ValueError("CitationAgent 缺少待核对正文或已读原文证据")
@@ -165,7 +173,8 @@ class CitationAgent:
                            "Existing citations do not prove support. For unsupported claims set supported=false and explain the gap. "
                            "For every existing source link, include evidence IDs supporting its claims, or identify "
                            "the unsupported source explicitly. A paragraph may need several excerpts per source. "
-                           "Classify kind: factual claims require evidence; analysis needs supporting premises; "
+                           "Classify kind: factual claims require evidence; analysis needs evidence for factual premises, "
+                           "but a methodological judgment without external factual premises needs no invented citation; "
                            "recommendations and explicit limitations may omit citations when clearly labeled as such and "
                            "containing no unsupported factual premise. supported then means the statement is appropriately qualified. "
                            "Read section context: expected differences, proposed protocols, ablations, failure hypotheses and "
@@ -179,9 +188,16 @@ class CitationAgent:
             schema["$defs"]["CitationFinding"]["required"] + ["evidence_ids", "kind"]))
         schema["$defs"]["CitationFinding"]["properties"]["evidence_ids"]["items"]["enum"] = list(visible)
         expected = {item["line_id"] for item in lines}
-        findings = []
-        for offset in range(0, len(lines), 12):
-            batch_payload = {**payload, "report_lines": lines[offset:offset + 12]}
+        verified = verified or {}
+        findings, pending = [], []
+        for item in lines:
+            saved = verified.get(item['line_id'])
+            if saved and saved[0].strip() == item['text']:
+                findings.append(CitationFinding.model_validate(saved[1]))
+            else:
+                pending.append(item)
+        for offset in range(0, len(pending), 12):
+            batch_payload = {**payload, "report_lines": pending[offset:offset + 12]}
             for retry in range(2):
                 # Only malformed output gets one correction, not provider
                 # failures, cancellation or unsupported factual claims.
@@ -196,7 +212,7 @@ class CitationAgent:
                 try:
                     batch = CitationPlan.model_validate_json(raw)
                     batch_ids = [item.line_id for item in batch.findings]
-                    if len(batch_ids) != len(set(batch_ids)) or set(batch_ids) != {item["line_id"] for item in lines[offset:offset + 12]}:
+                    if len(batch_ids) != len(set(batch_ids)) or set(batch_ids) != {item["line_id"] for item in pending[offset:offset + 12]}:
                         raise ValueError("CitationAgent 批次正文位置不完整或重复")
                     unknown = sorted({key for item in batch.findings for key in item.evidence_ids} - set(visible))
                     if unknown:
@@ -224,7 +240,7 @@ class CitationAgent:
         for finding in plan.findings:
             if not set(finding.evidence_ids) <= set(visible):
                 raise ValueError("CitationAgent 使用了不存在或不可见的原文证据")
-            if not finding.supported or (not finding.evidence_ids and finding.kind in {"factual", "analysis"}):
+            if not finding.supported or (not finding.evidence_ids and finding.kind == 'factual'):
                 gaps.append({"line_id": finding.line_id, "reason": finding.reason})
                 continue
             cited = [visible[key]["source"] for key in finding.evidence_ids]

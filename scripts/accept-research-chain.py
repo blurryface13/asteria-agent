@@ -31,7 +31,9 @@ async def verify_deliverables(client, run):
     from pathlib import PurePosixPath
     artifacts = {item["kind"]: item for item in run.get("artifacts", [])}
     verified = []
-    for kind in ("md", "latex_pdf", "citation_review", "lead_decisions"):
+    kinds = ['md', 'latex_pdf', 'citation_review', 'lead_decisions']
+    kinds.extend(k for k in artifacts if k.startswith('chart_') or k in {'data_analysis', 'tool_calls', 'report_bundle'})
+    for kind in kinds:
         item = artifacts.get(kind)
         if not item:
             raise ValueError("Missing completed-run artifact: " + kind)
@@ -47,6 +49,14 @@ async def verify_deliverables(client, run):
             raise ValueError("PDF artifact is not a PDF")
         if kind == "citation_review" and json.loads(content)["status"] != "completed":
             raise ValueError("Citation review is not complete")
+        if kind.startswith('chart_') and (not content.startswith(b'\x89PNG') or 'image/png' not in response.headers.get('content-type', '')):
+            raise ValueError('Chart download is not a renderable PNG')
+        if kind == 'report_bundle':
+            import io
+            import zipfile
+            with zipfile.ZipFile(io.BytesIO(content)) as bundle:
+                if bundle.testzip() is not None or not {'report.md', 'report.tex', 'report.pdf'} <= set(bundle.namelist()):
+                    raise ValueError('Report bundle is incomplete')
         verified.append({"kind": kind, "status": response.status_code, "bytes": len(content), "sha256": item["sha256"]})
     return verified
 

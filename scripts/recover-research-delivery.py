@@ -82,10 +82,25 @@ async def main(source, checkpoint=None, resume_draft=False):
             state['checkpoint'] = str(checkpoint)
             if resume_draft:
                 checks = [e for e in events if e['tool']=='report_check']
-                if not checks or checks[-1]['status'] != 'completed':
+                citation_drafts = sorted(checkpoint.glob('citation-draft-*.md'))
+                if citation_drafts:
+                    saved_draft = citation_drafts[-1].read_text()
+                elif checks and checks[-1]['status'] == 'completed':
+                    saved_draft = (checkpoint/f"draft-{checks[-1]['attempt']}.md").read_text()
+                else:
                     raise ValueError('Checkpoint has no validated report draft')
-                saved_draft = (checkpoint/f"draft-{checks[-1]['attempt']}.md").read_text()
-                runtime.format_profile = json.loads((checkpoint/'writing.json').read_text())['format_profile']
+                profile_source, seen = checkpoint, set()
+                while not (profile_source/'writing.json').is_file():
+                    if str(profile_source) in seen:
+                        raise ValueError('Cyclic writing profile checkpoint')
+                    seen.add(str(profile_source))
+                    record = json.loads((profile_source/'recovery.json').read_text())
+                    profile_source = Path(record['checkpoint']).resolve()
+                    if not profile_source.is_relative_to(ROOT/'outputs/delivery_recovery'):
+                        raise ValueError('Invalid writing profile checkpoint')
+                    if json.loads((profile_source/'recovery.json').read_text())['source_review'] != str(source):
+                        raise ValueError('Writing profile belongs to a different research task')
+                runtime.format_profile = json.loads((profile_source/'writing.json').read_text())['format_profile']
                 state['resumed_from'] = 'citation_agent'
         else:
             if resume_draft:
