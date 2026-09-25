@@ -13,7 +13,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from .report_tools import _source_key, knowledge_refs
+from .report_tools import _source_key, is_reference_heading, knowledge_refs
 from .runtime import urls
 
 
@@ -107,7 +107,7 @@ def factual_lines(report: str) -> list[dict]:
         if stripped.startswith(("```", "~~~")):
             in_code = not in_code
             continue
-        if re.match(r"^#{1,6}\s*(参考文献|参考资料|References|资料来源)\s*$", stripped, re.I):
+        if heading and is_reference_heading(heading[2]):
             in_references = True
         table_header = (stripped.startswith('|') and line_id + 1 < len(raw_lines)
                         and re.fullmatch(r'[\s|:\-]+', raw_lines[line_id + 1]))
@@ -143,6 +143,17 @@ class CitationAgent:
             match = re.fullmatch(r'!\[[^\]]*\]\(figures/([a-z][a-z0-9-]{0,40})\.png\)', line.strip())
             if not match or match[1] not in charts:
                 continue
+            chart = charts[match[1]]
+            family = re.fullmatch(r'(.+)-p(\d+)', match[1])
+            if family:
+                # A paginated matrix is one logical comparison. Prose after
+                # page 2 may summarize rows that were rendered on page 1.
+                members = sorted(((int(page[2]), item) for key, item in charts.items()
+                                  if (page := re.fullmatch(r'(.+)-p(\d+)', key)) and page[1] == family[1]),
+                                 key=lambda pair: pair[0])
+                chart = {**chart, 'id': family[1],
+                         'row_labels': [label for _, item in members for label in item.get('row_labels', [])],
+                         'display_cells': [cells for _, item in members for cells in item.get('display_cells', [])]}
             nearby = []
             for line_id in range(index + 1, min(len(source_lines), index + 9)):
                 if source_lines[line_id].strip().startswith(('#', '![')):
@@ -152,7 +163,7 @@ class CitationAgent:
                 if len(nearby) == 2:
                     break
             if nearby:
-                targets.append({'chart': charts[match[1]], 'report_lines': nearby})
+                targets.append({'chart': chart, 'report_lines': nearby})
         if not targets:
             return []
         raw = await self.model(

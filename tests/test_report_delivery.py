@@ -30,6 +30,21 @@ def test_citation_explanation_length_is_not_a_delivery_gate():
     assert factual_lines('## 参考资料\n这里是参考资料而不是待逐句检查的报告正文。') == []
 
 
+def test_numbered_bibliography_is_not_factual_body_but_urls_still_checked():
+    source = 'https://arxiv.org/abs/2507.19830'
+    report = ('# 报告\n本文讨论三维语言场的表示问题。\n'
+              '## 六、参考文献\n以下全部为本次实际读取的预印本，发表状态未核验。\n'
+              f'19. [Taking Language Embedded 3D Gaussian Splatting into the Wild]({source})'
+              '（arXiv 预印本，发表状态未核验）\n')
+    assert [line['text'] for line in factual_lines(report)] == ['本文讨论三维语言场的表示问题。']
+    assert source in validate_report_draft(report, [])['invalid_urls']
+    assert validate_report_draft(report, [source])['ok']
+    assert report_length(report)['length_units'] == report_length('# 报告\n本文讨论三维语言场的表示问题。')['length_units']
+    tex = render_tex(report)
+    assert r'\section{参考文献}' in tex
+    assert tex.count('参考资料') == 0
+
+
 def test_handoff_keeps_conditions_without_duplicate_raw_evidence():
     action = Action(tool="finish", purpose="回传发现", summary="两组实验不可混比", findings=[{
         "conclusion": "方法在全量集更好", "conditions": "5000题；同一准确率指标；基线55.18%",

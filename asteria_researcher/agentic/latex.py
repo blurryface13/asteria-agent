@@ -10,6 +10,7 @@ import shutil
 import zipfile
 from uuid import uuid4
 from .pdf_fonts import embed_unicode_maps
+from .report_tools import REFERENCE_HEADING_RE, is_reference_heading
 
 
 def escape(value: str, *, break_words=False) -> str:
@@ -85,7 +86,7 @@ def render_tex(markdown: str, profile: str = "academic", *, assets=()) -> str:
     reference_numbers = {}
     reference_labels = {}
     # Honor bibliography order even when the body cites sources out of order.
-    bibliography = re.split(r"(?im)^#{1,3}\s*(?:参考文献|参考资料|References)\s*$", markdown, maxsplit=1)
+    bibliography = REFERENCE_HEADING_RE.split(markdown, maxsplit=1)
     if len(bibliography) == 2:
         # Writers may use either Markdown links or 'Title — bare URL'. Seed
         # numbers from both before visiting body citations in a different order.
@@ -167,7 +168,7 @@ def render_tex(markdown: str, profile: str = "academic", *, assets=()) -> str:
             if len(heading[1]) == 1:
                 lines.append(r"{\raggedright\LARGE\bfseries\hyphenpenalty=10000 " + inline(heading[2]) + r"\par}\vspace{8pt}")
             else:
-                in_references = bool(re.fullmatch(r"(?:参考文献|参考资料|References)", heading[2], re.I))
+                in_references = is_reference_heading(heading[2])
                 command = ["section", "subsection"][len(heading[1])-2]
                 title = heading[2]
                 if profile == "academic":
@@ -181,7 +182,7 @@ def render_tex(markdown: str, profile: str = "academic", *, assets=()) -> str:
             lines.append(inline(line) + "\n")
     if list_kind:
         lines.append("\\end{" + list_kind + "}")
-    if reference_numbers and not re.search(r"(?im)^#{1,3}\s*(参考文献|参考资料|References)\s*$", markdown):
+    if reference_numbers and not REFERENCE_HEADING_RE.search(markdown):
         lines.append(r"\section*{参考资料}")
         for url, number in reference_numbers.items():
             lines.append(r"\noindent\href{" + escape(url) + "}{" + escape(f"[{number}] {reference_labels[url]}") + r"}\par")

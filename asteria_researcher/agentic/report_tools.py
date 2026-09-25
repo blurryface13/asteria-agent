@@ -10,6 +10,15 @@ from .runtime import urls
 
 HEADING_RE = re.compile(r"^#{1,3}\s+(.+?)\s*$", re.MULTILINE)
 KNOWLEDGE_REF_RE = re.compile(r"〔(KB:[0-9a-f]{20})〕")
+_REFERENCE_TITLE = (r"(?:(?:[一二三四五六七八九十百]+|\d+(?:\.\d+)*)[、.．]\s*)?"
+                    r"(?:参考文献|参考资料|References|资料来源)"
+                    r"(?:\s*[（(][^（）()\n]{0,80}[）)])?")
+REFERENCE_TITLE_RE = re.compile(rf"^{_REFERENCE_TITLE}$", re.I)
+REFERENCE_HEADING_RE = re.compile(rf"^#{{1,6}}\s+{_REFERENCE_TITLE}\s*$", re.I | re.M)
+
+
+def is_reference_heading(title: str) -> bool:
+    return bool(REFERENCE_TITLE_RE.fullmatch(title.strip()))
 
 
 def knowledge_refs(markdown: str) -> set[str]:
@@ -33,7 +42,7 @@ def report_length(markdown: str) -> dict:
     Exclude reference appendix, URLs and citation markers, not English prose.
     This is a transparent display-length convention, not tokenizer billing.
     """
-    body = re.split(r"(?im)^#{1,3}\s*(?:参考文献|参考资料|references)\s*$", markdown)[0]
+    body = REFERENCE_HEADING_RE.split(markdown, maxsplit=1)[0]
     body = re.sub(r"\[[^\]]*\]\(https?://[^)]+\)", "", body)
     body = re.sub(r"https?://\S+|〔KB:[0-9a-f]{20}〕", "", body)
     chinese = len(re.findall(r"[\u4e00-\u9fff]", body))

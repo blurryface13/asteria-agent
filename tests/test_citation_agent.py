@@ -237,6 +237,26 @@ def test_citation_figure_handoff_excludes_analyst_drafts_and_quotes():
     assert 'source excerpt' not in json.dumps(brief)
 
 
+def test_paginated_figure_check_sees_all_parts_of_one_comparison(tmp_path):
+    figures = {'charts': [
+        {'id': 'limitations-p1', 'title': '证据强度（1/2）', 'columns': ['证据'],
+         'row_labels': ['遮挡', '多视角一致性'], 'display_cells': [['缺少遮挡分层指标'], ['缺少统一度量']]},
+        {'id': 'limitations-p2', 'title': '证据强度（2/2）', 'columns': ['证据'],
+         'row_labels': ['泛化', '成本'], 'display_cells': [['跨域评测缺失'], ['口径不可比']]},
+    ]}
+    report = ('# 局限\n\n![前半](figures/limitations-p1.png)\n\n'
+              '![后半](figures/limitations-p2.png)\n\n'
+              '两张图共同表明遮挡和多视角一致性缺少统一的定量指标。\n')
+    async def model(system, payload):
+        assert 'Figure consistency check ONLY' in system
+        chart = payload['targets'][0]['chart']
+        assert chart['id'] == 'limitations'
+        assert chart['row_labels'] == ['遮挡', '多视角一致性', '泛化', '成本']
+        return json.dumps({'conflicts': []})
+    assert asyncio.run(CitationAgent(model, emit, tmp_path, figures=figures)
+                       .figure_conflicts(report, attempt=1)) == []
+
+
 def test_checked_public_citation_replaces_internal_evidence_marker(tmp_path):
     report = REPORT.rstrip() + '〔KB:e_3621e7d33dcb2c02〕\n'
     async def model(system, payload):
