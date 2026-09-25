@@ -43,3 +43,14 @@ CitationAgent 专注正文与证据的引用对应关系，不重新制定研究
 - `review_05b8871fbdb949439b29c1390479cd06` 离线恢复失败于补读预算耗尽，原始失败保存。`review_72404a41d0ec4794bd47bd74a8a058fd` 进程中断，未产出 PDF；其初始 recovery.json 没有终态，不能据此认为仍在运行或已成功。
 - 恢复脚本现在在模型调用前保存 checkpoint、阶段、PID 和开始时间；PID/事件与文件状态一起检查，文件中的 running 不是进程存活证明。
 - 当前回归：350 passed / 5 skipped；旧依赖弃用警告不影响测试结果。新恢复与真实端到端验收结果继续分别登记，不能互相替代。
+
+## 引文恢复、PDF 与图文质量复核
+
+- `review_8652a18745fa47d5ba4817dcc5014730`：11 次模型调用后完成 CitationAgent，原恢复在 PDF 阶段失败。原因是安全 LaTeX 转义把公式 `\\%` 变成裸 `%`，注释掉数学闭合符；不是检索或引文失败。
+- `245284a` 修复数学字面符号；`publish-reviewed-report.py` 可只重试已经完成引文校验的正文发布，不再重复研究/写作/裁判模型调用，结果另存 publication-recovery 文件，原失败不变。
+- 仅发布恢复产物：`outputs/delivery_recovery/review_8652a18745fa47d5ba4817dcc5014730/scientific_4ad77cdf85324bf7be1439f17d3e4ae2/report.pdf`，9 页、3 张定性矩阵、16 个参考条目。逐页检查中文、数学、图表及编号；补修 `≠`、`\\eta`、参考编号双重显示。无 Missing character/Overfull/invalid math 警告。
+- **质量仍有缺口**：图中明确列出了机制，旧正文却复述规划阶段的“大量未报告”；把有限阅读范围推成全领域“无基准”的结论过强；正文来源数量与书目数量不一致。CitationAgent 通过不是这些判断正确的证明。当前 PDF 可读，但不能据此宣称内容验收全部通过。
+- `c1a39ff` 调整通用 Analyst→Writer 交接：交付实际渲染单元格、完整行描述及来源，移除可能过期的规划 rationale/caption，不手改这份报告掩盖 BadCase。没有增加新的 Reviewer 或研究审批循环。
+- 最新完整回归：353 passed / 5 skipped。真实 XeLaTeX 百分号公式测试包含在内。
+- 浏览器：独立旧测试账号登录、历史任务加载通过，旧失败状态和各子任务回传记录一致。
+- 新真实验收 `3de1d30bd8c6482e9740c728dff8e8e0`，目录 `outputs/acceptance_db4f2fe41c`，使用相同复杂 CV 请求，从真实登录/路由开始，worker 记录干净版本 `245284a`。运行期间不重启它；后提交的图文交接优化不冒充已在该 Run 生效。
