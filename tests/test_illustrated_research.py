@@ -119,6 +119,7 @@ def test_pdf_hyphenation_and_ligatures_are_not_false_evidence_mismatches():
     from asteria_researcher.agentic.illustrations import normalized_excerpt
     assert normalized_excerpt('ob-\ntained ﬁelds') == normalized_excerpt('ob-tained fields')
     assert normalized_excerpt('scores 14.2') != normalized_excerpt('scores 12.4')
+    assert normalized_excerpt('LERF’s “espresso machine”') == normalized_excerpt('LERF\'s "espresso machine"')
     bad = chart()
     bad.rows[0].cells = ['one']
     with pytest.raises(ValueError, match='expected .* cells'):

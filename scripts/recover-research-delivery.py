@@ -105,7 +105,17 @@ async def main(source, checkpoint=None, resume_draft=False):
         else:
             if resume_draft:
                 raise ValueError('--resume-draft requires --checkpoint')
-            result = await runtime.loop('lead', runtime.query, lead=True, steps=3)
+            events = [json.loads(line) for line in (source/'events.jsonl').read_text().splitlines()]
+            finished = [e['result'] for e in events if e.get('agent')=='lead' and e.get('tool')=='finish'
+                        and e.get('status')=='completed' and 'result' in e]
+            if finished:
+                result = finished[-1]
+                state['resumed_from'] = 'completed_lead_handoff'
+                await runtime.event('lead', 'finish', 'completed', '恢复已保存的 Lead 交接，不重复调研', result=result)
+                plans = sorted(source.glob('analysis-attempt-*.txt'))
+                analysis_plan = plans[-1] if plans else None
+            else:
+                result = await runtime.loop('lead', runtime.query, lead=True, steps=3)
         report = await runtime.deliver(await runtime.delivery_handoff(result), analysis_plan=analysis_plan, saved_draft=saved_draft)
         paths = await publish(report, runtime.folder, profile=runtime.format_profile, assets=runtime.figure_assets)
         state.update(status='completed', paths=paths, model_calls=runtime.model_calls)

@@ -23,6 +23,7 @@ def normalized_excerpt(text):
     # PDFs wrap words across lines and use typographic ligatures. These are
     # layout differences, not factual edits. Preserve all words and numbers.
     text = unicodedata.normalize('NFKC', text)
+    text = text.translate(str.maketrans({'’': "'", '‘': "'", '“': '"', '”': '"'}))
     text = re.sub(r'(?<=\w)-\s*(?=\w)', '', text)
     return re.sub(r'\s+', ' ', text).strip()
 
@@ -200,8 +201,14 @@ async def analyze(model, event, folder: Path, task: str, synthesis: str, briefs:
                 result = Analysis.model_validate_json(raw)
                 if len({c.id for c in result.charts}) != len(result.charts):
                     raise ValueError('Duplicate chart IDs')
+                issues = []
                 for chart in result.charts:
-                    validate_chart(chart, evidence)
+                    try:
+                        validate_chart(chart, evidence)
+                    except ValueError as error:
+                        issues.append(f'{chart.id}: {error}')
+                if issues:
+                    raise ValueError('\n'.join(issues))
                 crowded = [{'chart': c.id, 'row': r.label, 'column': c.columns[i], 'text': s}
                            for c in result.charts if c.kind == 'matrix' for r in c.rows
                            for i, s in enumerate(r.cells) if len(s) > 65]
