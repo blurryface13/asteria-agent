@@ -24,6 +24,7 @@ def escape(value: str, *, break_words=False) -> str:
                     "∪": r"\ensuremath{\cup}", "∩": r"\ensuremath{\cap}",
                     "∈": r"\ensuremath{\in}", "≤": r"\ensuremath{\leq}", "≥": r"\ensuremath{\geq}"}
     replacements.update({'\u200b': r'\allowbreak{}', '≈': r'\ensuremath{\approx}',
+                         '≠': r'\ensuremath{\neq}',
                          '≤': r'\ensuremath{\leq}', '≥': r'\ensuremath{\geq}',
                          '→': r'\ensuremath{\rightarrow}', '←': r'\ensuremath{\leftarrow}'})
     return "".join(replacements.get(char, char) for char in value)
@@ -33,7 +34,7 @@ def escape(value: str, *, break_words=False) -> str:
 # still escaped. This keeps useful formulas editable without turning the
 # publishing path into a model-controlled TeX execution surface.
 SAFE_MATH_COMMANDS = {
-    "alpha", "beta", "gamma", "delta", "epsilon", "theta", "lambda", "mu", "pi", "sigma", "phi", "psi", "omega",
+    "alpha", "beta", "gamma", "delta", "epsilon", "eta", "theta", "lambda", "mu", "pi", "sigma", "phi", "psi", "omega",
     "mathrm", "mathbf", "mathit", "mathsf", "operatorname", "text", "frac", "dfrac", "tfrac", "sqrt", "left", "right",
     "sum", "prod", "int", "lim", "log", "exp", "sin", "cos", "tan", "cdot", "times", "pm", "leq", "geq", "neq",
     "approx", "ell", "infty", "to", "rightarrow", "leftarrow", "mapsto", "top", "mid", "perp", "forall", "exists", "in", "notin", "cup", "cap", "hat", "bar", "overline",
@@ -141,7 +142,8 @@ def render_tex(markdown: str, profile: str = "academic", *, assets=()) -> str:
                 if in_references:
                     lines.append(r"\small\raggedright\setlength{\itemsep}{2pt}\setlength{\parsep}{0pt}")
                 list_kind = kind
-            lines.append(r"\item " + inline(item[2]))
+            linked_reference = in_references and re.search(r'\[[^\]]+\]\(https?://', item[2])
+            lines.append((r"\item[] " if linked_reference else r"\item ") + inline(item[2]))
             continue
         display = re.fullmatch(r"\s*(?:\$\$(.+?)\$\$|\\\[(.+?)\\\])\s*", line)
         if display:

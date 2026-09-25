@@ -252,3 +252,14 @@ def test_real_illustrated_chinese_pdf(tmp_path):
     import zipfile
     with zipfile.ZipFile(result['report_bundle']) as archive:
         assert 'figures/method-map.png' in archive.namelist()
+def test_writer_receives_final_cells_not_stale_chart_narrative():
+    from asteria_researcher.agentic.illustrations import writer_chart_brief
+    original = {'rationale': 'a bar chart will be drawn', 'charts': [
+        {'id': 'matrix', 'caption': 'all entries unknown', 'display_cells': [['documented method']],
+         'rows': [{'quote': 'original evidence'}], 'path': 'figures/matrix.png'}], 'limitations': ['bar rejected']}
+    brief = writer_chart_brief(original)
+    assert 'rationale' not in brief and 'caption' not in brief['charts'][0]
+    assert brief['charts'][0]['display_cells'] == [['documented method']]
+    assert brief['charts'][0]['rows'] == original['charts'][0]['rows']
+    assert original['charts'][0]['caption'] == 'all entries unknown'
+    assert brief['limitations'] == ['bar rejected']

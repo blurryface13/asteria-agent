@@ -1269,8 +1269,9 @@ class AutonomousReview:
                 record = {"agent": "writer", "query": goal["description"], "passages": json.loads(passages)}
                 evidence.append(record)
                 self.evidence.append(record)
+        from .illustrations import writer_chart_brief
         payload = {"task": self.query, "plan": self.plan, "synthesis": synthesis,
-                   "data_analyst": self.analysis_manifest,
+                   "data_analyst": writer_chart_brief(self.analysis_manifest),
                    "subagent_results": writing_briefs(self.briefs), "evidence": evidence,
                    "read_sources": list(self.read_sources()),
                    "source_types": {**{key: source_type(key) for key in self.library.papers},

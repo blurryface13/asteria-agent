@@ -77,6 +77,23 @@ class DisplayLabels(BaseModel):
     rows: list[DisplayRow]
 
 
+def writer_chart_brief(manifest: dict) -> dict:
+    """Hand off accepted figures, not the analyst's stale planning narrative.
+
+    Planning rationale/captions can describe a discarded chart or a previous
+    version of its cells. The immutable manifest keeps that audit history;
+    Writer receives the actual rendered labels plus original row provenance.
+    """
+    return {
+        'charts': [{key: value for key, value in chart.items() if key != 'caption'}
+                   for chart in manifest.get('charts', [])],
+        'limitations': manifest.get('limitations', []),
+        'instruction': 'Describe only the accepted figures below. display_cells are the labels actually rendered; '
+                       'rows retain full descriptions and source excerpts. Distinguish a documented mechanism '
+                       'from an independently evaluated effect. Do not infer that the field lacks a benchmark '
+                       'from the absence of one in this reading sample. Omitted charts were not delivered.'}
+
+
 def validate_chart(chart: Chart, evidence: dict) -> None:
     if chart.kind == 'matrix' and not chart.columns:
         raise ValueError('Matrix needs column labels')

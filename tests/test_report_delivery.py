@@ -68,6 +68,8 @@ def test_math_symbols_and_long_table_identifiers_remain_readable():
     assert r'\ensuremath{\approx}' in tex and r'\ell_{cons}' in tex
     assert r'\allowbreak{}' in tex and r'\raggedright\arraybackslash' in tex
     assert r'\href{https://example.org/long/path}' in tex
+    assert r'\ensuremath{\neq}' in render_tex('可见性≠前景IoU')
+    assert r'\(\eta=0.9\)' in render_tex(r'$\eta=0.9$')
 
 
 def test_escaped_math_literals_do_not_become_tex_comments():
@@ -82,6 +84,7 @@ def test_escaped_math_literals_do_not_become_tex_comments():
 def test_real_pdf_compiles_math_percentage(tmp_path):
     result = asyncio.run(publish('# 公式回归\n\n固定尺度 $s_0=15\\%$；阈值 $\\eta=0.9$。', tmp_path))
     assert Path(result['latex_pdf']).read_bytes().startswith(b'%PDF-')
+    assert 'Missing character' not in Path(result['compile_log']).read_text()
 
 
 def test_unread_future_reading_is_repaired_locally_not_regenerated(tmp_path):
