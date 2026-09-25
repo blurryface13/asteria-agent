@@ -217,21 +217,26 @@ async def publish(markdown: str, root: Path, *, profile: str = "academic", asset
     (folder / "report.md").write_text(markdown, encoding="utf-8")
     (folder / "report.tex").write_text(render_tex(markdown, profile, assets=assets), encoding="utf-8")
     (folder / "publication.json").write_text(json.dumps({"format_profile": profile, "renderer": "safe-markdown-v3", "status": "compiling"}))
-    process = await asyncio.create_subprocess_exec(
-        compiler, "-no-shell-escape", "-halt-on-error", "-interaction=nonstopmode", "report.tex",
-        cwd=folder, env={**os.environ, "openin_any": "p", "openout_any": "p"},
-        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
+    process = None
     try:
+        process = await asyncio.create_subprocess_exec(
+            compiler, "-no-shell-escape", "-halt-on-error", "-interaction=nonstopmode", "report.tex",
+            cwd=folder, env={**os.environ, "openin_any": "p", "openout_any": "p"},
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
         output, _ = await asyncio.wait_for(process.communicate(), 90)
-    except BaseException:
-        if process.returncode is None:
+        (folder / "compile.txt").write_bytes(output)
+        if process.returncode or not (folder / "report.pdf").is_file():
+            raise RuntimeError(f"LaTeX compilation failed; inspect {folder / 'compile.txt'}")
+        mapped_fonts = await asyncio.to_thread(embed_unicode_maps, folder / "report.pdf")
+    except BaseException as error:
+        if process is not None and process.returncode is None:
             process.kill()
-        await process.wait()
+            await process.wait()
+        (folder / "publication.json").write_text(json.dumps({
+            "format_profile": profile, "renderer": "safe-markdown-v3",
+            "status": "cancelled" if isinstance(error, asyncio.CancelledError) else "failed",
+            "error_type": type(error).__name__}))
         raise
-    (folder / "compile.txt").write_bytes(output)
-    if process.returncode or not (folder / "report.pdf").is_file():
-        raise RuntimeError(f"LaTeX compilation failed; inspect {folder / 'compile.txt'}")
-    mapped_fonts = await asyncio.to_thread(embed_unicode_maps, folder / "report.pdf")
     (folder / "publication.json").write_text(json.dumps({
         "format_profile": profile, "renderer": "safe-markdown-v3",
         "embedded_unicode_maps": mapped_fonts, "status": "completed"}))

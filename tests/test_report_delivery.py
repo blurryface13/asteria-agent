@@ -87,6 +87,19 @@ def test_real_pdf_compiles_math_percentage(tmp_path):
     assert 'Missing character' not in Path(result['compile_log']).read_text()
 
 
+def test_compiler_start_failure_does_not_stay_compiling(tmp_path, monkeypatch):
+    import json
+    import asteria_researcher.agentic.latex as module
+    monkeypatch.setattr(module.shutil, 'which', lambda name: '/test/xelatex')
+    async def broken(*args, **kwargs):
+        raise OSError('compiler unavailable')
+    monkeypatch.setattr(module.asyncio, 'create_subprocess_exec', broken)
+    with pytest.raises(OSError):
+        asyncio.run(publish('# 报告\n正文', tmp_path))
+    state = json.loads(next(tmp_path.glob('scientific_*/publication.json')).read_text())
+    assert state['status'] == 'failed' and state['error_type'] == 'OSError'
+
+
 def test_unread_future_reading_is_repaired_locally_not_regenerated(tmp_path):
     import json
     source = 'https://arxiv.org/abs/1706.03762'
