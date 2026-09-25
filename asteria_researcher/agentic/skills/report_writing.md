@@ -1,6 +1,6 @@
 # Academic report writing
 
-Version 2. This skill defines how to turn an evidence ledger into a readable
+Version 3. This skill defines how to turn an evidence ledger into a readable
 academic deliverable. It does not decide whether more research is needed and it
 does not authorize new sources or tools.
 
@@ -24,7 +24,7 @@ available; otherwise describe the comparison qualitatively.
 
 For a normal literature review, prefer this compact structure:
 
-1. Scope and inclusion boundary.
+1. A direct answer / executive conclusion, with a short scope boundary.
 2. Field taxonomy or evolution, only where supported by the collected papers.
 3. Thematic method comparison: problem, core idea, data/setting and evidence.
 4. Limitations, contradictions and research gaps.
@@ -33,6 +33,20 @@ For a normal literature review, prefer this compact structure:
 Do not write one isolated mini-summary for every paper. Use tables only when a
 small number of comparable fields are available. A table cell must not imply a
 value was reported when the source did not provide it; use “未报告”.
+
+## Synthesis and handoff
+
+Use the Lead's synthesis as editorial direction, not a replacement for original
+child findings. Preserve each conclusion with its applicable conditions, source
+and limitations. Avoid repeating a lossy condensed metric from Lead memory when
+the child report or original evidence preserves the experiment setting.
+
+Select details that answer the user's questions. Do not fill a short architecture
+review with unrelated benchmark scores. Explain why differences matter for the
+user's scenario; recommendations should specify when to choose an approach and
+what tradeoff follows. Missing optional details are limitations, not a demand for
+another research round. Use short paragraphs, separate list items for actions,
+Chinese paraphrases, and explicit Markdown math delimiters for formulas.
 
 ## Citation and evidence discipline
 

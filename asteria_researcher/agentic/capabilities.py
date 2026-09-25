@@ -28,12 +28,12 @@ PROFILES = {
         Profile('submission_consulting','投稿咨询','核查会议/期刊投稿范围、日期、材料与规范，需来源与年份',
                 'submission_assistance',('search_public_sources','search_lab_knowledge')),
         Profile('financial_research','金融资料研究','金融知识解释、公开财务和行业资料分析；不交易、不保证收益',
-                'finance_assistance',('search_public_sources',)),
+                'finance_assistance',('load_skill','search_public_sources',)),
         Profile('company_research','企业公开信息背调','核查公司主体、业务和公开风险，区分事实与待核实信息；不查询个人隐私',
-                'company_assistance',('search_public_sources',)),
+                'company_assistance',('load_skill','search_public_sources',)),
     )
 }
-RESEARCH = {'literature_review','experiment_design','general_research'}
+RESEARCH = {'literature_review','experiment_design','general_research','financial_research'}
 CAPABILITIES = RESEARCH | {'general_chat','knowledge_chat'} | set(PROFILES)
 
 

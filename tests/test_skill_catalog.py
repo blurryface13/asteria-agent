@@ -39,7 +39,8 @@ def test_user_pins_checked_and_repaired_not_silently_overridden():
     calls = []
     async def model(system, payload):
         calls.append(json.loads(payload))
-        return json.dumps({"skill_ids": ["general_writing"] if len(calls) == 1 else ["report_writing", "source_priority"],
+        return json.dumps({"content_skill": "general_writing" if len(calls) == 1 else "report_writing",
+                           "guidance_skills": [] if len(calls) == 1 else ["source_priority"],
                            "format_profile": "brief", "reason": "用户选择主题综述与一手来源审查"})
     selection, prompt, trace = asyncio.run(select_writing(model, "写综述", {},
         SkillOptions(skill_ids=["report_writing", "source_priority"], format_profile="brief")))
@@ -52,6 +53,45 @@ def test_user_pins_checked_and_repaired_not_silently_overridden():
 
 def test_auto_selection_cannot_stack_content_roles():
     async def model(*args):
-        return json.dumps({"skill_ids": ["report_writing", "general_writing"], "format_profile": "academic", "reason": "bad"})
-    with pytest.raises(ValueError, match="at most one"):
+        return json.dumps({"content_skill": "report_writing", "guidance_skills": ["general_writing"], "format_profile": "academic", "reason": "bad"})
+    with pytest.raises(ValueError, match="only guidance"):
         asyncio.run(select_writing(model, "综述", {}))
+
+
+def test_model_contract_separates_primary_skill_from_guidance():
+    async def model(system, payload):
+        schema = json.loads(system.split('Return ONLY JSON: ', 1)[1])
+        assert schema['properties']['content_skill']['type'] == 'string'
+        assert 'report_writing' in schema['properties']['content_skill']['enum']
+        assert 'report_writing' not in schema['properties']['guidance_skills']['items']['enum']
+        return json.dumps({'content_skill': 'report_writing', 'guidance_skills': ['source_priority'],
+                           'format_profile': 'academic', 'reason': '单一综述结构与一手来源规范'})
+    selection, _, _ = asyncio.run(select_writing(model, '综述', {}))
+    assert selection.skill_ids == ['report_writing', 'source_priority']
+
+
+def test_financial_writing_excludes_academic_attribution_guidance():
+    async def model(system, payload):
+        schema = json.loads(system.split('Return ONLY JSON: ', 1)[1])
+        assert 'financial_report' in schema['properties']['content_skill']['enum']
+        assert 'report_writing' not in schema['properties']['content_skill']['enum']
+        assert 'source_priority' not in schema['properties']['guidance_skills']['items']['enum']
+        return json.dumps({'content_skill': 'financial_report', 'guidance_skills': [],
+                           'format_profile': 'brief', 'reason': '两份财报原文核对'})
+    selection, prompt, trace = asyncio.run(select_writing(
+        model, '对比两份独立的年度报告', {},
+        SkillOptions(skill_ids=['financial_report'], format_profile='brief'),
+        domain='financial_research'))
+    assert selection.skill_ids == ['financial_report']
+    assert "comparative column" in prompt
+    assert 'paraphrase disclosures in Chinese' in prompt
+    assert 'operating, investing and financing cash flows as separate measures' in prompt
+    assert not any(entry['id'] == 'source_priority' for entry in trace)
+
+
+def test_financial_research_prefers_standalone_filing_over_multi_document_bundle():
+    session = SkillSession('research', domain='financial_research')
+    session.load('finance_assistance')
+    prompt = session.prompt()
+    assert '独立 Form 10-K' in prompt
+    assert '避免从封面逐页扫描' in prompt

@@ -23,7 +23,7 @@ def validate_request(request):
     if type(request.get('online_rag', True)) is not bool:
         raise HTTPException(422, 'online_rag must be boolean')
     capability = request.get('coordinator_capability')
-    if capability is not None and capability not in {'literature_review', 'experiment_design', 'general_research'}:
+    if capability is not None and capability not in {'literature_review', 'experiment_design', 'general_research', 'financial_research'}:
         raise HTTPException(422, 'invalid coordinator capability')
     try:
         SkillOptions(skill_ids=request.get('skill_ids', []), format_profile=request.get('format_profile'))
@@ -40,7 +40,18 @@ def validate_request(request):
         values = request.get(key, [])
         if not isinstance(values, list) or len(values) > 200 or any(not isinstance(v, str) for v in values):
             raise HTTPException(422, f'{key} must be a list of strings (at most 200)')
-    allowed = {'task','report_type','report_source','tone','headers','search_strategy','online_rag','skill_ids','format_profile','query_domains','mcp_enabled','mcp_strategy','mcp_configs','source_urls','document_urls','max_search_results','coordinator_capability'}
+    knowledge_ids = request.get('knowledge_ids', [])
+    if (not isinstance(knowledge_ids, list) or len(knowledge_ids) > 3 or
+            any(not isinstance(value, str) or not value or len(value) > 100 for value in knowledge_ids) or
+            len(set(knowledge_ids)) != len(knowledge_ids)):
+        raise HTTPException(422, 'knowledge_ids must contain at most three unique library IDs')
+    if request.get('knowledge_mode', 'auto') not in {'auto', 'off', 'selected'}:
+        raise HTTPException(422, 'invalid knowledge_mode')
+    if request.get('knowledge_mode', 'auto') == 'selected' and not knowledge_ids:
+        raise HTTPException(422, 'selected knowledge_mode requires knowledge_ids')
+    if request.get('knowledge_mode', 'auto') == 'off' and knowledge_ids:
+        raise HTTPException(422, 'knowledge_mode off cannot select libraries')
+    allowed = {'task','report_type','report_source','tone','headers','search_strategy','online_rag','skill_ids','format_profile','query_domains','mcp_enabled','mcp_strategy','mcp_configs','source_urls','document_urls','max_search_results','coordinator_capability','knowledge_ids','knowledge_mode'}
     if set(request) - allowed:
         raise HTTPException(422, 'unknown research request fields')
     return request
@@ -48,7 +59,14 @@ def validate_request(request):
 
 @router.post('')
 async def submit(body: Submission, email=Depends(get_current_user_email)):
-    return await store.submit(email, body.request_id, body.conversation_id, validate_request(body.request))
+    request = validate_request(body.request.copy())
+    if request.get('knowledge_mode', 'auto') == 'auto' and 'knowledge_ids' not in request:
+        from backend.knowledge.shared_corpus import catalog, ID
+        request['knowledge_ids'] = [ID] if catalog() else []
+    from backend.knowledge.managed import get_library
+    for kb_id in request.get('knowledge_ids', []):
+        await get_library(email, kb_id)
+    return await store.submit(email, body.request_id, body.conversation_id, request)
 
 
 @router.get('/latest')

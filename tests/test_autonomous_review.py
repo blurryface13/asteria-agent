@@ -2,13 +2,36 @@ import asyncio
 import json
 import pytest
 
-from asteria_researcher.agentic.autonomous import AutonomousReview
+from asteria_researcher.agentic.autonomous import (
+    AutonomousReview, _normalize_assessor_reason, _normalize_partition_duplicates,
+)
 from asteria_researcher.agentic.library import PaperLibrary, canonical
 from asteria_researcher.agentic.primary_sources import extract_file
-from asteria_researcher.agentic.sufficiency import ReviewPlan
+from asteria_researcher.agentic.sufficiency import ReviewPlan, ScopePartition, ProcessMove
 
 URL = "https://arxiv.org/abs/1706.03762"
 OTHER = "https://arxiv.org/abs/1810.04805"
+
+
+def test_scope_partition_fallback_preserves_original_goal_and_other_process_moves():
+    part = ScopePartition(research_goal_ids=["g1", "g2"],
+                          process_goals=[ProcessMove(goal_id="g1", kind="autonomous_discovery")])
+    fixed, repaired = _normalize_partition_duplicates(part, ["g1", "g2"])
+    assert fixed.research_goal_ids == ["g1", "g2"]
+    assert fixed.process_goals == [] and repaired == ["g1"]
+    missing, repaired = _normalize_partition_duplicates(part, ["g1", "g2", "g3"])
+    assert missing == part and repaired == []
+
+
+def test_assessor_reason_alias_preserves_existing_verdict_and_evidence():
+    raw = json.dumps({"goals": [{"goal_id": "g1", "status": "supported",
+                                 "reasoning": "原文第 3 页支持该结论", "supports": [{"evidence_id": "e1"}]}]})
+    normalized, ids = _normalize_assessor_reason(raw)
+    goal = json.loads(normalized)["goals"][0]
+    assert ids == ["g1"] and goal["reason"] == goal["reasoning"]
+    assert goal["supports"] == [{"evidence_id": "e1"}]
+    unchanged, ids = _normalize_assessor_reason(json.dumps({"goals": [{**goal, "reason": "已有说明"}]}))
+    assert json.loads(unchanged)["goals"][0]["reason"] == "已有说明" and ids == []
 
 
 class Embeddings:
@@ -61,6 +84,17 @@ def test_graph_requires_bibliography_evidence_and_real_title_match(tmp_path, mon
     assert library.nodes[OTHER]["status"] == "discovered"
 
 
+def test_institutional_report_can_be_read_but_not_passed_as_academic_citation_graph(tmp_path):
+    url = "https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents"
+    library = PaperLibrary(tmp_path, None, None)
+    node = library.add({"url": url, "title": "Agent evals", "source_type": "academic_publication"})
+    assert node["source_type"] == "institutional_report"
+    library.papers[url] = {"text": "Research", "pages": [{"page": 1, "text": "Research"}]}
+    assert library.read_passage(url)["source_type"] == "institutional_report"
+    with pytest.raises(ValueError, match="机构报告"):
+        asyncio.run(library.references(url, "benchmarks"))
+
+
 def test_shared_reads_are_deduplicated_and_download_budget_enforced(tmp_path, monkeypatch):
     from asteria_researcher.agentic import library as module
     calls = []
@@ -108,6 +142,31 @@ def test_subagents_have_independent_parallel_action_loops(tmp_path):
     results = asyncio.run(run())
     assert peak == 2 and all(r["status"] == "completed" for r in results)
     assert by_agent == {"robustness": 2, "security": 2}
+
+
+def test_decision_validation_returns_field_details_without_raw_input(tmp_path):
+    calls, events = [], []
+    async def model(system, payload):
+        data = json.loads(payload)
+        calls.append(data)
+        if len(calls) == 1:
+            return json.dumps({'tool': 'finish', 'purpose': 'handoff',
+                               'gaps': 'private-raw-model-output'})
+        error = data['observations'][-1]
+        assert error['validation_errors'][0]['loc'] == ['gaps']
+        assert error['validation_errors'][0]['type'] == 'list_type'
+        assert 'private-raw-model-output' not in json.dumps(error)
+        return json.dumps({'tool': 'finish', 'purpose': 'partial handoff',
+                           'outcome': 'incomplete', 'summary': 'No supported findings yet', 'gaps': ['Missing original text']})
+    async def emit(kind, payload):
+        events.append(payload)
+    runtime = AutonomousReview(model, Embeddings(), emit, None, tmp_path)
+    runtime.query, runtime.plan = 'review', {'scope': 'review'}
+    result = asyncio.run(runtime.loop('researcher-test', 'review', steps=2))
+    assert result['status'] == 'incomplete' and len(calls) == 2
+    diagnostic = next(e for e in events if e['tool'] == 'decision_error')
+    assert diagnostic['validation_errors'][0]['loc'] == ['gaps']
+    assert 'private-raw-model-output' not in json.dumps(diagnostic)
 
 
 def test_lead_can_delegate_unresolved_work_and_merge_shared_evidence(tmp_path):
@@ -217,6 +276,14 @@ def test_canonical_deduplicates_arxiv_versions():
     assert canonical(URL + "v7") == canonical("https://arxiv.org/pdf/1706.03762v1.pdf")
 
 
+def test_canonical_page_anchor_is_same_read_filing_not_an_unread_source():
+    filing = 'https://s201.q4cdn.com/141608511/files/doc_financials/2026/q4/10K-NVDA.pdf'
+    assert canonical(filing + '#page=51') == filing
+    assert canonical(filing + '?download=1#page=51') != filing
+    other_filing = 'https://s201.q4cdn.com/141608511/files/doc_financials/2025/q4/10K-NVDA.pdf'
+    assert canonical(other_filing + '#page=51') != filing
+
+
 def test_embedding_preflight_stops_before_model_spending(tmp_path):
     async def model(*args):
         pytest.fail("must not spend LLM quota when retrieval dependency is down")
@@ -318,12 +385,12 @@ def test_writer_repairs_length_and_keeps_audit_drafts(tmp_path):
     calls = []
     async def model(system, payload):
         if system.startswith("Select exactly ONE content skill"):
-            return json.dumps({"skill_ids": ["report_writing"], "format_profile": "brief", "reason": "short review"})
+            return json.dumps({"content_skill": "report_writing", "format_profile": "brief", "reason": "short review"})
         calls.append((system, json.loads(payload)))
         return ("水" * 500 if len(calls) == 1 else "水" * 250) + f" [source]({URL})"
     async def emit(*args): pass
     runtime = AutonomousReview(model, None, emit, None, tmp_path, online_rag=False)
-    runtime.query, runtime.plan = "写约300字", {"perspectives": []}
+    runtime.query, runtime.plan = "写不超过300字", {"perspectives": []}
     runtime.library.papers[URL] = {}
     runtime.evidence = [{"agent": "reader", "query": "test", "passages": [{"source": URL, "page": 1, "text": "evidence"}]}]
     report = asyncio.run(runtime.write_report("summary"))
@@ -334,3 +401,59 @@ def test_writer_repairs_length_and_keeps_audit_drafts(tmp_path):
     assert "three compact paragraphs" not in calls[0][0]
     assert "not a mandatory chapter outline" in calls[0][0]
     assert (runtime.folder / "draft-1.md").exists() and (runtime.folder / "draft-2.md").exists()
+
+
+def test_financial_writer_repairs_inverted_monetary_comparison(tmp_path):
+    source = 'https://s201.q4cdn.com/141608511/files/doc_financials/2026/q4/10K-NVDA.pdf'
+    wrong = f'# 财务分析\n952 亿美元的义务规模远超当期经营活动现金流（102,718 百万美元）。[原件]({source})'
+    corrected = wrong.replace('远超', '低于')
+    calls = []
+
+    async def model(system, payload):
+        if system.startswith('Select exactly ONE content skill'):
+            return json.dumps({'content_skill': 'financial_report', 'format_profile': 'brief',
+                               'reason': 'public filings'})
+        calls.append((system, json.loads(payload)))
+        return wrong if len(calls) == 1 else corrected
+
+    async def emit(*_args):
+        pass
+
+    runtime = AutonomousReview(model, None, emit, None, tmp_path,
+                               online_rag=False, capability='financial_research')
+    runtime.query, runtime.plan = '比较公司义务与现金流', {'perspectives': []}
+    runtime.library.papers[source] = {}
+    runtime.evidence = [{'agent': 'reader', 'query': 'financials',
+                         'passages': [{'source': source, 'page': 1, 'text': 'original'}]}]
+    report = asyncio.run(runtime.write_report('summary'))
+    assert report == corrected and len(calls) == 2
+    assert any('金额比较方向与单位换算不符' in issue for issue in calls[1][1]['validation_issues'])
+    assert (runtime.folder / 'draft-1.md').read_text() == wrong
+    assert (runtime.folder / 'draft-2.md').read_text() == corrected
+
+
+def test_financial_writer_paraphrases_oversized_filing_quote(tmp_path):
+    source = 'https://s201.q4cdn.com/141608511/files/doc_financials/2026/q4/10K-NVDA.pdf'
+    quote = ' '.join(['Risks may harm our business and financial results'] * 5)
+    verbose = f'# 风险\n公司披露：「{quote}」[原件]({source})'
+    concise = f'# 风险\n公司提示相关事项可能损害经营和财务结果。[原件]({source})'
+    drafts = iter([verbose, concise])
+
+    async def model(system, payload):
+        if system.startswith('Select exactly ONE content skill'):
+            return json.dumps({'content_skill': 'financial_report', 'format_profile': 'brief',
+                               'reason': 'public filing'})
+        return next(drafts)
+
+    async def emit(*_args):
+        pass
+
+    runtime = AutonomousReview(model, None, emit, None, tmp_path,
+                               online_rag=False, capability='financial_research')
+    runtime.query, runtime.plan = '简述披露的主要风险', {}
+    runtime.library.papers[source] = {}
+    runtime.evidence = [{'agent': 'reader', 'query': 'risk',
+                         'passages': [{'source': source, 'page': 1, 'text': 'risk excerpt'}]}]
+    assert asyncio.run(runtime.write_report('summary')) == concise
+    assert (runtime.folder / 'draft-1.md').read_text() == verbose
+    assert (runtime.folder / 'draft-2.md').read_text() == concise

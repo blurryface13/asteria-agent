@@ -1,4 +1,4 @@
-"""Adapters that execute Asteria's existing workflows under a TraceRecorder."""
+"""Explicitly legacy workflow adapters; not the current Coordinator entry."""
 
 from __future__ import annotations
 

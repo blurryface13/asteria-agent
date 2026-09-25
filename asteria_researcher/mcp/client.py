@@ -73,10 +73,10 @@ class MCPClientManager:
                 connection_type = config.get("connection_type", "stdio")
                 server_config["transport"] = connection_type
             
-            if server_config.get("connection_type") in ["streamable_http", "http"]:
+            if server_config.get("transport") in ["streamable_http", "http"]:
                 connection_headers = config.get("connection_headers")
                 if connection_headers and isinstance(connection_headers, dict):
-                    server_config["headers"] = connection_headers
+                        server_config["headers"] = dict(connection_headers)
             
             # Handle stdio transport configuration
             if server_config.get("transport") == "stdio":
@@ -96,7 +96,11 @@ class MCPClientManager:
                         
             # Add authentication if provided
             if config.get("connection_token"):
-                server_config["token"] = config["connection_token"]
+                if server_config.get("transport") in ["streamable_http", "http"]:
+                    server_config.setdefault("headers", {}).setdefault(
+                        "Authorization", "Bearer " + config["connection_token"])
+                else:
+                    server_config["token"] = config["connection_token"]
                 
             server_configs[server_name] = server_config
             

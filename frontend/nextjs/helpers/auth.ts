@@ -1,5 +1,7 @@
 const TOKEN_KEY = 'bunny_auth_token';
 const EMAIL_KEY = 'bunny_auth_email';
+const DISPLAY_NAME_KEY = 'asteria.displayName';
+const DISPLAY_NAME_EMAIL_KEY = 'asteria.displayNameEmail';
 
 // This flag is intentionally public because it only controls the browser-side
 // development experience. The backend has its own matching flag; production
@@ -36,6 +38,30 @@ export function getAuthEmail(): string | null {
     return window.localStorage?.getItem(EMAIL_KEY) || null;
   } catch {
     return null;
+  }
+}
+
+export function getDisplayName(): string {
+  const email = getAuthEmail();
+  if (typeof window === 'undefined') return email?.split('@')[0] || '用户';
+  try {
+    if (email && window.localStorage.getItem(DISPLAY_NAME_EMAIL_KEY) === email) {
+      return window.localStorage.getItem(DISPLAY_NAME_KEY) || email.split('@')[0];
+    }
+  } catch {
+    // The account identifier remains a safe fallback without browser storage.
+  }
+  return email?.split('@')[0] || '用户';
+}
+
+export function setDisplayName(name: string): void {
+  const email = getAuthEmail();
+  if (!email || typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(DISPLAY_NAME_KEY, name);
+    window.localStorage.setItem(DISPLAY_NAME_EMAIL_KEY, email);
+  } catch {
+    // Display names are optional browser-only preferences.
   }
 }
 

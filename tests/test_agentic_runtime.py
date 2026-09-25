@@ -18,7 +18,7 @@ def runner(responses, feedback=None, evidence="证据 https://example.org/paper"
     calls, events = [], []
     async def model(system, user):
         if system.startswith("Select exactly ONE content skill"):
-            return json.dumps({"skill_ids": ["general_writing"], "format_profile": "brief", "reason": "test report"})
+            return json.dumps({"content_skill": "general_writing", "format_profile": "brief", "reason": "test report"})
         result = responses.pop(0)
         return json.dumps(result) if isinstance(result, dict) else result
     async def research(query):
@@ -40,6 +40,9 @@ def test_deliverable_routing_is_narrow():
 def test_url_parser_stops_at_chinese_punctuation():
     assert urls("来源（https://arxiv.org/abs/1706.03762）。后续中文。") == {"https://arxiv.org/abs/1706.03762"}
     assert urls("[论文](https://example.org/paper)。") == {"https://example.org/paper"}
+    assert urls("https://www.anthropic.com/engineering/multi-agent-research-system：Anthropic 的工程经验") == {
+        "https://www.anthropic.com/engineering/multi-agent-research-system"}
+    assert urls("“https://example.org/paper”：来源") == {"https://example.org/paper"}
     assert urls(json.dumps({"excerpt": "https://example.org/paper\n引用"})) == {"https://example.org/paper"}
 
 
@@ -99,6 +102,18 @@ def test_latex_preserves_safe_math_but_blocks_executable_commands():
     assert r"\textbackslash{}input" in tex
 
 
+def test_report_export_renders_union_links_and_single_section_number():
+    text = "## 一、方法比较\n动作空间 A∪L。 [来源](https://example.org/paper?id=1&v=2)"
+    tex = render_tex(text)
+    assert r"A\ensuremath{\cup}L" in tex
+    assert r"\section{方法比较}" in tex
+    assert r"\href{https://example.org/paper?id=1\&v=2}{[1]}" in tex
+    assert r"\section{一、方法比较}" in render_tex(text, "brief")
+    assert r"\section{10 人实验室}" in render_tex("## 10 人实验室")
+    assert r"\section{2026 年进展}" in render_tex("## 2026 年进展")
+    assert r"\section{方法比较}" in render_tex("## 1. 方法比较")
+
+
 @pytest.mark.skipif(not shutil.which("xelatex"), reason="XeLaTeX not installed")
 def test_real_formula_pdf_has_math_glyphs_and_no_source_delimiters(tmp_path):
     markdown = "# 公式\n\n$$\\mathrm{Attention}(Q,K,V)=\\mathrm{softmax}\\left(\\frac{QK^T}{\\sqrt{d_k}}\\right)V$$\n\n其中 $d_{\\text{model}}$ 表示模型维度。 https://example.org/paper"
@@ -141,4 +156,11 @@ def test_real_chinese_pdf_compilation(tmp_path):
     paths = asyncio.run(publish(REPORT, tmp_path))
     pdf = next(tmp_path.glob("*/report.pdf"))
     assert pdf.read_bytes().startswith(b"%PDF")
+    assert Path(paths["latex_pdf"]).resolve() == pdf.resolve()
+    assert all(Path(path).is_file() for path in paths.values())
+    import pymupdf
+    with pymupdf.open(pdf) as doc:
+        for font in doc[0].get_fonts():
+            if "Fandol" in font[3]:
+                assert doc.xref_get_key(font[0], "ToUnicode")[0] == "xref"
     assert paths["tex"].endswith("/report.tex")

@@ -9,14 +9,89 @@ from .runtime import urls
 
 
 HEADING_RE = re.compile(r"^#{1,3}\s+(.+?)\s*$", re.MULTILINE)
+KNOWLEDGE_REF_RE = re.compile(r"〔(KB:[0-9a-f]{20})〕")
+_REFERENCE_TITLE = (r"(?:(?:[一二三四五六七八九十百]+|\d+(?:\.\d+)*)[、.．]\s*)?"
+                    r"(?:参考文献|参考资料|References|资料来源)"
+                    r"(?:\s*[（(][^（）()\n]{0,80}[）)])?")
+REFERENCE_TITLE_RE = re.compile(rf"^{_REFERENCE_TITLE}$", re.I)
+REFERENCE_HEADING_RE = re.compile(rf"^#{{1,6}}\s+{_REFERENCE_TITLE}\s*$", re.I | re.M)
+MONEY_RE = re.compile(
+    r'(?<![\d,])(?P<amount>(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)\s*'
+    r'(?P<unit>百万|十亿|亿|万)?\s*(?P<currency>美元|USD)', re.I)
+MONEY_FACTORS_TO_MILLIONS = {'': 1e-6, '万': .01, '百万': 1, '亿': 100, '十亿': 1000}
+COMPARISON_RE = re.compile(r'远超|超过|明显高于|高于|大于|远低于|低于|小于|不及')
+ENGLISH_QUOTE_RE = re.compile(r'[「“"]([^」”"\n]+)[」”"]')
+
+
+def is_reference_heading(title: str) -> bool:
+    return bool(REFERENCE_TITLE_RE.fullmatch(title.strip()))
+
+
+def knowledge_refs(markdown: str) -> set[str]:
+    """Run-local, auditable chunk references (resolved in knowledge-sources.json)."""
+    return set(KNOWLEDGE_REF_RE.findall(markdown or ""))
 
 
 def _source_key(url: str) -> str:
     """Canonicalize supported scholarly URLs without rejecting local test sources."""
+    if url.startswith("KB:"):
+        return url
     try:
         return canonical(url)
     except ValueError:
         return url.rstrip("/ ")
+
+
+def report_length(markdown: str) -> dict:
+    """Body length: one CJK character or Latin/number word is one unit.
+
+    Exclude reference appendix, URLs and citation markers, not English prose.
+    This is a transparent display-length convention, not tokenizer billing.
+    """
+    body = REFERENCE_HEADING_RE.split(markdown, maxsplit=1)[0]
+    body = re.sub(r"\[[^\]]*\]\(https?://[^)]+\)", "", body)
+    body = re.sub(r"https?://\S+|〔KB:[0-9a-f]{20}〕", "", body)
+    chinese = len(re.findall(r"[\u4e00-\u9fff]", body))
+    words = len(re.findall(r"[A-Za-z0-9]+(?:[.'_-][A-Za-z0-9]+)*", body))
+    return {"body_chinese_chars": chinese, "body_latin_words": words,
+            "length_units": chinese + words, "length_convention": "body_cjk_plus_latin_words_v1"}
+
+
+def financial_magnitude_issues(markdown: str) -> list[str]:
+    """Catch clear inverted two-amount USD comparisons after unit conversion.
+
+    Only prose sentences with exactly one USD amount on each side of an
+    explicit comparison are checked. Ambiguous multi-value tables are left for
+    evidence review rather than guessed by this guardrail.
+    """
+    issues = []
+    for sentence in re.split(r'[。！？\n]', markdown or ''):
+        comparison = COMPARISON_RE.search(sentence)
+        amounts = list(MONEY_RE.finditer(sentence))
+        if not comparison or len(amounts) != 2:
+            continue
+        first, second = amounts
+        if not (first.end() <= comparison.start() and second.start() >= comparison.end()):
+            continue
+        values = [float(item['amount'].replace(',', '')) * MONEY_FACTORS_TO_MILLIONS[item['unit'] or '']
+                  for item in amounts]
+        claims_greater = comparison.group() in {'远超', '超过', '明显高于', '高于', '大于'}
+        if (claims_greater and values[0] <= values[1]) or (not claims_greater and values[0] >= values[1]):
+            issues.append('金额比较方向与单位换算不符：'
+                          f'{first.group()}≈{values[0]:,.2f} 百万美元，'
+                          f'{second.group()}≈{values[1]:,.2f} 百万美元；'
+                          f'原句使用“{comparison.group()}”。请据此修正判断。')
+    return issues
+
+
+def financial_quote_issues(markdown: str) -> list[str]:
+    """Keep filing excerpts short enough for a readable Chinese analyst report."""
+    body = REFERENCE_HEADING_RE.split(markdown or '', maxsplit=1)[0]
+    passages = [match.group(1) for match in ENGLISH_QUOTE_RE.finditer(body)]
+    passages.extend(line.lstrip('> ').strip() for line in body.splitlines() if line.lstrip().startswith('> '))
+    if any(len(re.findall(r"[A-Za-z]+(?:['-][A-Za-z]+)*", passage)) > 25 for passage in passages):
+        return ['金融报告英文原文引述过长：改用中文概述，保留原文页码链接；只在措辞关键时引用短语。']
+    return []
 
 
 def validate_report_draft(
@@ -25,12 +100,16 @@ def validate_report_draft(
     *,
     target_chars: int | None = None,
     max_length_ratio: float = 1.4,
+    min_length_ratio: float = 0.0,
+    enforce_length: bool = True,
+    domain: str | None = None,
 ) -> dict:
     """Return machine-checkable report issues without judging scientific truth."""
-    cited = sorted(urls(markdown or ""))
+    cited = sorted(urls(markdown or "") | knowledge_refs(markdown or ""))
     allowed = {_source_key(url) for url in allowed_urls}
     invalid = [url for url in cited if _source_key(url) not in allowed]
     chinese_chars = len(re.findall(r"[\u4e00-\u9fff]", markdown or ""))
+    length = report_length(markdown or "")
     issues: list[str] = []
     if not (markdown or "").strip():
         issues.append("报告为空")
@@ -38,13 +117,23 @@ def validate_report_draft(
         issues.append("报告缺少可追溯引用")
     if invalid:
         issues.append("报告引用了未读取来源")
-    if target_chars and chinese_chars > target_chars * max_length_ratio:
-        issues.append(f"篇幅超出要求：当前约 {chinese_chars} 字，目标约 {target_chars} 字")
+    if domain == 'financial_research':
+        issues.extend(financial_magnitude_issues(markdown))
+        issues.extend(financial_quote_issues(markdown))
+    length_issues = []
+    if target_chars and length["length_units"] > target_chars * max_length_ratio:
+        length_issues.append(f"篇幅超出要求：正文 {length['length_units']} 字/词，目标约 {target_chars}")
+    if target_chars and length["length_units"] < target_chars * min_length_ratio:
+        length_issues.append(f"篇幅不足：正文 {length['length_units']} 字/词，目标约 {target_chars}；展开已有结论的比较和适用条件，不填充新事实")
+    if enforce_length:
+        issues.extend(length_issues)
     return {
         "ok": not issues,
         "issues": issues,
+        "warnings": [] if enforce_length else length_issues,
         "citation_urls": cited,
         "invalid_urls": invalid,
         "chinese_chars": chinese_chars,
+        **length,
         "headings": HEADING_RE.findall(markdown or ""),
     }

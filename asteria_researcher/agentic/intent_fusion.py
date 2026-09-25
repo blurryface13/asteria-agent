@@ -38,7 +38,7 @@ PATTERNS = {
     "general_research": [r"行业研究报告|公开资料调研|调研报告"],
     "general_chat": [r"^(?:你好|您好|hello|hi)[！!。\s]*$", r"(?:翻译|解释|改写).{0,20}(?:刚才|上一条|报告中的)"],
 }
-VERSION = hashlib.sha256(json.dumps(['orchestrator-main-support-v1', TEMPLATES, PATTERNS], sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+VERSION = hashlib.sha256(json.dumps(['orchestrator-main-support-v2-finance-deliverable', TEMPLATES, PATTERNS], sort_keys=True, ensure_ascii=False).encode()).hexdigest()
 WEIGHTS = {"llm": .7, "embedding": .2, "pattern": .1}
 
 

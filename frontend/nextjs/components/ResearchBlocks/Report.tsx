@@ -6,7 +6,7 @@ import '../../styles/markdown.css';
 import { useResearchHistoryContext } from '../../hooks/ResearchHistoryContext';
 import { ChatMessage } from '../../types/data';
 
-export default function Report({ answer, researchId, title = "Research Report" }: { answer: string, researchId?: string, title?: string }) {
+export default function Report({ answer, researchId, title = "研究报告" }: { answer: string, researchId?: string, title?: string }) {
     const [htmlContent, setHtmlContent] = useState('');
     const { getChatMessages } = useResearchHistoryContext();
     // Memoize this value to prevent re-renders
@@ -44,7 +44,7 @@ export default function Report({ answer, researchId, title = "Research Report" }
                 <button
                   onClick={() => {
                     navigator.clipboard.writeText(answer.trim());
-                    toast("Report copied to clipboard", {
+                    toast("报告已复制", {
                       icon: "✂️",
                     });
                   }}
@@ -52,7 +52,7 @@ export default function Report({ answer, researchId, title = "Research Report" }
                 >
                   <img
                     src="/img/copy-white.svg"
-                    alt="copy"
+                    alt="复制报告"
                     width={20}
                     height={20}
                     className="cursor-pointer text-gray-900"

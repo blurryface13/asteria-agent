@@ -14,6 +14,7 @@ class SemanticIntent(BaseModel):
     confidence: float = Field(default=.85, ge=0, le=1, allow_inf_nan=False)
     needs_clarification: bool = False
     clarification_question: str = Field(default='', max_length=500)
+    report_requested: bool = False
     supporting_agents: list[str] = Field(default_factory=list, max_length=2)
 
     @field_validator('capability')
@@ -63,6 +64,12 @@ async def analyze_intent(query, model, history=None, report='', knowledge_catalo
         "For knowledge_chat provide a self-contained retrieval_query resolving follow-up references from history. "
         "For domain-specific requests choose the registered specialist described below. "
         "A conceptual financial question can use financial_research without a web call. "
+        "A financial statement, company financial or industry report request should choose financial_research "
+        "and set report_requested=true only when the user explicitly asks for a substantive report, multi-period "
+        "or multi-company analysis, or a researched deliverable. Set it false for a brief financial definition "
+        "or ordinary follow-up, even if the client provides research settings. The report flag controls whether "
+        "the Research Lead pipeline runs; plain company due diligence without a "
+        "financial report uses company_research. "
         "Use company_research for enterprise due diligence, submission_consulting for submission dates/rules, "
         "learning_guidance for a personalized learning plan. Do not let these override explicit literature-review "
         "or experiment-protocol deliverables. Explicit stored-document questions still use knowledge_chat. "
@@ -85,6 +92,8 @@ async def analyze_intent(query, model, history=None, report='', knowledge_catalo
         if result.capability == 'knowledge_chat' and (not result.knowledge_ids or not set(result.knowledge_ids) <= {k['id'] for k in knowledge_catalog}):
             raise ValueError('Coordinator selected invalid library scope')
         return result.model_dump()
+    identity_hook = getattr(model, 'routing_identity_hook', None)
+    identity = await identity_hook() if identity_hook else getattr(model, 'routing_identity', None)
     return Intent.model_validate(await FUSION.recognize(payload, semantic, available=available,
-        embed=getattr(model, 'intent_embeddings', None), identity=getattr(model, 'routing_identity', None),
+        embed=getattr(model, 'intent_embeddings', None), identity=identity,
         cache_scope={'scope':cache_scope,'memory_files':(memory_context.get() or {}).get('files', [])} if cache_scope else None))

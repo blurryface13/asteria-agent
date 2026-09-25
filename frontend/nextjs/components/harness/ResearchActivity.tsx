@@ -79,12 +79,12 @@ export default function ResearchActivity({logs, done, active}: {logs: any[]; don
     {gaps.length > 0 && <details className={s.warning}><summary>{gaps.length} 项研究曾带缺口回传</summary>
       {gaps.map(([agent, records]) => <p key={agent}>{agent}：{[...records].reverse().find(e => e.tool === "agent")?.result?.summary || "阶段性研究未覆盖全部分配目标"}</p>)}</details>}
     {data && <details className={s.graph}>
-      <summary>论文与引用关系 · {nodes.length} 篇发现 · {nodes.filter(n => n.status === "read").length} 篇已读 · {edges.length} 条引用</summary>
+      <summary>研究来源与引用关系 · {nodes.length} 个来源 · {nodes.filter(n => n.status === "read").length} 个已读 · {edges.length} 条引用</summary>
       <p className={s.note}>箭头由引用论文指向被引论文。仅显示实际参考文献与标题核验得到的关系，不代表完整学术引用网络。</p>
-      <select aria-label="选择引用图中心论文" value={focus?.id || ""} onChange={e => setSelected(e.target.value)}>
-        {nodes.map(n => <option key={n.id} value={n.id}>{n.title} · {n.status === "read" ? "已读" : "未读"}</option>)}
+      <select aria-label="选择引用图中心来源" value={focus?.id || ""} onChange={e => setSelected(e.target.value)}>
+        {nodes.map(n => <option key={n.id} value={n.id}>{n.title} · {n.source_type === "institutional_report" ? "机构资料" : n.source_type === "academic_preprint" ? "学术预印本" : "学术来源"} · {n.status === "read" ? "已读" : "未读"}</option>)}
       </select>
-      {focus && neighbors.length > 0 ? <svg viewBox="0 0 640 340" role="img" aria-label="所选论文的一跳引用关系">
+      {focus && neighbors.length > 0 ? <svg viewBox="0 0 640 340" role="img" aria-label="所选来源的一跳引用关系">
         <defs><marker id="citation-arrow" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="currentColor" /></marker></defs>
         {neighbors.map((n, i) => {
           const angle = i * Math.PI * 2 / neighbors.length, x = 320 + 240 * Math.cos(angle), y = 170 + 125 * Math.sin(angle);
@@ -93,12 +93,12 @@ export default function ResearchActivity({logs, done, active}: {logs: any[]; don
             <circle cx={x} cy={y} r="8" fill={n.status === "read" ? "#8cbbac" : "#888b92"} />
             <text x={x} y={y + 22} textAnchor="middle" fill="currentColor" fontSize="10">{n.title.slice(0, 24)}<title>{n.title}</title></text></g>;
         })}
-        <circle cx="320" cy="170" r="11" fill="#b9c9df" /><text x="320" y="149" textAnchor="middle" fill="currentColor" fontSize="11">所选论文</text>
-      </svg> : <p className={s.note}>这篇论文尚无已核实引用关系。</p>}
+        <circle cx="320" cy="170" r="11" fill="#b9c9df" /><text x="320" y="149" textAnchor="middle" fill="currentColor" fontSize="11">所选来源</text>
+      </svg> : <p className={s.note}>该来源尚无已核实的论文引用关系。</p>}
       <div className={s.edges}>{related.map((e, i) => <details key={i}><summary>
         {nodes.find(n => n.id === e.source)?.title || e.source} → {nodes.find(n => n.id === e.target)?.title || e.target}
       </summary><p>{e.evidence}</p><a href={safeUrl(e.target)} target="_blank" rel="noreferrer">查看被引论文</a></details>)}</div>
-      <details><summary>全部论文与读取状态</summary>{nodes.map(n => <p key={n.id}><a href={safeUrl(n.url)} target="_blank" rel="noreferrer">{n.title}</a> · {n.status === "read" ? "已读" : n.status === "failed" ? "读取失败" : "仅发现"}</p>)}</details>
+      <details><summary>全部来源与读取状态</summary>{nodes.map(n => <p key={n.id}><a href={safeUrl(n.url)} target="_blank" rel="noreferrer">{n.title}</a> · {n.source_type === "institutional_report" ? "机构资料" : n.source_type === "academic_preprint" ? "学术预印本" : "学术来源"} · {n.status === "read" ? "已读" : n.status === "failed" ? "读取失败" : "仅发现"}</p>)}</details>
       {data.unresolved_references?.length > 0 && <details><summary>{data.unresolved_references.length} 条未解析参考文献</summary><pre>{JSON.stringify(data.unresolved_references, null, 2)}</pre></details>}
     </details>}
   </section>;

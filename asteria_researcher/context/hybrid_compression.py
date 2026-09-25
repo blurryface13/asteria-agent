@@ -120,21 +120,24 @@ class HybridContextCompressor:
         scraped. Sending every chunk as one huge request, and doing that from
         several sub-queries at once, can wedge the local Ollama runner. We keep
         dense retrieval intact by embedding every chunk, but serialize and batch
-        calls to the embedding backend.
+        calls to the embedding backend. Acquire the shared slot per batch, not
+        for the entire corpus: a small query queued behind a large PDF must get
+        a turn without waiting for all of that PDF's batches. This preserves the
+        provider concurrency limit and each request's vector order.
         """
         if not texts:
             return []
 
         batch_size = max(1, _EMBED_BATCH)
         vectors: list[list[float]] = []
-        async with _EMBED_SEMAPHORE:
-            for i in range(0, len(texts), batch_size):
-                batch = texts[i:i + batch_size]
+        for i in range(0, len(texts), batch_size):
+            batch = texts[i:i + batch_size]
+            async with _EMBED_SEMAPHORE:
                 if hasattr(self.embeddings, "aembed_documents"):
                     batch_vectors = await self.embeddings.aembed_documents(batch)
                 else:
                     batch_vectors = await asyncio.to_thread(self.embeddings.embed_documents, batch)
-                vectors.extend(batch_vectors)
+            vectors.extend(batch_vectors)
         return vectors
 
     async def _maybe_rerank(self, query: str, chunks: list[Document], top_k: int) -> list[Document]:

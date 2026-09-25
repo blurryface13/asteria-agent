@@ -43,7 +43,20 @@ def executors(model, config=None, progress=None):
         if req.research_request is None:
             return {}  # Compatible with clients requesting routing before submitting a durable run.
         request = {**req.research_request,'task':req.message,'coordinator_capability':intent.capability}
-        run = await RunStore().submit(req.user_id,req.request_id,req.conv_id,validate_request(request))
+        request['knowledge_mode'] = req.knowledge_mode
+        if req.knowledge_mode == 'off':
+            request['knowledge_ids'] = []
+        if 'knowledge_ids' not in request:
+            if req.knowledge_mode == 'selected':
+                request['knowledge_ids'] = req.knowledge_ids
+            elif req.knowledge_mode != 'off':
+                from backend.knowledge.shared_corpus import ID
+                request['knowledge_ids'] = [ID] if any(k['id'] == ID for k in req.knowledge_catalog) else []
+        request = validate_request(request)
+        from backend.knowledge.managed import get_library
+        for kb_id in request['knowledge_ids']:
+            await get_library(req.user_id, kb_id)
+        run = await RunStore().submit(req.user_id,req.request_id,req.conv_id,request)
         return {'run_id':run['id']}
 
     return {'general_chat':general, 'knowledge_chat':knowledge, 'research_lead':research, 'general_research':research,

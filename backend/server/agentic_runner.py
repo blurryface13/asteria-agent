@@ -8,7 +8,11 @@ def configured_model(config_path=None):
     import hashlib
     import json
     import os
+    import asyncio
+    from asteria_researcher.utils.usage_context import usage_stage
     embedding_instance = None
+    selected_roles = None
+    selection_lock = asyncio.Lock()
     async def intent_embeddings(texts):
         nonlocal embedding_instance
         import asyncio
@@ -20,11 +24,23 @@ def configured_model(config_path=None):
 
     async def model(system, user):
         import asyncio
+        nonlocal selected_roles
         try:
+            from backend.model_settings.service import snapshot
+            stage = usage_stage.get()
+            async with selection_lock:
+                if selected_roles is None:
+                    selected_roles = await snapshot()
+            selected_model, role_key = selected_roles.get(stage, (cfg.smart_llm_model, None))
+            provider = 'deepseek' if selected_model in {'deepseek-chat', 'deepseek-reasoner'} else cfg.smart_llm_provider
+            kwargs = dict(cfg.llm_kwargs)
+            if role_key:
+                kwargs['openai_api_key'] = role_key
             result = await asyncio.wait_for(create_chat_completion(
                 messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
-                model=cfg.smart_llm_model, llm_provider=cfg.smart_llm_provider,
-                temperature=0, max_tokens=6000, llm_kwargs=cfg.llm_kwargs), timeout=180)
+                model=selected_model, llm_provider=provider,
+                temperature=0, max_tokens=int(os.getenv('ASTERIA_AGENT_MAX_OUTPUT_TOKENS', '12000')),
+                llm_kwargs=kwargs), timeout=180)
             # Providers sometimes wrap valid structured JSON in a Markdown fence.
             # Remove only that transport wrapper; Pydantic still validates content.
             import re
@@ -34,7 +50,7 @@ def configured_model(config_path=None):
             cause = error
             while cause:
                 if getattr(cause, "status_code", None) == 402:
-                    raise RuntimeError("模型服务余额不足（HTTP 402），请充值或明确配置其他模型后重试；未生成报告。") from error
+                    raise RuntimeError("模型服务余额不足（HTTP 402），当前阶段已停止；已有草稿和证据保留，尚未完成最终交付。请充值或明确配置其他模型后重试。") from error
                 cause = cause.__cause__
             raise
     # Only a hash is exposed to the process-local cache, not credentials/config values.
@@ -44,12 +60,17 @@ def configured_model(config_path=None):
         'embedding_kwargs':cfg.embedding_kwargs,
         'endpoints':{key:os.getenv(key) for key in ('OLLAMA_BASE_URL','OPENAI_BASE_URL','DEEPSEEK_BASE_URL')}
         },sort_keys=True,default=str).encode()).hexdigest()
+    async def routing_identity():
+        from backend.model_settings.service import revision
+        current = await revision()
+        return hashlib.sha256((model.routing_identity + ':' + current).encode()).hexdigest()
+    model.routing_identity_hook = routing_identity
     model.intent_embeddings = intent_embeddings
     return model
 
 
 async def run_agentic_task(query, capability, logs_handler, research_kwargs):
-    if capability in {"literature_review", "experiment_design"}:
+    if capability in {"literature_review", "experiment_design", "financial_research"}:
         return await run_autonomous_review(query, logs_handler, research_kwargs, capability=capability)
     if capability != "general_research":
         raise ValueError("Unknown research capability")
@@ -58,6 +79,7 @@ async def run_agentic_task(query, capability, logs_handler, research_kwargs):
     from pathlib import Path
     from backend.server.specialists import run_specialist
     from backend.server.specialists import search_public_sources
+    from backend.finance.client import search as search_financial_sources
     from asteria_researcher.agentic.capabilities import Profile
     from asteria_researcher.agentic.latex import publish
     profile = Profile('general_research', '公开资料研究助手', '围绕请求自主检索公开资料、综合研究报告并标明来源限制',
@@ -102,28 +124,67 @@ async def run_autonomous_review(query, logs_handler, research_kwargs, *, capabil
     async def emit(kind, payload):
         await logs_handler.send_json({"type": "logs", "content": kind, "output": payload})
     from backend.server.coding_tools import build_coding_tools
+    from backend.server.research_tools import build_knowledge_search
+    from backend.server.specialists import search_public_sources
     # Identity belongs to the durable server Run, never research_kwargs/model arguments.
     server_run = getattr(getattr(logs_handler, "websocket", None), "run", {})
     owner = server_run.get("user_email") if isinstance(server_run, dict) else None
+    run_request = server_run.get("request", {}) if isinstance(server_run, dict) else {}
+    knowledge_ids = run_request.get("knowledge_ids", []) if isinstance(run_request, dict) else []
     runtime = AutonomousReview(configured_model(research_kwargs.get("config_path")),
         Memory(cfg.embedding_provider, cfg.embedding_model, **cfg.embedding_kwargs).get_embeddings() if online_rag else None,
         emit, logs_handler.request_feedback, online_rag=online_rag,
         skill_options=getattr(logs_handler, "skill_options", None), coding_tools=build_coding_tools(owner),
+        public_search=search_financial_sources if capability == 'financial_research' else search_public_sources,
+        knowledge_search=build_knowledge_search(owner, knowledge_ids),
         capability=capability)
-    report = await runtime.run(query)
+    from asteria_researcher.agentic.delivery_state import record_delivery
+    runtime.folder.mkdir(parents=True, exist_ok=True)
+    record_delivery(runtime.folder, 'pending')
+    try:
+        report = await runtime.run(query)
+    except BaseException as error:
+        import asyncio
+        record_delivery(runtime.folder, 'cancelled' if isinstance(error, asyncio.CancelledError) else 'failed',
+                        error_type=type(error).__name__, failed_stage='research_or_citation')
+        # Retain inspectable evidence even when research cannot be completed.
+        diagnostics = {"diagnostic_" + p.stem.replace("-", "_"): str(p)
+                       for p in runtime.folder.iterdir() if p.is_file() and p.suffix in {".json", ".jsonl", ".md"}}
+        await logs_handler.send_json({"type": "diagnostic_paths", "output": diagnostics})
+        raise
     await runtime.event("lead", "publish", "started", "编译 LaTeX 与 PDF")
-    artifacts = await publish(report, Path("outputs"), profile=runtime.format_profile)
+    record_delivery(runtime.folder, 'publishing')
+    try:
+        artifacts = await publish(report, Path("outputs"), profile=runtime.format_profile, assets=runtime.figure_assets)
+    except BaseException as error:
+        import asyncio
+        path = record_delivery(runtime.folder, 'cancelled' if isinstance(error, asyncio.CancelledError) else 'failed',
+                               error_type=type(error).__name__)
+        await logs_handler.send_json({'type': 'diagnostic_paths', 'output': {
+            'diagnostic_delivery': str(path), 'diagnostic_run': str(runtime.folder/'run.json'),
+            'diagnostic_draft': str(runtime.folder/'report-with-citations.md')}})
+        raise
+    artifacts['delivery_state'] = str(record_delivery(runtime.folder, 'ready'))
+    for key, path in runtime.figure_assets.items():
+        artifacts['chart_' + path.stem] = str(path)
     artifacts["writing_selection"] = str(runtime.folder / "writing.json")
     artifacts.update({"citation_graph": str(runtime.folder / "citations.json"),
                       "events": str(runtime.folder / "events.jsonl"),
                       "evidence": str(runtime.folder / "evidence.json"),
                       "run_metadata": str(runtime.folder / "run.json"),
                       "review_plan": str(runtime.folder / "plan.json"),
-                      "sufficiency": str(runtime.folder / "sufficiency.json")})
+                      "lead_decisions": str(runtime.folder / "lead-decisions.json"),
+                      "working_memory": str(runtime.folder / "working-memory.json"),
+                      "citation_review": str(runtime.folder / "citation-review.json"),
+                      "citation_history": str(runtime.folder / "citation-history.json")})
     for key, filename in (("delegations", "delegations.json"), ("coding_results", "coding-results.json"),
-                          ("research_requests", "research-requests.json"), ("implementation_review", "implementation-review.json")):
+                          ("research_requests", "research-requests.json"), ("implementation_review", "implementation-review.json"),
+                          ("knowledge_sources", "knowledge-sources.json"),
+                          ("data_analysis", "analysis.json"), ("tool_calls", "tool-calls.jsonl")):
         if (runtime.folder / filename).is_file():
             artifacts[key] = str(runtime.folder / filename)
+    for artifact in sorted(runtime.folder.glob("subagent-*.json")):
+        artifacts[artifact.stem.replace("-", "_")] = str(artifact)
     logs_handler.artifact_paths = artifacts
     await runtime.event("lead", "publish", "completed", "源码、PDF、引用图与研究轨迹已保存")
     await logs_handler.send_json({"type": "report", "output": report})

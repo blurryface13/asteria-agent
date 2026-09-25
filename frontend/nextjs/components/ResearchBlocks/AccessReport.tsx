@@ -1,5 +1,4 @@
 import React from 'react';
-import {getHost} from '../../helpers/getHost'
 
 interface AccessReportProps {
   accessData: {
@@ -15,8 +14,6 @@ interface AccessReportProps {
 }
 
 const AccessReport: React.FC<AccessReportProps> = ({ accessData, chatBoxSettings, report, onShareClick }) => {
-  const host = getHost();
-
   const getReportLink = (dataType: 'pdf' | 'docx' | 'json'): string => {
     // Early return if path is not available
     if (!accessData?.[dataType]) {
@@ -36,7 +33,10 @@ const AccessReport: React.FC<AccessReportProps> = ({ accessData, chatBoxSettings
       ? cleanPath 
       : `outputs/${cleanPath}`;
     
-    return `${host}/${finalPath}`;
+    // Keep downloads on the frontend origin. The /outputs rewrite forwards
+    // the session cookie to the authenticated backend and also works when a
+    // lab member visits from another machine (where 127.0.0.1 is their PC).
+    return `/${finalPath.split('/').map(encodeURIComponent).join('/')}`;
   };
 
   // Safety check for accessData
@@ -47,7 +47,7 @@ const AccessReport: React.FC<AccessReportProps> = ({ accessData, chatBoxSettings
   return (
     <div className="container my-5 rounded-xl border border-white/[0.08] bg-white/[0.04] p-5 shadow-[0_12px_36px_rgba(2,6,23,0.12)] backdrop-blur-md">
       <div className="flex flex-col items-center">
-        <h3 className="mb-4 text-lg font-bold text-white/75">Access Your Research Report</h3>
+        <h3 className="mb-4 text-lg font-bold text-white/75">获取研究报告</h3>
         
         <div className="flex flex-wrap justify-center gap-3">
           {accessData.pdf && (
@@ -59,7 +59,7 @@ const AccessReport: React.FC<AccessReportProps> = ({ accessData, chatBoxSettings
               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
-              View as PDF
+              查看 PDF
             </a>
           )}
           
@@ -72,7 +72,7 @@ const AccessReport: React.FC<AccessReportProps> = ({ accessData, chatBoxSettings
               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
               </svg>
-              Download DocX
+              下载 Word 文档
             </a>
           )}
           
@@ -85,7 +85,7 @@ const AccessReport: React.FC<AccessReportProps> = ({ accessData, chatBoxSettings
               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
               </svg>
-              Download Logs
+              下载运行记录
             </a>
           )}
           
@@ -97,7 +97,7 @@ const AccessReport: React.FC<AccessReportProps> = ({ accessData, chatBoxSettings
               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
               </svg>
-              Share Report
+              复制任务链接
             </button>
           )}
         </div>

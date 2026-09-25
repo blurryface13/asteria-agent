@@ -4,10 +4,11 @@
     "title": "研究证据规范",
     "kind": "policy",
     "selectable": false,
-    "version": "4",
+    "version": "5",
     "phases": [
       "research"
     ],
+    "domains": ["literature_review"],
     "description": "证据获取、预算与有边界的文献调研；基础规范。",
     "files": [
       "literature_review.md"
@@ -24,6 +25,7 @@
       "research",
       "writing"
     ],
+    "domains": ["literature_review"],
     "description": "核对原创贡献与历史归因，避免将后续综述当成最初发现。",
     "files": [
       "vendor/gallant/source_priority.md",
@@ -36,10 +38,11 @@
     "title": "文献综述写作",
     "kind": "content",
     "selectable": true,
-    "version": "2",
+    "version": "3",
     "phases": [
       "writing"
     ],
+    "domains": ["literature_review"],
     "description": "按主题综合证据，对比方法、实验与研究空白。",
     "files": [
       "report_writing.md"
@@ -62,6 +65,18 @@
     "source": "Asteria"
   },
   {
+    "id": "financial_report",
+    "title": "金融公开资料研究报告",
+    "kind": "content",
+    "selectable": true,
+    "version": "1",
+    "phases": ["writing"],
+    "domains": ["financial_research"],
+    "description": "面向财报比较与行业调研；区分原文事实、计算值及分析判断，按需呈现表图。",
+    "files": ["financial_report.md"],
+    "source": "Asteria；参考 anthropics/financial-services 的来源归因与报告质检原则"
+  },
+  {
     "id": "experiment_research",
     "title": "复现实验研究规范",
     "kind": "policy",
@@ -70,6 +85,7 @@
     "phases": [
       "research"
     ],
+    "domains": ["experiment_design"],
     "description": "为复现实验方案收集环境、数据与方法证据。",
     "files": [
       "experiment_design.md"
@@ -85,25 +101,88 @@
     "phases": [
       "writing"
     ],
+    "domains": ["experiment_design"],
     "description": "环境、数据、基线与指标；不宣称执行了未运行的实验。",
     "files": [
       "experiment_writing.md"
     ],
     "source": "Asteria"
   },
-  {"id":"learning_assistance","title":"学习指导","kind":"guidance","selectable":false,"version":"1","phases":["assistance"],"description":"学习目标、先修知识、练习与验证","files":["learning_assistance.md"],"source":"Asteria; EchoMind role-contract pattern"},
-  {"id":"submission_assistance","title":"投稿信息核验","kind":"guidance","selectable":false,"version":"1","phases":["assistance"],"description":"官方来源、年份、时区、范围与材料","files":["submission_assistance.md"],"source":"Asteria; EchoMind role-contract pattern"},
-  {"id":"finance_assistance","title":"金融资料研究","kind":"guidance","selectable":false,"version":"1","phases":["assistance"],"description":"公开资料分析与风险边界，不执行交易","files":["finance_assistance.md"],"source":"Asteria; EchoMind role-contract pattern"},
-  {"id":"company_assistance","title":"企业公开信息背调","kind":"guidance","selectable":false,"version":"1","phases":["assistance"],"description":"主体消歧、公开来源、事实与不确定性","files":["company_assistance.md"],"source":"Asteria; EchoMind role-contract pattern"},
+  {
+    "id": "learning_assistance",
+    "title": "学习指导",
+    "kind": "guidance",
+    "selectable": false,
+    "version": "1",
+    "phases": [
+      "assistance"
+    ],
+    "description": "学习目标、先修知识、练习与验证",
+    "files": [
+      "learning_assistance.md"
+    ],
+    "source": "Asteria; EchoMind role-contract pattern"
+  },
+  {
+    "id": "submission_assistance",
+    "title": "投稿信息核验",
+    "kind": "guidance",
+    "selectable": false,
+    "version": "1",
+    "phases": [
+      "assistance"
+    ],
+    "description": "官方来源、年份、时区、范围与材料",
+    "files": [
+      "submission_assistance.md"
+    ],
+    "source": "Asteria; EchoMind role-contract pattern"
+  },
+  {
+    "id": "finance_assistance",
+    "title": "金融资料研究",
+    "kind": "guidance",
+    "selectable": false,
+    "version": "1",
+    "phases": [
+      "assistance",
+      "research"
+    ],
+    "domains": ["financial_research"],
+    "description": "公开资料分析与风险边界，不执行交易",
+    "files": [
+      "finance_assistance.md"
+    ],
+    "source": "Asteria; EchoMind role-contract pattern"
+  },
+  {
+    "id": "company_assistance",
+    "title": "企业公开信息背调",
+    "kind": "guidance",
+    "selectable": false,
+    "version": "1",
+    "phases": [
+      "assistance"
+    ],
+    "description": "主体消歧、公开来源、事实与不确定性",
+    "files": [
+      "company_assistance.md"
+    ],
+    "source": "Asteria; EchoMind role-contract pattern"
+  },
   {
     "id": "workspace_assistance",
     "title": "私有文件与代码助手",
     "kind": "guidance",
     "selectable": false,
     "version": "1",
-    "phases": ["assistance"],
+    "phases": [
+      "assistance"
+    ],
     "description": "MCP读写提案、版本校验、人工确认；不执行代码",
-    "files": ["workspace_assistance.md"],
+    "files": [
+      "workspace_assistance.md"
+    ],
     "source": "Asteria"
   },
   {
@@ -120,5 +199,43 @@
       "report_formatting.md"
     ],
     "source": "Asteria"
+  },
+  {
+    "id": "anthropic_sector_overview",
+    "title": "行业全景调研（Anthropic）",
+    "kind": "guidance",
+    "selectable": true,
+    "version": "574ed362",
+    "phases": [
+      "research",
+      "writing",
+      "assistance"
+    ],
+    "domains": ["financial_research"],
+    "description": "按行业结构、竞争格局、增长驱动、估值口径组织金融/企业调研；不用于纯学术综述。",
+    "files": [
+      "vendor/anthropic/financial-services/sector-overview.md",
+      "finance_adapter.md"
+    ],
+    "source": "anthropics/financial-services · Apache-2.0 · 574ed3624aebd0418c7e96cd101262f30210ab26 · 原文保留＋能力适配"
+  },
+  {
+    "id": "anthropic_model_update",
+    "title": "财务模型更新（Anthropic）",
+    "kind": "guidance",
+    "selectable": true,
+    "version": "574ed362",
+    "phases": [
+      "research",
+      "writing",
+      "assistance"
+    ],
+    "domains": ["financial_research"],
+    "description": "核对最新实际值与旧估计，追踪假设和估值差异；需要已有财务模型/资料。",
+    "files": [
+      "vendor/anthropic/financial-services/model-update.md",
+      "finance_adapter.md"
+    ],
+    "source": "anthropics/financial-services · Apache-2.0 · 574ed3624aebd0418c7e96cd101262f30210ab26 · 原文保留＋能力适配"
   }
 ]

@@ -120,6 +120,8 @@ export function useDurableResearch(
         headers: { retrievers: getRetrieversForStrategy(settings.search_strategy, settings.retrievers) },
         search_strategy: settings.search_strategy || 'general', online_rag: settings.online_rag !== false,
         skill_ids: settings.skill_ids || [], format_profile: settings.format_profile || null,
+        knowledge_mode: settings.knowledge_mode || 'auto',
+        ...(settings.knowledge_mode === 'selected' ? { knowledge_ids: settings.knowledge_ids || [] } : {}),
         query_domains: domains, mcp_enabled: settings.mcp_enabled || false,
         mcp_strategy: settings.mcp_strategy || 'fast', mcp_configs: settings.mcp_configs || [],
         ...(coordinatorCapability ? { coordinator_capability: coordinatorCapability } : {}), },

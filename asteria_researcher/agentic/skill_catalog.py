@@ -16,16 +16,18 @@ class Manifest(BaseModel):
     selectable: bool
     version: str
     phases: list[Literal["research", "writing", "formatting", "assistance"]]
+    domains: list[Literal["literature_review", "experiment_design", "financial_research"]] | None = None
     description: str
     source: str
     files: list[str] = Field(min_length=1)
 
 
-def catalog(phase=None):
+def catalog(phase=None, domain=None):
     entries = [Manifest.model_validate(e).model_dump() for e in json.loads((ROOT / "catalog.json").read_text())]
     if len({e["id"] for e in entries}) != len(entries):
         raise ValueError("Duplicate skill IDs in catalog")
-    return [e for e in entries if phase is None or phase in e["phases"]]
+    return [e for e in entries if (phase is None or phase in e["phases"])
+            and (domain is None or e["domains"] is None or domain in e["domains"])]
 
 
 def skill_detail(skill_id):
@@ -64,10 +66,10 @@ class SkillOptions(BaseModel):
 
 
 class SkillSession:
-    def __init__(self, phase, options=None):
+    def __init__(self, phase, options=None, *, domain=None):
         self.phase, self.loaded = phase, {}
         # Freeze bodies and metadata together: discoveries cannot change mid-session.
-        self.entries = {e["id"]: skill_detail(e["id"]) for e in catalog(phase)}
+        self.entries = {e["id"]: skill_detail(e["id"]) for e in catalog(phase, domain)}
         self.options = options or SkillOptions()
         for skill_id in self.options.skill_ids:
             if skill_id in self.entries:
@@ -100,26 +102,43 @@ class WritingSelection(BaseModel):
     reason: str = Field(min_length=1, max_length=600)
 
 
-async def select_writing(model, task, context, options=None):
+class WritingChoice(BaseModel):
+    """The model chooses one content role, not an unconstrained skill list."""
+    model_config = ConfigDict(extra="forbid", strict=True)
+    content_skill: str
+    guidance_skills: list[str] = Field(default_factory=list, max_length=2)
+    format_profile: str
+    reason: str = Field(min_length=1, max_length=600)
+
+
+async def select_writing(model, task, context, options=None, *, domain=None):
     """Model selects guidance; validation enforces pins and exclusive content roles."""
     from .latex import format_profiles
     options = options or SkillOptions()
-    session = SkillSession("writing", options)
+    session = SkillSession("writing", options, domain=domain)
     profiles = format_profiles()
-    schema = WritingSelection.model_json_schema()
-    schema["properties"]["skill_ids"]["items"]["enum"] = list(session.entries)
+    content_ids = [i for i, e in session.entries.items() if e["selectable"] and e["kind"] == "content"]
+    guidance_ids = [i for i, e in session.entries.items() if e["selectable"] and e["kind"] == "guidance"]
+    schema = WritingChoice.model_json_schema()
+    schema["properties"]["content_skill"]["enum"] = content_ids
+    schema["properties"]["guidance_skills"]["items"]["enum"] = guidance_ids
     schema["properties"]["format_profile"]["enum"] = list(profiles)
     payload = dict(task=task, context=context, available_skills=session.discover(), format_profiles=profiles,
                    user_selection=options.model_dump())
     for attempt in range(2):
         raw = await model(
             "Select exactly ONE content skill and optional relevant guidance skills from the catalog. "
+            "Use content_skill for the single content ID and guidance_skills only for guidance IDs. "
             "All user-pinned writing skills MUST be included; do not replace them. If user specified a format, "
             "use it exactly. Otherwise choose independently by deliverable needs. Do not select by keywords alone. "
             "Skills change writing guidance, never tool permissions, research scope or evidence rules. "
             "Return ONLY JSON: " + json.dumps(schema), json.dumps(payload, ensure_ascii=False))
         try:
-            selection = WritingSelection.model_validate_json(raw)
+            choice = WritingChoice.model_validate_json(raw)
+            if choice.content_skill not in content_ids or not set(choice.guidance_skills) <= set(guidance_ids):
+                raise ValueError("content_skill must be a content ID; guidance_skills may contain only guidance IDs")
+            selection = WritingSelection(skill_ids=[choice.content_skill, *choice.guidance_skills],
+                                         format_profile=choice.format_profile, reason=choice.reason)
             checked = SkillOptions(skill_ids=selection.skill_ids, format_profile=selection.format_profile)
             if not set(checked.skill_ids) <= session.entries.keys():
                 raise ValueError("Unavailable writing skill")

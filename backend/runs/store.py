@@ -5,6 +5,7 @@ automatically retried: the external side effect of an in-flight tool is unknown.
 """
 import hashlib
 import json
+import logging
 import os
 from uuid import uuid4
 
@@ -14,7 +15,39 @@ from backend.auth.db import get_pool
 TERMINAL = {'completed', 'failed', 'cancelled', 'interrupted'}
 
 
+def storage_safe_event(payload):
+    """Normalize PDF/tool NUL values for JSONB without mutating raw artifacts.
+
+    PostgreSQL cannot represent U+0000 even in an escaped JSON string. A
+    visible replacement preserves character offsets; never discard the whole
+    passage or ask the model to retry an otherwise valid handoff.
+    """
+    count = 0
+
+    def visit(value):
+        nonlocal count
+        if isinstance(value, str):
+            count += value.count('\x00')
+            return value.replace('\x00', '\ufffd')
+        if isinstance(value, dict):
+            # Keys are protocol fields, not evidence. Do not rename keys and
+            # risk collisions or alter tool argument semantics.
+            if any(isinstance(key, str) and '\x00' in key for key in value):
+                raise ValueError('Event field names cannot contain NUL')
+            return {key: visit(item) for key, item in value.items()}
+        if isinstance(value, (list, tuple)):
+            return [visit(item) for item in value]
+        return value
+
+    normalized = visit(payload)
+    if count:
+        normalized['_storage_normalization'] = {'nul_replacements': count, 'replacement': 'U+FFFD'}
+        logging.getLogger(__name__).warning('Normalized %d NUL characters in research event values', count)
+    return normalized
+
+
 async def event(conn, run_id, payload):
+    payload = storage_safe_event(payload)
     seq = await conn.fetchval('UPDATE research_runs SET sequence=sequence+1 WHERE id=$1 RETURNING sequence', run_id)
     await conn.execute('INSERT INTO research_events(run_id,sequence,payload) VALUES($1,$2,$3)', run_id, seq, payload)
     return seq

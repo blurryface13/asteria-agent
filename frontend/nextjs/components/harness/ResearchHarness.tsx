@@ -11,7 +11,11 @@ import LatexPreview from "./LatexPreview";
 import SkillBrowser from "./SkillBrowser";
 import KnowledgePicker from "../knowledge/KnowledgePicker";
 import MemoryEditor from "../memory/MemoryEditor";
+import AgentModelSettings from "./AgentModelSettings";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { authFetch, getDisplayName, setDisplayName } from "@/helpers/auth";
+import { getHost } from "@/helpers/getHost";
+import { resolveResearchFigure } from "@/helpers/researchFigures";
 
 interface Props {
   conversationMode?: 'research' | 'chat';
@@ -179,17 +183,43 @@ function Thumbnail({ kind }: { kind: number }) {
   );
 }
 
-function Markdown({ value }: { value: string }) {
+function Markdown({ value, artifacts }: { value: string; artifacts?: Record<string, string> }) {
   const [html, setHtml] = useState("");
   useEffect(() => {
     let live = true;
-    markdownToHtml(value).then((v) => {
-      if (live) setHtml(v);
+    const controller = new AbortController();
+    const blobs: string[] = [];
+    markdownToHtml(value).then(async (v) => {
+      const doc = new DOMParser().parseFromString(v, 'text/html');
+      await Promise.all(Array.from(doc.querySelectorAll('img')).map(async (img) => {
+        const src = img.getAttribute('src') || '';
+        if (!src.startsWith('figures/')) return;
+        const path = resolveResearchFigure(src, artifacts || {});
+        try {
+          if (!path) throw new Error('pending');
+          const response = await authFetch(`${getHost()}/${path}`, {signal: controller.signal});
+          if (!response.ok) throw new Error('download');
+          const bytes = await response.arrayBuffer();
+          if (new Uint8Array(bytes).slice(0, 8).join(',') !== '137,80,78,71,13,10,26,10') throw new Error('format');
+          if (!live) return;
+          const blob = URL.createObjectURL(new Blob([bytes], {type: 'image/png'}));
+          blobs.push(blob);
+          img.setAttribute('src', blob);
+          img.setAttribute('loading', 'lazy');
+        } catch {
+          const note = doc.createElement('span');
+          note.textContent = path ? `图表暂时无法加载：${img.alt}` : `图表生成后展示：${img.alt}`;
+          img.replaceWith(note);
+        }
+      }));
+      if (live) setHtml(doc.body.innerHTML);
     });
     return () => {
       live = false;
+      controller.abort();
+      blobs.forEach((blob) => URL.revokeObjectURL(blob));
     };
-  }, [value]);
+  }, [value, artifacts]);
   return (
     <article
       className={s.markdown}
@@ -206,7 +236,7 @@ export default function ResearchHarness(p: Props) {
   const [panel, setPanel] = useState(""),
     [menu, setMenu] = useState("");
   const [mode, setMode] = useState<"research" | "chat">("research");
-  const [username, setUsername] = useState("bunny"),
+  const [username, setUsername] = useState("用户"),
     [search, setSearch] = useState("");
   const [projectName, setProjectName] = useState(""),
     [activeProjectId, setActiveProjectId] = useState<string | null>(null);
@@ -218,7 +248,7 @@ export default function ResearchHarness(p: Props) {
     input = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
     setRail(window.innerWidth >= 900);
-    setUsername(localStorage.getItem("asteria.displayName") || "bunny");
+    setUsername(getDisplayName());
     setActiveProjectId(localStorage.getItem("asteria.activeProjectId"));
     try { setExpandedProjects(JSON.parse(localStorage.getItem("asteria.expandedProjects") || "{}")); } catch { /* Ignore an obsolete UI preference. */ }
   }, []);
@@ -828,7 +858,7 @@ export default function ResearchHarness(p: Props) {
                     {sourceView ? (
                       <pre className={s.source}>{p.answer}</pre>
                     ) : (
-                      <Markdown value={p.answer} />
+                      <Markdown value={p.answer} artifacts={p.artifactPaths} />
                     )}
                   </>
                 ) : panel === "文件" ? (
@@ -897,7 +927,7 @@ export default function ResearchHarness(p: Props) {
             <aside className={s.dialogRail}>
               <h2>{modal}</h2>
               {(modal === "Agent"
-                ? ["人格", "记忆", "技能", "SSH 服务器"]
+                ? ["人格", "记忆", "技能", "模型", "SSH 服务器"]
                 : ["概览", "存储", "环境", "桌面", "终端", "设置"]
               ).map((tab) => (
                 <button
@@ -912,6 +942,8 @@ export default function ResearchHarness(p: Props) {
                         ? "memory"
                         : tab === "技能"
                           ? "skill"
+                          : tab === "模型"
+                            ? "agent"
                           : tab === "SSH 服务器"
                             ? "cloud"
                             : "agent"
@@ -944,9 +976,9 @@ export default function ResearchHarness(p: Props) {
                 <button
                   className={s.primary}
                   onClick={() => {
-                    const name = username.trim() || "bunny";
+                    const name = username.trim() || getDisplayName();
                     setUsername(name);
-                    localStorage.setItem("asteria.displayName", name);
+                    setDisplayName(name);
                     setModal("");
                   }}
                 >
@@ -1106,16 +1138,20 @@ export default function ResearchHarness(p: Props) {
                     ? "定义研究偏好、证据要求和输出习惯。"
                     : section === "记忆"
                       ? "管理可复用的研究偏好与项目经验。"
-                      : section === "技能"
+                    : section === "技能"
                         ? "按需加载研究方法、工具约束与输出规范。"
+                        : section === "模型"
+                          ? "为 Agent 角色设置实际调用的模型与服务端密钥。"
                         : "管理授权服务器、允许目录与实验执行权限。"}
                 </p>
-                {!['技能','记忆'].includes(section) && <div className={s.pendingBadge}>待接入运行时</div>}
+                {!['技能','记忆','模型'].includes(section) && <div className={s.pendingBadge}>待接入运行时</div>}
                 {section === "记忆" ? (
                   <MemoryEditor projectId={memoryProjectId} projectName={projects.find(item=>item.id===memoryProjectId)?.name} onDirtyChange={setMemoryDirty}/>
                 ) : section === "技能" ? (
                   <SkillBrowser settings={p.settings} onChange={next => p.setSettings(next)}
                     locked={p.loading || p.chatting} supported={p.skillsSupported !== false && mode === "research"} />
+                ) : section === "模型" ? (
+                  <AgentModelSettings />
                 ) : (
                   <div className={s.placeholder}>
                     <Icon

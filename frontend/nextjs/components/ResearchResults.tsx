@@ -52,7 +52,7 @@ export const ResearchResults: React.FC<ResearchResultsProps> = ({
       if (data.type === "question") {
         return <Question key={`question-${index}`} question={data.content} />;
       } else {
-        return <Report key={`chat-${index}`} answer={data.content} title="Asteria Chat" />;
+        return <Report key={`chat-${index}`} answer={data.content} title="对话" />;
       }
     });
 

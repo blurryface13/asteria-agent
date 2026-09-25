@@ -809,6 +809,13 @@
   font-size: 23px;
   margin: 15px 0;
 }
+.markdown img {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin: 20px 0;
+  border-radius: 8px;
+}
 .markdown h2 {
   font-size: 19px;
   margin: 20px 0 12px;
@@ -967,6 +974,16 @@
   padding: 3px 8px;
   font-size: 11px;
 }
+.modelSettings > p {
+  color: #aaa9a5;
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 0 0 16px;
+}
+.modelActions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 18px; }
+.modelSettings input:focus-visible,
+.modelSettings select:focus-visible,
+.modelSettings button:focus-visible { outline: 2px solid #e5e5e0; outline-offset: 2px; }
 .placeholder {
   display: flex;
   align-items: center;
