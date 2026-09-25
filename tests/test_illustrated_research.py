@@ -215,6 +215,8 @@ def test_parent_hook_context_isolated_across_parallel_tasks():
 
 def test_analyst_renders_manifest_and_provenance(tmp_path):
     async def model(system, payload):
+        assert payload['today']
+        assert 'an arXiv YYMM earlier than today is not itself anomalous' in system
         return json.dumps({'rationale': 'Show the method representation', 'charts': [chart().model_dump()]})
     events = []
     async def event(*args, **kwargs):
@@ -237,6 +239,28 @@ def test_invalid_optional_numeric_chart_does_not_discard_supported_matrix(tmp_pa
     assert set(assets) == {'figures/method-map.png'}
     assert 'unsupported-numbers' in manifest['limitations'][0]
     assert (tmp_path/'rejected-charts.json').exists()
+
+
+def test_unverified_matrix_row_is_recorded_without_losing_valid_comparison(tmp_path):
+    method_chart = chart().model_copy(deep=True)
+    third = method_chart.rows[0].model_copy(deep=True)
+    third.label = '方法 C'
+    third.quote = 'A fabricated excerpt that is not in the original source.'
+    method_chart.rows.append(third)
+    calls, events = [], []
+    async def model(system, payload):
+        calls.append(True)
+        return json.dumps({'rationale': 'Compare the methods',
+                           'charts': [method_chart.model_dump()]})
+    async def emit(*args, **kwargs):
+        events.append(args)
+    assets, manifest = asyncio.run(analyze(model, emit, tmp_path, '方法对照图', '', [], EVIDENCE))
+    assert len(calls) == 2  # Analyst first receives exact validation feedback.
+    assert set(assets) == {'figures/method-map.png'}
+    assert [row['label'] for row in manifest['charts'][0]['rows']] == ['方法 A', '方法 B']
+    assert '方法 C' in manifest['limitations'][0]
+    assert json.loads((tmp_path/'rejected-rows.json').read_text())[0]['row'] == '方法 C'
+    assert any(event[1] == 'chart_row_omitted' for event in events)
 
 
 @pytest.mark.skipif(not shutil.which('xelatex'), reason='Needs XeLaTeX')

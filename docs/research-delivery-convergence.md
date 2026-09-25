@@ -63,3 +63,10 @@ CitationAgent 专注正文与证据的引用对应关系，不重新制定研究
 - 后续做了**真实模型的定向复测**（不是完整研究重跑）：旧方式把图与大量原文塞入同一个 CitationAgent 审核时，模型在理由里明确列出 GALA/OpenGaFF 的渲染接口，却仍将矛盾句判为通过。改为同一 CitationAgent 内的独立图文聚焦检查后，首轮准确标记这句话，定向修稿后第二轮图文检查无冲突，见 outputs/figure-citation-qa-avrmssrb/citation-history.json 和 figure-check-*.json。该探针的修稿曾额外引入原句没有的 OpenGaussian，故进一步要求定向修稿只重组已有方法；这个最后约束尚未独立验证，不宣称完整报告自动质量达标。
 - 排版试验：把图片改为 LaTeX float、表格改为 longtable 后重新编译，虽然正文页更满，但生成连续两页几乎只有图片，整体可读性更差；已撤销该试验，保留当前 10 页已核查版本。PDF 页 2 和页 5 因大图/不可拆表格仍有留白，属于后续排版优化，不影响文字与图表可读性。
 - 最新全量测试：356 passed、5 skipped；跳过项依赖外部环境，未把它们算作通过。下一阶段先对图文矛盾与候选方向新颖性建立定向人工/模型质量门槛，再扩大真实科研任务与 AstaBench 验收，不仅凭任务状态或四维均分判断质量。
+
+## 第二次真实端到端与语义验收缺口
+
+- 相同复杂 CV 请求第二次从登录、路由、批准到 PDF 和授权下载完整执行：Run `b81c947d00b940c3874308fa86ca9a8d`，worker 版本 `aef54b9`，目录 `outputs/acceptance_f999c8db7b`；技术状态 `completed`，约 615 秒。Lead 先派发 3 个子任务，再补派 2 个。CitationAgent 的独立图文检查已在这次真实运行中生效。
+- **不能把技术完成当作内容验收通过**：Data Analyst 原计划含 12 行方法／证据矩阵，但 LangSurf 一行 quote 并非对应证据 ID 的原文，旧逻辑将整张矩阵舍弃，仅交付两张数值柱图。用户要求至少一张方法／证据对照图，因此 `scripts/accept-research-chain.py --resume outputs/acceptance_f999c8db7b --require-matrix` 明确失败；保留原始成功的任务记录和 `failure.json`，不伪改 Run 状态。
+- 对真实保存的 `analysis-attempt-2.txt` 和 `evidence.json` 逐行复核：矩阵 12 行中 11 行通过原文与 ID 校验，只有 LangSurf 不通过。新回退策略先给 Analyst 一次精确纠错机会；最后一轮仍失败时只剔除坏行，保留 11 行有效矩阵，另存 `rejected-rows.json` 与 limitation。用真实保存的方案和证据离线重放，成功生成 11 行矩阵 PNG（约 1.29 MB）及原有两张柱图；这是**图表阶段验证，不是新版完整端到端通过**。验收脚本新增可选严格门槛：矩阵须存在于可下载 manifest、图文件和最终 Markdown 中。
+- 人工阅读第二次报告另发现两类逻辑 BadCase：H1 的“单场不劣于三场”为预期成功，优先级说明却反写成“假设被否定”；2026 年 5–7 月的 arXiv 编号被误称与 2026 年 9 月检索日期冲突。Writer／Analyst 现收到当前日期，并被要求核对日期先后与假设的支持／证伪方向；**提示词改动尚不能证明两类 BadCase 已消失**，下次完整报告仍需人工检查。

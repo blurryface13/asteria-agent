@@ -1272,7 +1272,7 @@ class AutonomousReview:
                 evidence.append(record)
                 self.evidence.append(record)
         from .illustrations import writer_chart_brief
-        payload = {"task": self.query, "plan": self.plan, "synthesis": synthesis,
+        payload = {"task": self.query, "today": str(date.today()), "plan": self.plan, "synthesis": synthesis,
                    "data_analyst": writer_chart_brief(self.analysis_manifest),
                    "subagent_results": writing_briefs(self.briefs), "evidence": evidence,
                    "read_sources": list(self.read_sources()),
@@ -1307,6 +1307,10 @@ class AutonomousReview:
             "Preserve reviewed answer kinds: distinguish author-reported facts, cross-source synthesis, "
             "qualified analysis and unknowns. Cite the supporting premises of an inference, never label "
             "it as an author claim. Put each citation immediately after the claim or tightly related claim group it supports; "
+            "When proposing a falsifiable hypothesis, make its failure condition the logical opposite of its "
+            "predicted outcome; check the final recommendation for reversed support/falsification wording. "
+            "Before alleging a publication-date mismatch, compare the actual claimed date with today; "
+            "an arXiv YYMM earlier than today is not by itself suspicious. "
             "never collect unrelated citations at the end of a long paragraph. "
             "do not repeat the same citation after every sentence or replace thematic reasoning with excerpts. "
             "Begin with a useful answer to the user's main question. Compare approaches on shared axes; explain "

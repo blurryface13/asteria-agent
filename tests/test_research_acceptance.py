@@ -37,6 +37,32 @@ def test_acceptance_requires_downloadable_matching_deliverables(bad_hash):
         assert len(asyncio.run(run())) == 4
 
 
+@pytest.mark.parametrize('has_matrix', [False, True])
+def test_acceptance_can_enforce_requested_method_matrix(has_matrix):
+    charts = ([{'id': 'method-map', 'kind': 'matrix'}] if has_matrix
+              else [{'id': 'comparison-bar', 'kind': 'bar'}])
+    bodies = {'md': b'# Report\n![map](figures/method-map.png)',
+              'latex_pdf': b'%PDF-1.7 fixture',
+              'citation_review': b'{"status":"completed"}',
+              'lead_decisions': b'[]',
+              'data_analysis': json.dumps({'charts': charts}).encode(),
+              'chart_method-map': b'\x89PNGtest'}
+    artifacts = [{'kind': kind, 'path': f'outputs/test/{kind}', 'size_bytes': len(body),
+                  'sha256': hashlib.sha256(body).hexdigest()} for kind, body in bodies.items()]
+    def handle(request):
+        kind = request.url.path.rsplit('/', 1)[1]
+        return httpx.Response(200, content=bodies[kind],
+                              headers={'content-type': 'image/png' if kind.startswith('chart_') else 'application/octet-stream'})
+    async def run():
+        async with httpx.AsyncClient(base_url='http://test', transport=httpx.MockTransport(handle)) as client:
+            return await acceptance.verify_deliverables(client, {'artifacts': artifacts}, require_matrix=True)
+    if has_matrix:
+        assert len(asyncio.run(run())) == len(bodies)
+    else:
+        with pytest.raises(ValueError, match='comparison matrix'):
+            asyncio.run(run())
+
+
 @pytest.mark.parametrize("cleanup_failure", [False, True])
 def test_routing_failure_saved_before_run_and_not_masked(tmp_path, monkeypatch, cleanup_failure):
     from backend.auth import lab, db
@@ -98,7 +124,7 @@ def test_resume_observes_same_run_without_submission_or_foreign_reset(tmp_path, 
     async def provision(*args):
         resets.append(args[0])
 
-    async def noop(*args):
+    async def noop(*args, **kwargs):
         return []
 
     monkeypatch.setattr(db, 'get_pool', pool)

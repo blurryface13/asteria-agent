@@ -25,12 +25,12 @@ https://www.anthropic.com/engineering/multi-agent-research-system
 请对不同问题合理分工，区分论文结论、厂商经验和你的建议，正文给出来源；无需运行实验或修改代码。"""
 
 
-async def verify_deliverables(client, run):
+async def verify_deliverables(client, run, *, require_matrix=False):
     """Use the authenticated download path, not merely files present on disk."""
     from urllib.parse import quote
     from pathlib import PurePosixPath
     artifacts = {item["kind"]: item for item in run.get("artifacts", [])}
-    verified = []
+    verified, downloaded = [], {}
     kinds = ['md', 'latex_pdf', 'citation_review', 'lead_decisions']
     kinds.extend(k for k in artifacts if k.startswith('chart_') or k in {'data_analysis', 'tool_calls', 'report_bundle'})
     for kind in kinds:
@@ -57,7 +57,19 @@ async def verify_deliverables(client, run):
             with zipfile.ZipFile(io.BytesIO(content)) as bundle:
                 if bundle.testzip() is not None or not {'report.md', 'report.tex', 'report.pdf'} <= set(bundle.namelist()):
                     raise ValueError('Report bundle is incomplete')
+        downloaded[kind] = content
         verified.append({"kind": kind, "status": response.status_code, "bytes": len(content), "sha256": item["sha256"]})
+    if require_matrix:
+        manifest_bytes = downloaded.get('data_analysis')
+        if not manifest_bytes:
+            raise ValueError('Acceptance requires a downloadable data_analysis manifest')
+        charts = json.loads(manifest_bytes).get('charts', [])
+        report = downloaded['md'].decode('utf-8')
+        if not any(chart.get('kind') == 'matrix' and
+                   f"chart_{chart.get('id')}" in artifacts and
+                   f"figures/{chart.get('id')}.png" in report
+                   for chart in charts):
+            raise ValueError('Acceptance requires a delivered, report-embedded method/evidence comparison matrix')
     return verified
 
 
@@ -154,7 +166,8 @@ async def run(args):
                         if current["status"] != "completed":
                             raise RuntimeError(str(current.get("error") or current["status"]))
                         stage = "delivery_verification"
-                        downloads = await verify_deliverables(client, current)
+                        downloads = await verify_deliverables(client, current,
+                                                              require_matrix=getattr(args, 'require_matrix', False))
                         (folder / "downloads.json").write_text(json.dumps(downloads, ensure_ascii=False, indent=2))
                         print("PASS " + str(folder / "result.json"), flush=True)
                         return
@@ -194,5 +207,7 @@ if __name__ == "__main__":
     parser.add_argument("--approve-plan", action="store_true")
     parser.add_argument("--direct-read", action="store_true")
     parser.add_argument("--task-file")
+    parser.add_argument("--require-matrix", action="store_true",
+                        help="Require a validated comparison matrix embedded in the final report")
     parser.add_argument("--resume", help="Resume observation of a dedicated acceptance folder; does not submit another task")
     asyncio.run(run(parser.parse_args()))

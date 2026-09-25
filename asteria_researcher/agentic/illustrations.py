@@ -6,6 +6,7 @@ The rendering tool is deterministic and never executes model Python or Shell.
 from __future__ import annotations
 
 import asyncio
+from datetime import date
 import json
 from pathlib import Path
 import re
@@ -224,8 +225,11 @@ async def analyze(model, event, folder: Path, task: str, synthesis: str, briefs:
               'similarly named papers: a source describing one method cannot establish another method\'s design. '
               'For bars use exactly one named metric per chart, with identical dataset/split/protocol. '
               'These charts support research decisions; hypotheses/experimental plans belong in the report, not '
-              'dense figures masquerading as published evidence. Return ONLY JSON: ' + json.dumps(Analysis.model_json_schema()))
-    payload = {'task': task, 'synthesis': synthesis, 'notes': briefs, 'evidence': evidence}
+              'dense figures masquerading as published evidence. Before reporting a date anomaly, compare the '
+              'claimed publication month against today; an arXiv YYMM earlier than today is not itself anomalous. '
+              'Return ONLY JSON: ' + json.dumps(Analysis.model_json_schema()))
+    payload = {'task': task, 'today': str(date.today()), 'synthesis': synthesis,
+               'notes': briefs, 'evidence': evidence}
     try:
         for attempt in range(2):
             raw = cached_plan.read_text() if attempt == 0 and cached_plan else await model(system, payload)
@@ -234,12 +238,30 @@ async def analyze(model, event, folder: Path, task: str, synthesis: str, briefs:
                 result = Analysis.model_validate_json(raw)
                 if len({c.id for c in result.charts}) != len(result.charts):
                     raise ValueError('Duplicate chart IDs')
-                issues, supported_charts, rejected_charts = [], [], []
+                issues, supported_charts, rejected_charts, rejected_rows = [], [], [], []
                 for chart in result.charts:
                     try:
                         validate_chart(chart, evidence)
                         supported_charts.append(chart)
                     except ValueError as error:
+                        # Give the Analyst one chance to correct a bad quote.
+                        # On the final attempt, a single unsupported matrix row
+                        # must not discard eleven independently checked rows.
+                        if attempt == 1 and chart.kind == 'matrix':
+                            valid_rows, invalid_rows = [], []
+                            for row in chart.rows:
+                                try:
+                                    validate_chart(chart.model_copy(update={'rows': [row]}), evidence)
+                                    valid_rows.append(row)
+                                except ValueError as row_error:
+                                    invalid_rows.append({'chart_id': chart.id, 'row': row.label,
+                                                         'reason': str(row_error)})
+                            if len(valid_rows) >= 2 and invalid_rows:
+                                narrowed = chart.model_copy(update={'rows': valid_rows})
+                                validate_chart(narrowed, evidence)
+                                supported_charts.append(narrowed)
+                                rejected_rows.extend(invalid_rows)
+                                continue
                         issues.append(f'{chart.id}: {error}')
                         rejected_charts.append({'chart': chart.model_dump(), 'reason': str(error)})
                 if issues:
@@ -253,6 +275,14 @@ async def analyze(model, event, folder: Path, task: str, synthesis: str, briefs:
                     result.limitations += ['未交付图表 ' + issue for issue in issues]
                     await event('data_analyst', 'chart_omitted', 'incomplete',
                                 '保留有证据的图表，未通过校验的图表单独记录', issues=issues)
+                if rejected_rows:
+                    (folder/'rejected-rows.json').write_text(json.dumps(rejected_rows, ensure_ascii=False, indent=2))
+                    result.charts = supported_charts
+                    result.limitations += ['未交付图表行 ' + item['chart_id'] + '/' + item['row'] + ': ' + item['reason']
+                                           for item in rejected_rows]
+                    await event('data_analyst', 'chart_row_omitted', 'incomplete',
+                                '仅剔除无法核对原文的图表行，保留其余已校验方法对照',
+                                rows=rejected_rows)
                 crowded = [{'chart': c.id, 'row': r.label, 'column': c.columns[i], 'text': s}
                            for c in result.charts if c.kind == 'matrix' for r in c.rows
                            for i, s in enumerate(r.cells) if len(s) > 65]
