@@ -194,25 +194,31 @@ def test_citation_agent_places_source_at_checked_line(tmp_path):
 
 
 def test_citation_and_targeted_repair_receive_actual_figure_context(tmp_path):
-    figures = {'charts': [{'display_cells': [['GALA', '渲染特征图 + 码本']],
-                           'id': 'methods'}]}
+    figures = {'charts': [{'id': 'methods', 'columns': ['查询接口'],
+                           'row_labels': ['GALA'],
+                           'display_cells': [['渲染特征图 + 码本']]}]}
     source = 'https://arxiv.org/abs/2508.14278'
     catalog = {'e_1': {'source': source, 'page': 4,
                        'text': 'GALA renders a language feature map with codebook attention.'}}
-    report = '# 方法综述\n\n图中的码本方法都直接查询三维结构，因此它们完全不需要渲染特征图。\n'
+    report = '# 方法综述\n\n![方法图](figures/methods.png)\n\n图中的码本方法都直接查询三维结构，因此它们完全不需要渲染特征图。\n'
     reviewed = False
     async def model(system, payload):
         nonlocal reviewed
+        if 'Figure consistency check ONLY' in system:
+            assert payload['targets'][0]['chart'] == figures['charts'][0]
+            target = payload['targets'][0]['report_lines'][0]
+            return json.dumps({'conflicts': ([{'line_id': target['line_id'],
+                'reason': 'GALA 的图中接口是渲染特征图'}] if '都直接查询' in target['text'] else [])})
         assert payload['figures'] == figures
         if 'Repair ONLY' in system:
             assert 'repair the prose to match' in system
+            assert 'Do not add a named method' in system
             reviewed = True
-            return json.dumps({'replacements': [{'line_id': 2,
+            return json.dumps({'replacements': [{'line_id': 4,
                 'text': '图中的 GALA 仍通过渲染特征图与码本查询，不能把所有码本方法归为直接三维查询。'}]})
         assert 'cross-check, not independent proof' in payload['instruction']
-        return json.dumps({'findings': [{'line_id': 2, 'supported': reviewed,
-            'evidence_ids': ['e_1'] if reviewed else [],
-            'reason': 'The displayed GALA cell contradicts the all-direct-query summary'}]})
+        return json.dumps({'findings': [{'line_id': 4, 'supported': True,
+            'evidence_ids': ['e_1'], 'reason': 'Citation review alone accepts the factual premise'}]})
     result = asyncio.run(CitationAgent(model, emit, tmp_path, figures=figures).attach_with_repair(report, catalog, {source: {}}))
     assert reviewed and '不能把所有码本方法归为直接三维查询' in result and source in result
 
