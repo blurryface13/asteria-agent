@@ -1395,9 +1395,9 @@ class AutonomousReview:
         image_paths = re.findall(r'!\[[^\]]*\]\(([^)]+)\)', report)
         if set(image_paths) - self.figure_assets.keys():
             raise ValueError('报告包含未注册的图表路径')
-        if self.figure_assets and not image_paths:
-            # Do not silently claim illustrated delivery if Writer forgot the assets.
-            raise ValueError('Writer 未引用已生成图表，需检查写作交接')
+        missing_images = self.figure_assets.keys() - set(image_paths)
+        if missing_images:
+            raise ValueError('Writer 未引用已生成图表：' + ', '.join(sorted(missing_images)))
         (self.folder / "evidence.json").write_text(json.dumps(self.evidence, ensure_ascii=False))
         self.library.save()
         await self.emit("citation_graph", self.library.snapshot())

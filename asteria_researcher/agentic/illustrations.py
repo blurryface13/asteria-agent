@@ -142,6 +142,23 @@ def validate_chart(chart: Chart, evidence: dict) -> None:
         raise ValueError('Use separate charts for different metrics, even within the same paper/table')
 
 
+def paginate_matrix(chart: Chart, *, rows_per_page: int = 3) -> list[Chart]:
+    """Keep all verified rows legible when figures are scaled into a PDF page."""
+    if chart.kind != 'matrix' or len(chart.rows) <= rows_per_page:
+        return [chart]
+    groups = [chart.rows[start:start + rows_per_page] for start in range(0, len(chart.rows), rows_per_page)]
+    parts = []
+    for index, rows in enumerate(groups, 1):
+        suffix = f'-p{index}'
+        title_suffix = f'（{index}/{len(groups)}）'
+        parts.append(chart.model_copy(update={
+            'id': chart.id[:40 - len(suffix)] + suffix,
+            'title': chart.title[:120 - len(title_suffix)] + title_suffix,
+            'rows': rows,
+        }))
+    return parts
+
+
 def render_chart(chart: Chart, path: Path) -> None:
     import matplotlib
     matplotlib.use('Agg')
@@ -180,7 +197,7 @@ def render_chart(chart: Chart, path: Path) -> None:
             heights = [.20 * max(s.count('\n') + 1 for s in row) + .20 for row in [headers, *cells]]
             table_height = sum(heights)
             title = wrap(chart.title, 8.1 * 180, size=13)
-            title_height = .28 * (title.count('\n') + 1) + .30
+            title_height = .36 * (title.count('\n') + 1) + .52
             fig = Figure(figsize=(8.5, table_height + title_height + .25 if chart.kind == 'matrix' else max(3.2, .5*len(chart.rows)+1.5)), dpi=180)
             FigureCanvasAgg(fig)
             if chart.kind == 'matrix':
@@ -300,6 +317,11 @@ async def analyze(model, event, folder: Path, task: str, synthesis: str, briefs:
                 payload['validation_feedback'] = str(error)[:2500]
                 payload['previous_plan'] = raw
                 payload['repair_instruction'] = 'Correct only the reported issue in the previous plan; preserve valid rows and exact source excerpts.'
+        # A many-row matrix becomes unreadable when LaTeX scales one tall PNG
+        # to the page height. Split only after checking each row's evidence.
+        result.charts = [part for chart in result.charts for part in paginate_matrix(chart)]
+        if len({chart.id for chart in result.charts}) != len(result.charts):
+            raise ValueError('Paginated chart IDs collide')
         # Rendering text is separate from the original data. Source quotes and
         # full analysis remain immutable; only the visible labels are condensed.
         crowded_rows = [{'chart_id': c.id, 'row': i, 'label': r.label, 'columns': c.columns, 'cells': r.cells}

@@ -65,10 +65,10 @@ async def verify_deliverables(client, run, *, require_matrix=False):
             raise ValueError('Acceptance requires a downloadable data_analysis manifest')
         charts = json.loads(manifest_bytes).get('charts', [])
         report = downloaded['md'].decode('utf-8')
-        if not any(chart.get('kind') == 'matrix' and
-                   f"chart_{chart.get('id')}" in artifacts and
-                   f"figures/{chart.get('id')}.png" in report
-                   for chart in charts):
+        matrices = [chart for chart in charts if chart.get('kind') == 'matrix']
+        if not matrices or any(f"chart_{chart.get('id')}" not in artifacts or
+                               f"figures/{chart.get('id')}.png" not in report
+                               for chart in matrices):
             raise ValueError('Acceptance requires a delivered, report-embedded method/evidence comparison matrix')
     return verified
 

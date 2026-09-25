@@ -6,7 +6,7 @@ import shutil
 import pytest
 
 from asteria_researcher.agentic.anthropic_roles import role_guidance, ROOT
-from asteria_researcher.agentic.illustrations import Chart, analyze, render_chart, validate_chart
+from asteria_researcher.agentic.illustrations import Chart, analyze, paginate_matrix, render_chart, validate_chart
 from asteria_researcher.agentic.latex import publish, render_tex
 from asteria_researcher.agentic.skill_catalog import SkillSession
 from asteria_researcher.agentic.tool_hooks import ToolHooks
@@ -261,6 +261,18 @@ def test_unverified_matrix_row_is_recorded_without_losing_valid_comparison(tmp_p
     assert '方法 C' in manifest['limitations'][0]
     assert json.loads((tmp_path/'rejected-rows.json').read_text())[0]['row'] == '方法 C'
     assert any(event[1] == 'chart_row_omitted' for event in events)
+
+
+def test_long_verified_matrix_is_paginated_without_dropping_rows():
+    original = chart().model_copy(deep=True)
+    original.id = 'method-taxonomy-matrix'
+    original.rows = [original.rows[i % 2].model_copy(update={'label': f'method-{i}'}) for i in range(11)]
+    parts = paginate_matrix(original)
+    assert [len(part.rows) for part in parts] == [3, 3, 3, 2]
+    assert [part.id for part in parts] == ['method-taxonomy-matrix-p1', 'method-taxonomy-matrix-p2',
+                                           'method-taxonomy-matrix-p3', 'method-taxonomy-matrix-p4']
+    assert [row.label for part in parts for row in part.rows] == [row.label for row in original.rows]
+    assert len({part.id for part in parts}) == len(parts)
 
 
 @pytest.mark.skipif(not shutil.which('xelatex'), reason='Needs XeLaTeX')
