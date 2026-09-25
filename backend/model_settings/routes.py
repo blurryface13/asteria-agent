@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from backend.auth.dependencies import require_admin
-from .service import ROLES, MODELS, listing, save
+from .service import ROLES, MODELS, listing, save, save_all
 
 router = APIRouter(prefix='/api/admin/agent-models', tags=['agent models'])
 
@@ -14,8 +14,26 @@ class Setting(BaseModel):
     clear_key: bool = False
 
 
+class BulkSetting(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    model: str
+    api_key: str = Field(min_length=8, max_length=512)
+
+
 @router.get('')
 async def list_settings(response: Response, _admin=Depends(require_admin)):
+    response.headers['Cache-Control'] = 'no-store'
+    return {'roles': await listing(), 'models': MODELS}
+
+
+@router.put('/bulk')
+async def put_all_settings(body: BulkSetting, response: Response, _admin=Depends(require_admin)):
+    try:
+        await save_all(body.model, body.api_key)
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+    except RuntimeError as error:
+        raise HTTPException(503, str(error)) from error
     response.headers['Cache-Control'] = 'no-store'
     return {'roles': await listing(), 'models': MODELS}
 

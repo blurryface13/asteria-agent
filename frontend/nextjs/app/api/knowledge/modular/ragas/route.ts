@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const API_BASE = process.env.NEXT_PUBLIC_ASTERIA_API_URL || "http://127.0.0.1:8000";
+const API_BASE = process.env.ASTERIA_INTERNAL_API_URL || process.env.NEXT_PUBLIC_ASTERIA_API_URL || "http://127.0.0.1:8000";
 
 export async function POST(req: NextRequest) {
   const auth = req.headers.get("authorization") || "";

@@ -184,15 +184,9 @@ const MCPSelector: React.FC<MCPSelectorProps> = ({
       },
       modular_rag: {
         name: 'modular_rag',
-        command: 'bash',
-        args: [
-          '-lc',
-          'cd ${MODULAR_RAG_MCP_ROOT:-/Users/dora/Documents/Codex/2026-07-07/wome/work/MODULAR-RAG-MCP-SERVER} && MODULAR_RAG_MCP_CONFIG=${MODULAR_RAG_MCP_CONFIG:-/Users/dora/Documents/项目/code/reference-repos/asteria-agent/backend/knowledge/modular_rag_settings.yaml} python -m src.mcp_server.server'
-        ],
-        env: {
-          MODULAR_RAG_MCP_ROOT: '/Users/dora/Documents/Codex/2026-07-07/wome/work/MODULAR-RAG-MCP-SERVER',
-          MODULAR_RAG_MCP_CONFIG: '/Users/dora/Documents/项目/code/reference-repos/asteria-agent/backend/knowledge/modular_rag_settings.yaml'
-        }
+        command: 'python',
+        args: ['-m', 'backend.knowledge.modular_mcp_entrypoint'],
+        env: {}
       }
     };
 

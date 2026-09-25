@@ -1,0 +1,134 @@
+name: asteria-lab
+
+x-backend: &backend
+  image: asteria-backend:${ASTERIA_IMAGE_TAG:-local}
+  build:
+    context: .
+    dockerfile: deploy/Dockerfile.backend
+    args:
+      MODULAR_RAG_REF: f658c5a4011c8b826707a65a3b11ce9301b0626f
+      ASTERIA_BUILD_REVISION: ${ASTERIA_BUILD_REVISION:-unknown}
+  env_file:
+    - path: ${ASTERIA_ENV_FILE:-./deploy/.env}
+      required: true
+  environment:
+    DATABASE_URL: postgresql://asteria:${DB_PASSWORD:?Set a hex-only DB_PASSWORD in deploy/.env}@postgres:5432/asteria
+    ASTERIA_REDIS_URL: redis://redis:6379/0
+    ASTERIA_API_HOST: 0.0.0.0
+    ASTERIA_API_PORT: "8018"
+    ASTERIA_WORKSPACES_ROOT: /app/workspaces
+    ASTERIA_MEMORY_CHROMA_DIR: /app/workspaces/.memory-chroma
+    MODULAR_RAG_MCP_ROOT: /opt/modular-rag-engine
+    MODULAR_RAG_MCP_CONFIG: /app/deploy/modular-rag-settings.yaml
+    OLLAMA_BASE_URL: http://ollama:11434
+  volumes:
+    - workspaces:/app/workspaces
+    - outputs:/app/outputs
+    - rag_data:/opt/modular-rag-engine/data
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+    ollama-init:
+      condition: service_completed_successfully
+  init: true
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: asteria
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set a hex-only DB_PASSWORD in deploy/.env}
+      POSTGRES_DB: asteria
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U asteria -d asteria"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:0.12.3
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+  ollama-init:
+    image: ollama/ollama:0.12.3
+    entrypoint: ["/bin/sh", "-ec"]
+    command: ["ollama pull bge-m3"]
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    <<: *backend
+    command: ["python", "scripts/start-research-service.py", "api"]
+    ports:
+      - "${ASTERIA_BIND_HOST:-127.0.0.1}:8018:8018"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8018/health', timeout=5).read()"]
+      interval: 20s
+      timeout: 8s
+      retries: 6
+      start_period: 60s
+
+  worker:
+    <<: *backend
+    command: ["python", "scripts/start-research-service.py", "worker"]
+    depends_on:
+      api:
+        condition: service_healthy
+
+  web:
+    image: asteria-web:${ASTERIA_IMAGE_TAG:-local}
+    build:
+      context: ./frontend/nextjs
+      dockerfile: Dockerfile
+    environment:
+      ASTERIA_INTERNAL_API_URL: http://api:8018
+      NODE_ENV: production
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "${ASTERIA_BIND_HOST:-127.0.0.1}:3023:3023"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3023/login').then(r => {if (!r.ok) process.exit(1)}).catch(() => process.exit(1))"]
+      interval: 20s
+      timeout: 8s
+      retries: 6
+      start_period: 45s
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+  workspaces:
+  outputs:
+  rag_data:
+  ollama_data:

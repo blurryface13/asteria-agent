@@ -1,0 +1,4 @@
+# Use only on Docker Desktop/WSL2 hosts with working NVIDIA container support.
+services:
+  ollama:
+    gpus: all

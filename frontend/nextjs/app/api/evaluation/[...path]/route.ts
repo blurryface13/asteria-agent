@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-const backend = () => process.env.NEXT_PUBLIC_ASTERIA_API_URL || "http://127.0.0.1:8000";
+const backend = () => process.env.ASTERIA_INTERNAL_API_URL || process.env.NEXT_PUBLIC_ASTERIA_API_URL || "http://127.0.0.1:8000";
 
 async function forward(request: Request, context: { params: { path: string[] } }) {
   const { path } = context.params;

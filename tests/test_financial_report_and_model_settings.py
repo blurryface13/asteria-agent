@@ -124,6 +124,29 @@ def test_role_keys_are_encrypted_not_echoed_and_can_be_cleared(monkeypatch):
     asyncio.run(run())
 
 
+def test_first_boot_can_set_one_key_for_all_roles_atomically(monkeypatch):
+    class BulkPool(FakePool):
+        async def execute(self, query, roles, model, encrypted, tail):
+            assert 'unnest($1::text[])' in query
+            for role in roles:
+                self.rows[role] = {'role': role, 'model': model,
+                    'encrypted_key': encrypted, 'key_tail': tail, 'updated_at': None}
+
+    async def run():
+        pool = BulkPool()
+        async def get_pool(): return pool
+        monkeypatch.setattr(service, 'get_pool', get_pool)
+        monkeypatch.setenv('ASTERIA_MODEL_SETTINGS_SECRET', 'stable-test-secret-with-at-least-32-characters')
+        await service.save_all('deepseek-chat', 'sk-test-shared-key')
+        assert len(pool.rows) == len(service.ROLES)
+        assert 'sk-test-shared-key' not in str(pool.rows)
+        assert all([(await service.resolve(role, 'default')) == ('deepseek-chat', 'sk-test-shared-key')
+                    for role in service.ROLES])
+        with pytest.raises(ValueError):
+            await service.save_all('deepseek-chat', 'short')
+    asyncio.run(run())
+
+
 def test_model_settings_endpoint_requires_admin_and_never_returns_secret(monkeypatch):
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
@@ -133,15 +156,24 @@ def test_model_settings_endpoint_requires_admin_and_never_returns_secret(monkeyp
     app.dependency_overrides[get_current_user_email] = lambda: 'member@example.test'
     with TestClient(app) as client:
         assert client.get('/api/admin/agent-models').status_code == 403
+        assert client.put('/api/admin/agent-models/bulk', json={
+            'model': 'deepseek-chat', 'api_key': 'sk-test-shared-key'}).status_code == 403
     app.dependency_overrides[require_admin] = lambda: 'admin@example.test'
     async def fake_listing():
         return [{'role': 'writer', 'model': 'deepseek-chat', 'has_key': True, 'key_tail': '1234'}]
     monkeypatch.setattr(model_routes, 'listing', fake_listing)
+    async def fake_save_all(model, key):
+        assert (model, key) == ('deepseek-chat', 'sk-test-shared-key')
+    monkeypatch.setattr(model_routes, 'save_all', fake_save_all)
     with TestClient(app) as client:
         response = client.get('/api/admin/agent-models')
         assert response.status_code == 200
         assert 'encrypted_key' not in response.text
         assert 'api_key' not in response.text
+        bulk = client.put('/api/admin/agent-models/bulk', json={
+            'model': 'deepseek-chat', 'api_key': 'sk-test-shared-key'})
+        assert bulk.status_code == 200
+        assert 'sk-test-shared-key' not in bulk.text
 
 
 def test_model_selection_is_role_scoped_and_frozen_for_a_task(monkeypatch):

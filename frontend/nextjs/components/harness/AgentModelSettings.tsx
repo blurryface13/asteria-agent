@@ -65,8 +65,33 @@ export default function AgentModelSettings() {
     }
   }
 
+  async function saveAll() {
+    if (busy || !key.trim()) {
+      setStatus("先输入要应用到全部角色的 API Key。");
+      return;
+    }
+    if (!window.confirm("这会覆盖全部 Agent 角色当前的模型和独立密钥。确定继续吗？")) return;
+    setBusy(true);
+    setStatus("正在配置全部角色…");
+    try {
+      const response = await authFetch(`${getHost()}/api/admin/agent-models/bulk`, {
+        method: "PUT", headers: {"Content-Type": "application/json"}, cache: "no-store",
+        body: JSON.stringify({model, api_key: key.trim()}),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "批量保存失败");
+      setRoles(data.roles || []);
+      setKey("");
+      setStatus("全部角色已配置；新任务将使用此配置。可继续逐个角色调整。");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "批量保存失败");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return <div className={s.modelSettings}>
-    <p>按角色配置 DeepSeek。未单独配置的角色继续使用服务端默认模型和密钥。密钥仅在保存时传输，之后不可查看。</p>
+    <p>首次部署可填入 DeepSeek API Key 并应用到全部角色；也可单独调整。未配置的角色使用服务端默认密钥。密钥保存后不可查看。</p>
     {roles.length > 0 && <>
       <label>Agent 角色
         <select value={selected} onChange={event => select(event.target.value)} disabled={busy}>
@@ -86,6 +111,7 @@ export default function AgentModelSettings() {
       <p>{current?.has_key ? `此角色已有独立密钥 · 尾号 ${current.key_tail}` : "此角色使用服务端默认密钥"}</p>
       <div className={s.modelActions}>
         <button className={s.primary} disabled={busy} onClick={() => save()}>保存配置</button>
+        <button className={s.outline} disabled={busy || !key.trim()} onClick={saveAll}>应用到全部角色</button>
         {current?.has_key && <button className={s.outline} disabled={busy} onClick={() => save(true)}>清除此角色密钥</button>}
       </div>
     </>}

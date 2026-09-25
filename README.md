@@ -47,6 +47,9 @@ Python · AgentOrchestrator / BaseAgent · MCP · FastAPI · Next.js · PostgreS
 - [协作验收、测试指令与当前限制](docs/agentic-collaboration-acceptance.md)
 - [EchoMind 骨架对齐与真实请求验收](docs/echomind-alignment-plan.md)
 - [实验室部署与登录排查](docs/lab-deployment.md)
+- [Windows＋4060 Docker Compose 部署与验收](docs/windows-4060-docker-deployment.md)
+
+Windows 4060 首次部署：在启用 Docker Desktop GPU 支持的 WSL2 中克隆仓库，运行 `ASTERIA_ADMIN_EMAIL=you@example.com bash deploy/start.sh --gpu`；按提示设置管理员密码，登录 `http://127.0.0.1:3023/login`，在“Agent → 模型”填写 DeepSeek API Key 并应用到全部角色。论文索引不会随代码自动迁移，具体步骤与验收边界见上方部署手册。
 
 调研引擎位于 `asteria_researcher/`，API 与持久化位于 `backend/`，Web 工作台位于 `frontend/nextjs/`。既有 LangGraph 工作流保留在 `multi_agents/`，与自主研究运行时分开维护。
 

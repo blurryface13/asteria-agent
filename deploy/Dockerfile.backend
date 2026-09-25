@@ -1,0 +1,42 @@
+FROM python:3.11-slim-bookworm
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    MPLCONFIGDIR=/tmp/asteria-matplotlib \
+    XDG_CACHE_HOME=/tmp/asteria-cache \
+    PYTHONPATH=/app:/opt/modular-rag-engine
+
+# Keep the complete CJK/PDF toolchain in the API and Worker image: report
+# publication happens in the Worker, while API-side PDF validation also uses it.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates git build-essential \
+    texlive-xetex texlive-lang-chinese texlive-latex-extra \
+    texlive-fonts-recommended fonts-noto-cjk poppler-utils \
+    libgl1 libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/* \
+    && kpsewhich --format=cmap Adobe-GB1-UCS2 | grep -q .
+
+WORKDIR /app
+COPY requirements.txt /app/requirements.txt
+RUN python -m pip install --upgrade pip \
+    && python -m pip install -r /app/requirements.txt
+
+# The RAG bridge imports the upstream project in-process. Pin its exact commit;
+# Chroma/BM25 data is a separate persistent volume, never baked into the image.
+ARG MODULAR_RAG_REF=f658c5a4011c8b826707a65a3b11ce9301b0626f
+RUN git clone https://github.com/jerry-ai-dev/MODULAR-RAG-MCP-SERVER.git /opt/modular-rag-engine \
+    && git -C /opt/modular-rag-engine checkout --detach "$MODULAR_RAG_REF" \
+    && python -m pip install /opt/modular-rag-engine \
+    && python -m pip check
+
+COPY . /app
+RUN mkdir -p /app/outputs /app/workspaces /opt/modular-rag-engine/data
+
+# .git is excluded from the image; the startup service still reports the
+# checkout revision supplied by the deployment script.
+ARG ASTERIA_BUILD_REVISION=unknown
+ENV ASTERIA_BUILD_REVISION=$ASTERIA_BUILD_REVISION
+
+EXPOSE 8018
+CMD ["python", "scripts/start-research-service.py", "api"]

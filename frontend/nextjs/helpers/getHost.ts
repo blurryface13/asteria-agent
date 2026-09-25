@@ -4,7 +4,7 @@ interface GetHostParams {
 
 export const getHost = ({ purpose }: GetHostParams = {}): string => {
   if (typeof window !== 'undefined') {
-    let { host } = window.location;
+    const { host, hostname, protocol } = window.location;
     // A URL query must never redirect authenticated traffic to another host.
     if (process.env.NEXT_PUBLIC_ASTERIA_API_URL) {
       return process.env.NEXT_PUBLIC_ASTERIA_API_URL;
@@ -13,12 +13,10 @@ export const getHost = ({ purpose }: GetHostParams = {}): string => {
     } else if (purpose === 'langgraph-gui') {
       return host.includes('localhost') ? 'http%3A%2F%2F127.0.0.1%3A8123' : `https://${host}`;
     } else {
-      // Both loopback hostnames are used by the local startup script.  Treat
-      // them identically; otherwise 127.0.0.1 was incorrectly upgraded to
-      // https://127.0.0.1:3000 and browser requests failed before reaching
-      // the backend.
-      const isLocalhost = host.includes('localhost') || host.startsWith('127.0.0.1');
-      return isLocalhost ? 'http://127.0.0.1:8018' : `https://${host}`;
+      // Keep the exact browser hostname for host-scoped login cookies. The lab
+      // Compose deployment publishes API and web on the same host, different
+      // ports; a colleague's browser must not call its own 127.0.0.1.
+      return `${protocol}//${hostname}:8018`;
     }
   }
   return '';
