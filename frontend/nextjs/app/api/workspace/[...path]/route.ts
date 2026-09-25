@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 type RouteContext = { params: { path: string[] } };
 
 async function forward(request: Request, { params }: RouteContext) {
-  const backendUrl = process.env.NEXT_PUBLIC_ASTERIA_API_URL || "http://localhost:8000";
+  const backendUrl = process.env.ASTERIA_INTERNAL_API_URL || process.env.NEXT_PUBLIC_ASTERIA_API_URL || "http://localhost:8000";
   const incoming = new URL(request.url);
   const path = params.path.map((part) => encodeURIComponent(part)).join("/");
   const headers: Record<string, string> = {};

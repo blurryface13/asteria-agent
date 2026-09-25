@@ -47,6 +47,24 @@ async def save(role, model, api_key=None, clear_key=False):
         updated_at=now()''', role, model, encrypted, api_key[-4:] if api_key else None, clear_key)
 
 
+async def save_all(model, api_key):
+    """Configure every role in a single statement for first-time setup.
+
+    Explicitly overwrites individual role keys; later per-role edits still work.
+    """
+    if model not in MODELS:
+        raise ValueError('不支持该模型')
+    api_key = api_key.strip()
+    if not 8 <= len(api_key) <= 512 or any(c.isspace() for c in api_key):
+        raise ValueError('API Key 格式无效')
+    encrypted = _cipher().encrypt(api_key.encode()).decode()
+    await (await get_pool()).execute('''INSERT INTO agent_model_settings(role,model,encrypted_key,key_tail)
+        SELECT role,$2,$3,$4 FROM unnest($1::text[]) AS role
+        ON CONFLICT(role) DO UPDATE SET model=EXCLUDED.model,
+        encrypted_key=EXCLUDED.encrypted_key, key_tail=EXCLUDED.key_tail,
+        updated_at=now()''', list(ROLES), model, encrypted, api_key[-4:])
+
+
 async def resolve(role, default_model):
     """A run's model closure caches this selection; updates affect later runs."""
     if role not in ROLES:

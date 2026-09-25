@@ -38,7 +38,7 @@ const nextConfig = {
   },
   // Proxy /outputs requests to the backend server for generated images
   async rewrites() {
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+    const backendUrl = process.env.ASTERIA_INTERNAL_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
     return [
       {
         source: '/outputs/:path*',

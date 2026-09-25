@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 
 export async function GET(request: Request) {
-  const backendUrl = process.env.NEXT_PUBLIC_ASTERIA_API_URL || 'http://localhost:8000';
+  const backendUrl = process.env.ASTERIA_INTERNAL_API_URL || process.env.NEXT_PUBLIC_ASTERIA_API_URL || 'http://localhost:8000';
   const params = new URL(request.url).searchParams;
   const query = new URLSearchParams({ conversation_id: params.get('conversation_id') || '' });
   if (params.get('request_id')) query.set('request_id', params.get('request_id')!);
@@ -17,7 +17,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const backendUrl = process.env.NEXT_PUBLIC_ASTERIA_API_URL || 'http://localhost:8000';
+  const backendUrl = process.env.ASTERIA_INTERNAL_API_URL || process.env.NEXT_PUBLIC_ASTERIA_API_URL || 'http://localhost:8000';
   try {
     const body = await request.json();
     const response = await fetch(`${backendUrl}/api/orchestrator/route`, {

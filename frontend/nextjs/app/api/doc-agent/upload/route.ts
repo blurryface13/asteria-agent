@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 // Streams the multipart upload straight through to the backend, preserving the
 // Content-Type boundary and forwarding the Authorization header.
 export async function POST(request: Request) {
-  const backendUrl = process.env.NEXT_PUBLIC_ASTERIA_API_URL || 'http://127.0.0.1:8000';
+  const backendUrl = process.env.ASTERIA_INTERNAL_API_URL || process.env.NEXT_PUBLIC_ASTERIA_API_URL || 'http://127.0.0.1:8000';
   try {
     const body = await request.arrayBuffer();
     const response = await fetch(`${backendUrl}/api/doc-agent/upload`, {

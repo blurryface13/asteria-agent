@@ -14,7 +14,7 @@ async def main():
     from dotenv import load_dotenv
     load_dotenv(ROOT / ".env")
     load_dotenv(ROOT / ".env.lab", override=True)
-    os.environ["PATH"] += os.pathsep + "/Library/TeX/texbin"
+    os.environ["PATH"] = os.environ.get("PATH", "") + os.pathsep + "/Library/TeX/texbin"
     results = []
     async def check(name, call):
         try:
@@ -36,7 +36,8 @@ async def main():
     async def api():
         import httpx
         async with httpx.AsyncClient(trust_env=False, timeout=8) as client:
-            response = await client.get("http://127.0.0.1:" + os.getenv("ASTERIA_API_PORT", "8018") + "/api/auth/config")
+            base = os.getenv("ASTERIA_DEPLOY_API_URL") or "http://127.0.0.1:" + os.getenv("ASTERIA_API_PORT", "8018")
+            response = await client.get(base.rstrip("/") + "/api/auth/config")
             response.raise_for_status()
             return response.json()
     async def embedding():
@@ -58,14 +59,32 @@ async def main():
     async def mcp(module, env):
         from mcp import ClientSession, StdioServerParameters
         from mcp.client.stdio import stdio_client
+        permitted = {"PATH", "HOME", "DATABASE_URL", "ASTERIA_REDIS_URL",
+                     "OLLAMA_BASE_URL", "DASHSCOPE_API_KEY", "MODULAR_RAG_MCP_ROOT",
+                     "MODULAR_RAG_MCP_CONFIG", "MODULAR_RAG_COLLECTION", "PYTHONPATH"}
+        child_env = {key: value for key, value in os.environ.items() if key in permitted}
+        child_env.update(env)
         parameters = StdioServerParameters(command=sys.executable, args=["-m", module],
-            cwd=ROOT, env={"PATH": os.environ["PATH"], **env})
+            cwd=ROOT, env=child_env)
         async with stdio_client(parameters) as (reader, writer), ClientSession(reader, writer) as session:
             await session.initialize()
             return [tool.name for tool in (await session.list_tools()).tools]
+    async def rag():
+        from backend.knowledge.modular_rag import get_modular_bridge
+        bridge = get_modular_bridge()
+        status = bridge.status()
+        if not status.get("available"):
+            raise FileNotFoundError("Modular RAG code/config missing")
+        collections = await bridge.collections()
+        expected = os.getenv("MODULAR_RAG_COLLECTION", "research_papers")
+        matching = [row for row in collections.get("collections", []) if row.get("collection") == expected]
+        if not matching or not matching[0].get("chunks"):
+            raise RuntimeError("Research collection is empty; import both Chroma and BM25 data")
+        return {"collection": expected, "chunks": matching[0]["chunks"]}
     await asyncio.gather(
         check("database", database), check("redis", redis), check("api", api),
         check("embedding", embedding), check("pdf_compiler", tex),
+        check("modular_rag", rag),
         check("knowledge_mcp", lambda: mcp("backend.knowledge.mcp_server", {
             "ASTERIA_MCP_USER": "readiness@example.com", "ASTERIA_MCP_KNOWLEDGE_IDS": '["lab-research-papers"]'})),
         check("files_mcp", lambda: mcp("backend.files.mcp_server", {"ASTERIA_MCP_USER": "readiness@example.com"})),

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 async function proxy(request: Request, {params}: {params: {path?: string[]}}) {
   const suffix = (params.path || []).map(encodeURIComponent).join('/');
-  const base = process.env.NEXT_PUBLIC_ASTERIA_API_URL || 'http://127.0.0.1:8018';
+  const base = process.env.ASTERIA_INTERNAL_API_URL || process.env.NEXT_PUBLIC_ASTERIA_API_URL || 'http://127.0.0.1:8018';
   try {
     const headers = new Headers();
     for (const name of ['authorization','content-type']) {const value=request.headers.get(name); if(value) headers.set(name,value);}

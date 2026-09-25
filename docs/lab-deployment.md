@@ -16,12 +16,12 @@ git status --short
 
 ## 环境与账号
 
-1. 按项目现有 Python/Node 依赖安装方式准备 Python 环境、Node.js 22、PostgreSQL、Redis 和 Ollama；执行 `ollama pull bge-m3`。论文知识库还依赖独立的 modular-rag-engine 服务，若要验证 RAG 需按其文档另行启动。本仓库目前**没有可直接使用的完整 Docker Compose 部署包**。
+1. 本地手动启动方式需准备 Python 环境、Node.js 22、PostgreSQL、Redis 和 Ollama；执行 `ollama pull bge-m3`。论文知识库还依赖独立的 modular-rag-engine 代码与索引。Windows＋4060 的 Compose 路径见 [独立部署手册](windows-4060-docker-deployment.md)：固定外部 RAG 代码、持久化索引，但不会自动迁移本机数据。
 2. 复制仓库根目录 `.env.example` 为 `.env`，填写实际 `DATABASE_URL`、32 字符以上的 `JWT_SECRET`、`ASTERIA_ADMIN_EMAILS`、Redis 地址及模型配置。建议使用独立的 `ASTERIA_WORKSPACES_ROOT` 持久化目录；Chroma 索引目录应可写且持久保存，勿提交到 Git。
 3. 共享环境维持 `ASTERIA_SHARED_MODE=1`、`ASTERIA_DEV_AUTH_BYPASS=0`、`ASTERIA_EMAIL_LOGIN_ENABLED=0`。在 API 启动后运行 `python scripts/manage-lab.py account --email <管理员邮箱>`，在交互提示里设置密码；成员账号由管理员登录后在账号页面创建。勿把密码放进命令参数或文档。
 4. API、独立 worker 分别使用 `python scripts/start-research-service.py api`、`python scripts/start-research-service.py worker` 启动；在 macOS/Linux 中用 `bash scripts/start-workspace-frontend.sh` 启动前端。前端脚本使用已安装的 Node.js 22，需先在 `frontend/nextjs` 安装 npm 依赖。Windows 可用 Node.js 22 在该目录执行 `npm run dev -- --hostname 127.0.0.1 --port 3023`，并在启动前设置同样的环境变量。Python 脚本从仓库根目录读取 `.env`，若存在本地 `.env.lab` 则其配置优先；该文件不会提交到 Git。
 
-若在另一台电脑访问前端，`NEXT_PUBLIC_ASTERIA_API_URL` 必须指向**浏览器可访问的 API 地址**，不能仍填 `127.0.0.1`。远程共享时还需配置 HTTPS 反向代理或受限内网地址、相应的 `CORS_ALLOW_ORIGINS`，并确认 API/前端监听地址与防火墙。`ASTERIA_API_HOST` 和 `ASTERIA_FRONTEND_HOST` 默认为 `127.0.0.1`，仅适用于本机或反向代理；不建议将未设防的开发服务直接暴露公网。前端改动公开环境变量后需重启/重建。
+手动部署时，`NEXT_PUBLIC_ASTERIA_API_URL` 若显式设置，必须指向**浏览器可访问的 API 地址**，不能仍填其他电脑的 `127.0.0.1`。未设置时前端会使用浏览器正在访问的主机名加 API 端口 `8018`；Docker Compose 内部的 Next 服务端代理另用 `ASTERIA_INTERNAL_API_URL`，不要把 `http://api:8018` 暴露给浏览器。远程共享时还需配置受限内网地址、相应的 `CORS_ALLOW_ORIGINS`、监听地址与防火墙。`ASTERIA_API_HOST` 和 `ASTERIA_FRONTEND_HOST` 的本地默认值仅适用于本机或反向代理；公网需独立设计 HTTPS 双端口入口。前端改动 `NEXT_PUBLIC_*` 后需重新构建。
 
 ## 先做的两项检查
 
