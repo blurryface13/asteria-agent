@@ -1,6 +1,6 @@
 # Coding Agent：隔离实验执行与部署
 
-状态（2026-09-27）：代码与自动化契约测试已接入；本机使用 `python:3.11-slim` 跑通真实的无网络 Docker 文件执行，并构建 Broker 镜像、用临时私有端口验证未授权请求 401、授权写入、隔离执行与新增产物哈希。临时容器/数据卷已清理。Windows 端到端和真实科研任务尚未验收。它不是 AstaBench 官方 48 GB 沙箱的替代品，也不是云端服务。
+状态（2026-09-27）：代码与自动化契约测试已接入；本机使用 `python:3.11-slim` 跑通真实的无网络 Docker 文件执行，并构建 Broker 镜像、用临时私有端口验证未授权请求 401、授权写入、隔离执行与新增产物哈希。独立 PostgreSQL/Redis 环境的真实登录→意图路由→Coding Agent→隔离执行→产物链路通过；原 Research 的登录→Worker→三路调研→Writer/CitationAgent→PDF 下载链路也通过。实测记录见 [本轮报告](../field-reports/2026-09-27-coding-agent-e2e.md)。**Windows Docker Compose + Broker 的端到端和 AstaBench 官方任务仍未验收**。它不是 AstaBench 官方沙箱的替代品，也不是云端服务。
 
 ## 设计边界
 
@@ -60,6 +60,17 @@ docker compose -f compose.yaml -f deploy/compose.gpu.yaml -f deploy/compose.expe
 ```
 
 用户视角最少跑三类指令，并保留原始事件和产物，不只看最终摘要：
+
+若需在本机复跑而不触碰日常服务，可先创建名称为 `asteria_qa_coding_20260927` 的独立 PostgreSQL 数据库，再在两个终端分别启动本分支的 QA API/Worker（端口 8027，Redis DB 9，独立工作区）；`--env-file` 只读取已有配置，不复制或打印密钥。绝不可把 QA 脚本指向日常数据库。以下命令的第二个环境文件如不存在可省略：
+
+```bash
+python scripts/start-isolated-coding-qa.py api --env-file /path/to/asteria/.env --env-file /path/to/asteria/.env.lab
+python scripts/start-isolated-coding-qa.py worker --env-file /path/to/asteria/.env --env-file /path/to/asteria/.env.lab
+python scripts/accept-isolated-coding-qa.py --env-file /path/to/asteria/.env --env-file /path/to/asteria/.env.lab
+python scripts/evaluate-coding-agent.py --case all --live --allow-local-docker --env-file /path/to/asteria/.env --env-file /path/to/asteria/.env.lab
+```
+
+最后一条会产生真实模型调用费用；其 Research 用例验证核心 Agent/Citation 链路，不替代 API/Worker/PDF 交付验收。
 
 1. “阅读我的 `demo.py`，定位失败的计算，修改实验区副本，运行 `python demo.py`，若失败继续修复并复跑；注明原项目未被改动。”验收：至少一次文件读取、实际写入、成功执行、退出码及产物；原项目不变。
 2. “根据给定论文复现一个小实验，若公式或数据处理有疑点先查论文并解释依据，再运行并报告限制。”验收：Coding 必须先有具体代码/论文问题才定向求助；Researcher 原文证据回传后 Coding 继续操作；不能以‘实验方案’代替执行。

@@ -153,7 +153,10 @@ class DockerExperimentWorkspace:
         if hasattr(os, "getuid"):
             uid, gid = (65534, 65534) if self.volume else (os.getuid(), os.getgid())
             flags += ["--user", f"{uid}:{gid}"]
-        flags += [self.image, "sh", "-lc", command]
+        # Exit immediately on an unhandled failing command. Without -e, a
+        # diagnostic suffix such as `python broken.py; echo EXIT=$?` makes the
+        # overall shell return 0 and falsely labels a failed experiment green.
+        flags += [self.image, "sh", "-ec", command]
         process = await asyncio.create_subprocess_exec(*flags, stdout=asyncio.subprocess.PIPE,
                                                         stderr=asyncio.subprocess.STDOUT)
         async def capture():

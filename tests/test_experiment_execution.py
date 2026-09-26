@@ -192,3 +192,19 @@ def test_real_docker_experiment_is_networkless_and_persists_output(tmp_path):
     assert result["status"] == "completed" and result["exit_code"] == 0
     assert Path(tmp_path / "experiment" / "result.txt").read_text() == "42\n"
     assert any(a["path"] == "result.txt" for a in result["artifacts"])
+
+
+@pytest.mark.skipif(not shutil.which("docker"), reason="Docker CLI unavailable")
+def test_real_docker_diagnostic_echo_cannot_hide_failure(tmp_path):
+    import subprocess
+    image = next((candidate for candidate in ("python:3.11-slim", "node:22-alpine")
+                  if subprocess.run(["docker", "image", "inspect", candidate],
+                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0), None)
+    if image is None:
+        pytest.skip("No suitable image pre-pulled")
+    async def exercise():
+        workspace = DockerExperimentWorkspace(tmp_path / "failed", image=image)
+        return await workspace.run({"command": "exit 17; echo EXIT=$?", "timeout_seconds": 10})
+    result = asyncio.run(exercise())
+    assert result["status"] == "failed"
+    assert result["exit_code"] == 17

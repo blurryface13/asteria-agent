@@ -86,7 +86,8 @@ async def run_coding(assignment, model, tools, request_research, emit, *,
         "Workspace changes are proposals requiring human approval, NOT applied edits. "
         + ("An isolated Docker scratch workspace is available: write_experiment_file changes ONLY that scratch, "
            "then run_experiment_command executes there with no network/host credentials. Inspect exit code/output, "
-           "repair failures, and retain artifact paths. Do not claim the user's original workspace was changed. "
+           "repair failures, and retain artifact paths. The tool returns the real process exit_code: do not append "
+           "`echo $?`, `|| true`, or other commands that conceal a failure. Do not claim the user's original workspace was changed. "
            if experiment_enabled else "No experiment execution tool is available in this runtime. ") +
         "For Python diagnostics, check_python_syntax and preview_code_diff must reference a real file-read "
         "observation_id. Syntax success is not functional correctness; diff previews do not write files. "
