@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "benchmark": "AstaBench E2E Discovery",
+  "split": "validation",
+  "sample_id": "idea-60-simplified",
+  "run_id": "d915582c8ed4445bb7b6ebaaecac031d",
+  "status": "failed",
+  "score": 0,
+  "score_method": "official_early_zero_no_judge",
+  "official_sandbox_used": false,
+  "usage": {
+    "calls_recorded": 2,
+    "input_tokens": 9031,
+    "output_tokens": 3826,
+    "total_tokens": 12857
+  },
+  "timing_seconds": {
+    "queued_seconds": 0.285489,
+    "execution_seconds": 19.210929,
+    "approval_seconds": 0
+  },
+  "artifacts": [
+    {
+      "kind": "diagnostic_citations",
+      "size_bytes": 88
+    },
+    {
+      "kind": "diagnostic_run",
+      "size_bytes": 7993
+    },
+    {
+      "kind": "diagnostic_delivery_state",
+      "size_bytes": 419
+    },
+    {
+      "kind": "diagnostic_events",
+      "size_bytes": 1560
+    }
+  ],
+  "privacy": "Allowlisted metadata only; no prompts, responses, keys, artifact paths or raw logs"
+}

@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "benchmark": "AstaBench LitQA2",
+  "benchmark_tag": "v0.5.4",
+  "benchmark_commit": "36c9bc14a83b95851a4f5c4baaccdde6d1c0cafb",
+  "asteria_base_commit": "691b70d3ad84a0d5298f67284b9797b1e542795f",
+  "adapter": "fresh Asteria conversation per sample, raw answer to official scorer",
+  "search_tools_enabled": false,
+  "knowledge_mode": "off",
+  "successful_route": "general_chat",
+  "validation": {"samples": 10, "correct": 4, "certain": 4, "certain_correct": 4, "asteria_failures": 3},
+  "test": {"samples": 75, "correct": 15, "certain": 36, "certain_correct": 15, "certain_wrong": 21, "abstained": 30, "asteria_failures": 9},
+  "comparability": "exploratory closed-book baseline; not official Standard/leaderboard conditions",
+  "raw_logs_location": "local Windows E: drive only; gated prompts and responses not uploaded"
+}
