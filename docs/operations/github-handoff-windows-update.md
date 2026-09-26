@@ -56,4 +56,4 @@ After activation, Windows runs an authenticated short request, an embedding/RAG 
 
 ## Current handoff status
 
-The first Windows deployment fixes and AstaBench packets are on `handoff/windows-docker-astabench-20260927` until reviewed and merged. The user has confirmed the running code fixes are represented in PR #11, while some raw evaluation results are not. The host image SHA has not been independently verified on Mac, so the one-time adoption above remains an explicit Windows validation step.
+PR #11 merged the first Windows deployment fixes and sanitized AstaBench packets into `main`. The user confirmed that the running code fixes are represented in the PR, while some raw evaluation results remain only on Windows. The host image SHA has not been independently verified on Mac, so the one-time adoption above remains an explicit Windows validation step.
