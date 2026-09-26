@@ -4,6 +4,31 @@
 
 当前验证范围见本页末尾。**Windows 4060 GPU、模型调用和全量论文索引仍需在目标主机验收**；本页不是已经完成的 Windows 上线记录。
 
+## 出问题先定位在哪一层（不要先重装或删卷）
+
+以下命令在 **WSL 的仓库根目录**运行，逐条执行，记下第一条失败命令及其完整报错。不要粘贴 `deploy/.env`、API Key 或含用户请求/模型输出的日志原文。
+
+```sh
+git status -sb
+git log -1 --oneline
+docker compose version
+docker version --format '{{.Client.Version}} / {{.Server.Version}}'
+test -f deploy/.env && echo 'deploy env exists' || echo 'deploy env missing'
+docker compose --env-file deploy/.env config --quiet
+docker compose --env-file deploy/.env ps
+curl -sS -o /dev/null -w 'API HTTP %{http_code}\n' http://127.0.0.1:8018/health
+curl -sS -o /dev/null -w 'Web HTTP %{http_code}\n' http://127.0.0.1:3023/login
+```
+
+- `docker version` 无 Server：先处理 Docker Desktop/WSL 集成；应用代码尚未启动。
+- `config --quiet` 失败：先检查缺失的**变量名**或 Compose 版本，不要发送变量值。
+- `ollama-init` 卡住/失败：检查 Ollama 容器及模型下载；不能据此诊断 Agent 提示词或路由。
+- `api` 不健康：只看 API/数据库/Redis 的容器状态及健康检查；`web` 依赖 API，不要先改前端。
+- API 200、Web 异常：再看 `web` 状态和 Windows 浏览器访问；WSL 内正常但 Windows 不通时分开排查 localhost 转发/防火墙。
+- 登录正常、任务失败：再查 Worker、模型密钥是否已在前端保存、Ollama Embedding 和论文索引；空知识库并不等于登录部署失败。
+
+若某个服务异常，再**只**取该服务最近日志，例如 `docker compose --env-file deploy/.env logs --tail=80 api`；把末尾 `api` 换成实际异常服务名。发送前删除密钥、个人资料、研究请求正文；不要对整个系统先执行 `down -v`、`docker system prune` 或重建数据卷。Windows PowerShell 验证同一地址时用 `curl.exe`，避免把 PowerShell 的 `curl` 别名行为与服务故障混淆。
+
 ## 1. Windows 主机准备
 
 1. 安装/更新 Windows 10/11、NVIDIA 驱动、WSL2、Docker Desktop（开启 WSL2 后端及 Linux 容器），在 WSL 发行版启用 Docker 集成。建议至少留出约 40 GB SSD 空间给首次镜像构建、TeX、Ollama 模型、缓存及数据卷，实际占用以后续 `docker system df` 为准。建议在 WSL Linux 文件系统中克隆仓库并构建，不要从 `/mnt/c` 运行。
