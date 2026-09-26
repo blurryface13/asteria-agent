@@ -15,7 +15,8 @@ def main() -> int:
         failed = True
 
     checks = {
-        "uvicorn.run": lambda: getattr(importlib.import_module("uvicorn"), "run"),
+        "uvicorn runner": lambda: getattr(importlib.import_module("uvicorn"), "run", None)
+        or getattr(importlib.import_module("uvicorn.main"), "run"),
         "websockets.Headers": lambda: getattr(
             importlib.import_module("websockets.datastructures"), "Headers"
         ),

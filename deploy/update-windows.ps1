@@ -4,7 +4,8 @@ param(
     [string]$Revision,
     [string]$BackupDir = 'E:\AsteriaBackups',
     [switch]$Cpu,
-    [switch]$CheckOnly
+    [switch]$CheckOnly,
+    [switch]$AdoptExisting
 )
 
 $ErrorActionPreference = 'Stop'
@@ -14,8 +15,11 @@ $docker = (Get-Command docker.exe -ErrorAction Stop).Source
 $previousRevision = $null
 $oldBackend = $null
 $oldWeb = $null
+$oldWorker = $null
 $switched = $false
 $containersChanged = $false
+$activationStarted = $false
+$imageTag = 'local'
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 
 function Require-Exit([string]$step) {
@@ -43,9 +47,29 @@ function Wait-Running([string]$name, [int]$attempts = 15) {
 function Compose-Args {
     $argsList = @('compose', '-f', 'compose.yaml')
     if (-not $Cpu) { $argsList += @('-f', 'deploy/compose.gpu.yaml') }
-    if ($env:ASTERIA_LAN_BIND_HOST) { $argsList += @('-f', 'deploy/compose.lan.yaml') }
+    if ($env:ASTERIA_LAN_BIND_HOST -and (Test-Path -LiteralPath 'deploy/compose.lan.yaml')) {
+        $argsList += @('-f', 'deploy/compose.lan.yaml')
+    }
     $argsList += @('--env-file', 'deploy/.env')
     return $argsList
+}
+
+function Active-Work {
+    $sql = "SELECT (SELECT count(*) FROM research_runs WHERE status IN ('queued','running','waiting_approval','cancel_requested')) + (SELECT count(*) FROM coordinator_turns WHERE status='running') + (SELECT count(*) FROM knowledge_versions WHERE status IN ('queued','indexing'))"
+    $count = (& $docker exec asteria-lab-postgres-1 psql -U asteria -d asteria -tAc $sql | Out-String).Trim()
+    Require-Exit 'Active task check'
+    if ($count -notmatch '^\d+$') { throw "Invalid active task count: $count" }
+    return [int]$count
+}
+
+function Container-Revision([string]$name) {
+    # Read only the image revision, never print the container's environment or keys.
+    $raw = (& $docker inspect $name --format '{{json .Config.Env}}' | Out-String).Trim()
+    Require-Exit "Container revision check: $name"
+    $entries = ConvertFrom-Json -InputObject $raw
+    $entry = $entries | Where-Object { $_ -like 'ASTERIA_BUILD_REVISION=*' } | Select-Object -Last 1
+    if (-not $entry) { return 'unknown' }
+    return $entry.Substring('ASTERIA_BUILD_REVISION='.Length)
 }
 
 if (-not (Test-Path -LiteralPath $envFile)) { throw 'Local deploy/.env is missing; keep the existing secret file.' }
@@ -63,19 +87,37 @@ Require-Exit 'Target commit check'
 Require-Exit 'Target must be merged into origin/main'
 
 $previousRevision = (& git -C $repo rev-parse HEAD | Out-String).Trim()
+$deployedRevision = Container-Revision 'asteria-lab-api-1'
+$workerRevision = Container-Revision 'asteria-lab-worker-1'
+if ($workerRevision -ne $deployedRevision) {
+    throw "API and Worker image revisions differ ($deployedRevision / $workerRevision); align them before updating."
+}
+if ($deployedRevision -ne $previousRevision -and -not $AdoptExisting) {
+    throw "Running image revision ($deployedRevision) differs from checkout ($previousRevision). First Windows adoption requires -AdoptExisting after confirming the running image and backup; ordinary updates refuse this mismatch."
+}
+$schemaChanges = @(& git -C $repo diff --name-only $previousRevision $Revision -- backend | Where-Object { $_ -match '(^|/)schema\.sql$|(^|/)migrations?/' })
+Require-Exit 'Schema migration check'
+if ($schemaChanges.Count -gt 0) {
+    throw 'Database schema changes require a separate reviewed migration/rollback plan; automatic image rollback is not enough.'
+}
+if ((Active-Work) -ne 0) {
+    throw 'Update deferred: research, coordinator, or indexing work is active.'
+}
 Write-Host "Current: $previousRevision"
+Write-Host "Running image revision: $deployedRevision"
 Write-Host "Target:  $Revision"
 if ($CheckOnly) {
-    Write-Host 'Revision and Docker checks passed. No deployment changes made.'
+    Write-Host 'Revision, Docker, schema-change, and active-work checks passed. No deployment changes made.'
     exit 0
 }
 
-$activeSql = "SELECT (SELECT count(*) FROM research_runs WHERE status IN ('queued','running','waiting_approval','cancel_requested')) + (SELECT count(*) FROM coordinator_turns WHERE status='running') + (SELECT count(*) FROM knowledge_versions WHERE status IN ('queued','indexing'))"
-$active = (& $docker exec asteria-lab-postgres-1 psql -U asteria -d asteria -tAc $activeSql | Out-String).Trim()
-Require-Exit 'Active task check'
-if ($active -notmatch '^\d+$' -or [int]$active -ne 0) {
-    throw "Update deferred: active work count is $active"
+$configuredImageTag = Get-Content -LiteralPath $envFile | Where-Object { $_ -match '^ASTERIA_IMAGE_TAG=' } | Select-Object -Last 1
+if ($env:ASTERIA_IMAGE_TAG) {
+    $imageTag = $env:ASTERIA_IMAGE_TAG
+} elseif ($configuredImageTag) {
+    $imageTag = $configuredImageTag.Substring('ASTERIA_IMAGE_TAG='.Length)
 }
+if ($imageTag -notmatch '^[A-Za-z0-9_.-]+$') { throw 'Invalid ASTERIA_IMAGE_TAG' }
 
 New-Item -ItemType Directory -Path $BackupDir -Force | Out-Null
 $backupFile = Join-Path $BackupDir "asteria-db-before-$stamp.dump"
@@ -94,6 +136,9 @@ $oldBackend = (& $docker inspect 'asteria-lab-api-1' --format '{{.Image}}' | Out
 Require-Exit 'Running backend image check'
 $oldWeb = (& $docker inspect 'asteria-lab-web-1' --format '{{.Image}}' | Out-String).Trim()
 Require-Exit 'Running web image check'
+$oldWorker = (& $docker inspect 'asteria-lab-worker-1' --format '{{.Image}}' | Out-String).Trim()
+Require-Exit 'Running worker image check'
+if ($oldWorker -ne $oldBackend) { throw 'API and Worker use different backend images; update requires a consistent baseline.' }
 & $docker image tag $oldBackend "asteria-backend:rollback-$stamp"
 Require-Exit 'Tag backend rollback image'
 & $docker image tag $oldWeb "asteria-web:rollback-$stamp"
@@ -105,16 +150,32 @@ try {
     Require-Exit 'Checkout target commit'
     $switched = $true
     $env:ASTERIA_BUILD_REVISION = $Revision
-    Remove-Item Env:\ASTERIA_LAN_BIND_HOST -ErrorAction SilentlyContinue
-    $lanLine = Get-Content -LiteralPath $envFile | Where-Object { $_ -match '^ASTERIA_LAN_BIND_HOST=' } | Select-Object -Last 1
-    if ($lanLine) { $env:ASTERIA_LAN_BIND_HOST = $lanLine.Substring('ASTERIA_LAN_BIND_HOST='.Length) }
+    if (-not $env:ASTERIA_LAN_BIND_HOST) {
+        $lanLine = Get-Content -LiteralPath $envFile | Where-Object { $_ -match '^ASTERIA_LAN_BIND_HOST=' } | Select-Object -Last 1
+        if ($lanLine) { $env:ASTERIA_LAN_BIND_HOST = $lanLine.Substring('ASTERIA_LAN_BIND_HOST='.Length) }
+    }
     $compose = Compose-Args
+    if ($env:ASTERIA_LAN_BIND_HOST -and -not (Test-Path -LiteralPath 'deploy/compose.lan.yaml')) {
+        throw 'LAN bind is configured but target revision lacks deploy/compose.lan.yaml'
+    }
     & $docker @compose config --quiet
     Require-Exit 'Compose config'
     & $docker @compose build api worker web
     Require-Exit 'Compose build'
+    & $docker run --rm "asteria-backend:$imageTag" python /tmp/verify-installed-packages.py
+    Require-Exit 'Built backend package integrity check'
 
+    # Stop ingress before the final check. A user could submit a new paid job
+    # during the (potentially lengthy) Docker build after the first check.
     $containersChanged = $true
+    & $docker @compose stop web api
+    Require-Exit 'Stop new submissions'
+    if ((Active-Work) -ne 0) {
+        throw 'Update deferred: work started during image build; previous services will be restored.'
+    }
+    $activationStarted = $true
+    & $docker @compose stop worker
+    Require-Exit 'Stop worker before activation'
     & $docker @compose up -d --no-build --no-deps --force-recreate api
     Require-Exit 'API start'
     Wait-Health 'asteria-lab-api-1'
@@ -122,6 +183,10 @@ try {
     Require-Exit 'Worker and web start'
     Wait-Running 'asteria-lab-worker-1'
     Wait-Health 'asteria-lab-web-1'
+    if ((Container-Revision 'asteria-lab-api-1') -ne $Revision -or
+        (Container-Revision 'asteria-lab-worker-1') -ne $Revision) {
+        throw 'Activated API/Worker image revision does not match the requested commit'
+    }
     $health = Invoke-RestMethod -Uri 'http://127.0.0.1:8018/health' -TimeoutSec 10
     if ($health.status -ne 'ok') { throw 'API health response is not OK' }
     $login = Invoke-WebRequest -Uri 'http://127.0.0.1:3023/login' -UseBasicParsing -TimeoutSec 10
@@ -131,17 +196,36 @@ try {
     Write-Host "SUCCESS: deployed $Revision; database backup at $backupFile"
 } catch {
     $failure = $_
-    if ($oldBackend -and $oldWeb) {
-        & $docker image tag $oldBackend 'asteria-backend:local' | Out-Null
-        & $docker image tag $oldWeb 'asteria-web:local' | Out-Null
+    try {
+        if ($oldBackend -and $oldWeb) {
+            & $docker image tag $oldBackend "asteria-backend:$imageTag" | Out-Null
+            Require-Exit 'Restore backend image tag'
+            & $docker image tag $oldWeb "asteria-web:$imageTag" | Out-Null
+            Require-Exit 'Restore web image tag'
+        }
+        if ($switched) {
+            & git switch --detach $previousRevision | Out-Null
+            Require-Exit 'Restore previous checkout'
+        }
+        if ($containersChanged) {
+            $env:ASTERIA_BUILD_REVISION = $deployedRevision
+            $compose = Compose-Args
+            if ($activationStarted) {
+                & $docker @compose up -d --no-build --no-deps --force-recreate api worker web | Out-Host
+            } else {
+                # An old Worker may have begun a task during build. Do not
+                # recreate or stop it while restoring the old API/Web ingress.
+                & $docker @compose up -d --no-build --no-deps api web | Out-Host
+            }
+            Require-Exit 'Restore previous containers'
+            Wait-Health 'asteria-lab-api-1'
+            Wait-Running 'asteria-lab-worker-1'
+            Wait-Health 'asteria-lab-web-1'
+        }
+    } catch {
+        throw "Update failed: $failure; automatic rollback ALSO failed: $_. Keep the database backup and previous image IDs; do not run down -v."
     }
-    if ($switched) { & git switch --detach $previousRevision | Out-Null }
-    if ($containersChanged) {
-        $env:ASTERIA_BUILD_REVISION = $previousRevision
-        $compose = Compose-Args
-        & $docker @compose up -d --no-build --no-deps --force-recreate api worker web | Out-Host
-    }
-    throw $failure
+    throw "Update failed and previous containers were restored: $failure"
 } finally {
     Pop-Location
 }
