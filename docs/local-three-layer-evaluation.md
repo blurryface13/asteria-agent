@@ -69,7 +69,7 @@ jq -c '.usage[] | . + {type:"usage"}' outputs/orchestrator-eval-6088097126/summa
 
 先选与科研问答相近的 ScholarQA 开发任务 `astabench/sqa_dev`，不从全套或高内存 Coding/E2E 开始。AstaBench 基于 InspectAI；官方说明文学任务的 `state.tools` 带语料/时间限制，Agent 必须保留任务工具约束及模型用量日志。我们的 Markdown 报告不能直接视作 ScholarQA 所需的结构化答案；先做输出/工具/usage Adapter 的替身契约测试，再跑 `--limit 1` 的官方开发样例。使用 Asteria 自有网页检索若越过约束，只能按官方 Custom 工具分类，不能包装成 Standard 结果。项目内四维 LLM-as-Judge 与 AstaBench 官方评分分别报告。
 
-按用户决定，官方 Benchmark 在 Windows＋4060 主机运行，优先 WSL2/Docker 内的独立 Python ≥3.11 评测环境；不升级 Asteria Python 3.10 服务，也不占用 Mac 的运行盘。当前**尚未安装/运行官方任务，没有 AstaBench 分数**。先做 adapter/单题容量预检，切忌直接拉全套 Coding/E2E 镜像。官方文学检索工具需要 `ASTA_TOOL_KEY`，数据集需要用户在 Hugging Face 接受许可后的 `HF_TOKEN`；某些评分还需要相应模型供应商密钥。密钥只放隔离环境变量，不写进仓库。
+按用户决定，官方 Benchmark 在 Windows＋4060 主机运行，优先使用独立 Python ≥3.11 评测环境；不升级 Asteria 服务环境，也不占用 Mac 的运行盘。**2026-09-27 更新：**Windows 已安装 AstaBench v0.5.4，运行 LitQA2 验证/测试集的无检索基线，以及一题 E2E Discovery 验证样例（修复前后各一次）。结果、适配条件和失败边界见 [Windows AstaBench handoff](handoff/astabench/2026-09-27/README.md)。本节其余 ScholarQA/标准工具链规划仍是下一步，不能把已有无检索基线或非官方 sandbox 的 E2E 0 分当作可比榜单分数。官方文学检索工具需要相应 Asta MCP 凭据；某些评分还需要模型供应商密钥，均不得写入仓库。
 
 官方文档：[AstaBench README](https://github.com/allenai/asta-bench)、[Asta MCP 申请](https://allenai.org/asta/resources/mcp)、[数据集许可](https://huggingface.co/datasets/allenai/asta-bench)。
 
