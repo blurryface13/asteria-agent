@@ -1,0 +1,40 @@
+[
+  {
+    "source_file": "2026-09-26T16-50-20-00-00_litqa2-asteria_oSuGdJRjssw5wd9bFPYVK4.eval",
+    "sample_count": 1,
+    "counts": {
+      "correct": 1
+    },
+    "public_file": "litqa2-pilot-oSuGdJRjssw5wd9bFPYVK4.samples.jsonl"
+  },
+  {
+    "source_file": "2026-09-26T16-55-50-00-00_litqa2-asteria-test_2YjUTaPFPccGkaBuqfWnEC.eval",
+    "sample_count": 75,
+    "counts": {
+      "unsure": 30,
+      "correct": 15,
+      "incorrect": 21,
+      "run_failed": 9
+    },
+    "public_file": "litqa2-test-baseline-2YjUTaPFPccGkaBuqfWnEC.samples.jsonl"
+  },
+  {
+    "source_file": "2026-09-26T16-51-55-00-00_litqa2-asteria_DTB3eXgNMLFy7GoEUwZC5f.eval",
+    "sample_count": 3,
+    "counts": {
+      "correct": 1,
+      "unscored": 2
+    },
+    "public_file": "litqa2-validation-DTB3eXgNMLFy7GoEUwZC5f.samples.jsonl"
+  },
+  {
+    "source_file": "2026-09-26T16-53-14-00-00_litqa2-asteria_cN7HacRue9LBoWQFeVXhLT.eval",
+    "sample_count": 10,
+    "counts": {
+      "correct": 4,
+      "run_failed": 3,
+      "unsure": 3
+    },
+    "public_file": "litqa2-validation-cN7HacRue9LBoWQFeVXhLT.samples.jsonl"
+  }
+]

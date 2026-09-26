@@ -22,3 +22,7 @@ The official E2E rubric code requests `claude-sonnet-4-6` for grading **when a r
 ## Future handoff sequence
 
 After each local benchmark run, preserve its raw record on the Windows E: drive, export an allowlisted packet, review it for privacy, and commit that packet on a handoff branch. Include: benchmark version/split/sample count; exact Asteria commit or image digest; adapter and tool/knowledge settings; score plus coverage/failure counts; reason codes; deployment health; and a link to the code fix PR. Keep pre-fix and post-fix results separate. Mac can fetch the branch and compare packets; Windows deploys a reviewed merge commit or release tag, then reruns the same sample set into a new packet.
+
+## Detailed per-sample handoff
+
+For Mac-side diagnosis, read [`optimization-analysis.md`](optimization-analysis.md) first, then [`litqa2-run-index.json`](litqa2-run-index.json) and the four `*.samples.jsonl` files. Each row identifies an Inspect sample by opaque ID and records outcome class, routing capability/confidence, failure class, elapsed seconds and DeepSeek token use. This exposes all 75 test outcomes and the validation/pilot outcomes without reproducing gated questions, targets or model answers. The full `.eval` archives and E2E diagnostics are retained separately for private transfer to an authorized dataset user.
