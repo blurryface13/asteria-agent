@@ -2,7 +2,9 @@
 
 本方案使用 Compose 启动 **API、独立 Worker、Next.js、PostgreSQL、Redis、Ollama**，首次自动拉取 `bge-m3` Embedding 模型。研究主模型 API Key 在管理员登录后由前端配置，无需写入镜像或首次启动配置。独立的 Modular RAG 代码在 Python 镜像内固定到 `f658c5a`，其 Chroma/BM25 索引、工作区、报告、数据库、Redis、Ollama 模型分别持久化。首次部署**不会**自动把 Mac 上的用户记录或 336 篇论文索引搬过去。
 
-当前验证范围见本页末尾。**Windows 4060 GPU、模型调用和全量论文索引仍需在目标主机验收**；本页不是已经完成的 Windows 上线记录。
+**2026-09-27 现场更新：**Windows 本机部署、DeepSeek 短调用、Embedding/Chroma/RAG 冒烟、中文 PDF 和局域网访问已有实测记录，见 [Windows Docker 现场报告](field-reports/2026-09-26-windows-docker.md)。这里的原始首发计划保留作背景；GitHub `main` 在现场修复合并前仍不能视为等同于已验证镜像。后续 Windows 更新以审查过的提交和 [更新脚本](../deploy/update-windows.ps1)为准。
+
+当前验证范围见本页末尾。**Windows 4060 GPU 加速和全量论文索引仍需单独验收**；模型短调用已通过，但不能代替完整研究能力验证。
 
 ## 出问题先定位在哪一层（不要先重装或删卷）
 
@@ -99,4 +101,4 @@ docker compose --env-file deploy/.env exec api python scripts/check-research-dep
 - Modular RAG 代码随镜像固定，Chroma/BM25 在 `rag_data` 卷；空卷启动时系统可运行，但论文知识库不可算通过。
 - 三个部署密钥与可选 DashScope Key 存于目标机 gitignored `deploy/.env`，Agent API Key 由管理员在前端配置并加密存于数据库；均适合受控实验室试运行，不是面向公网的秘密管理方案。正式对外部署应迁移到专用密钥服务。
 - Compose 只解决可复现部署，不代表 10 人并发已经验收。后续应把认证接口负载、研究任务排队、模型费用与 RAG 延迟分开测。
-- 本轮在 Mac 验证了 Compose CPU/GPU 配置解析、前端生产构建与容器 `/login` 响应、相关 Python 测试；Mac 可用磁盘不足以安全构建含完整 TeX/RAG 依赖的后端镜像。Windows 主机上的后端镜像构建、GPU Ollama、首次账号创建、模型密钥配置和真实研究报告仍须按第 2–4 节现场验收，不能提前宣称通过。
+- 最初在 Mac 验证了 Compose CPU/GPU 配置解析、前端生产构建与容器 `/login` 响应；之后 Windows 现场完成了后端镜像、账号、模型密钥和一份真实 CV 综述报告的验收。GPU Ollama 的实际加速程度、Mac 原有 336 篇论文索引迁移、长任务容量和 AstaBench E2E 实验执行仍未通过验收，见现场报告及 `docs/handoff/astabench/2026-09-27/`。

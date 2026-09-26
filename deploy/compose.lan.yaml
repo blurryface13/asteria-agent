@@ -1,0 +1,9 @@
+# Add LAN listeners alongside the localhost listeners in compose.yaml.
+# Use only after a Windows firewall rule restricts these ports to the intended LAN subnet.
+services:
+  api:
+    ports:
+      - "${ASTERIA_LAN_BIND_HOST:?Set ASTERIA_LAN_BIND_HOST}:8018:8018"
+  web:
+    ports:
+      - "${ASTERIA_LAN_BIND_HOST:?Set ASTERIA_LAN_BIND_HOST}:3023:3023"

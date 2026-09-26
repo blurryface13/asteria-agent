@@ -47,7 +47,20 @@ def main():
         runpy.run_module('backend.runs.worker', run_name='__main__')
     else:
         import uvicorn
-        uvicorn.run('main:app', host=os.getenv('ASTERIA_API_HOST', '127.0.0.1'), port=int(os.getenv('ASTERIA_API_PORT', '8018')))
+        # Some resolver combinations install Uvicorn without re-exporting
+        # ``run`` from the package root. Keep the deployment entrypoint
+        # compatible with both layouts.
+        server_run = getattr(uvicorn, 'run', None)
+        if server_run is None:
+            from uvicorn.main import run as server_run
+        server_run(
+            'main:app',
+            host=os.getenv('ASTERIA_API_HOST', '127.0.0.1'),
+            port=int(os.getenv('ASTERIA_API_PORT', '8018')),
+            # uvloop is not required and may be unavailable on WSL/Docker
+            # builds; the built-in asyncio loop is portable.
+            loop='asyncio',
+        )
 
 
 if __name__ == '__main__':

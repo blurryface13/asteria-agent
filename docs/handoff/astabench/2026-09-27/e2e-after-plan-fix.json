@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "benchmark": "AstaBench E2E Discovery",
+  "split": "validation",
+  "sample_id": "idea-60-simplified",
+  "run_id": "962fa8bbd64c4352976aa1d2f978db1b",
+  "status": "failed",
+  "score": 0,
+  "score_method": "official_early_zero_no_judge",
+  "official_sandbox_used": false,
+  "usage": {
+    "calls_recorded": 19,
+    "input_tokens": 241178,
+    "output_tokens": 43754,
+    "total_tokens": 284932
+  },
+  "timing_seconds": {
+    "queued_seconds": 0.170043,
+    "execution_seconds": 212.397783,
+    "approval_seconds": 49.846909
+  },
+  "artifacts": [
+    {
+      "kind": "diagnostic_tool_calls",
+      "size_bytes": 3599
+    },
+    {
+      "kind": "diagnostic_citations",
+      "size_bytes": 88
+    },
+    {
+      "kind": "diagnostic_lead_decisions",
+      "size_bytes": 63477
+    },
+    {
+      "kind": "diagnostic_working_memory",
+      "size_bytes": 16555
+    },
+    {
+      "kind": "diagnostic_delegations",
+      "size_bytes": 57781
+    },
+    {
+      "kind": "diagnostic_run",
+      "size_bytes": 7924
+    },
+    {
+      "kind": "diagnostic_delivery_state",
+      "size_bytes": 388
+    },
+    {
+      "kind": "diagnostic_events",
+      "size_bytes": 126604
+    },
+    {
+      "kind": "diagnostic_plan",
+      "size_bytes": 7296
+    }
+  ],
+  "privacy": "Allowlisted metadata only; no prompts, responses, keys, artifact paths or raw logs"
+}

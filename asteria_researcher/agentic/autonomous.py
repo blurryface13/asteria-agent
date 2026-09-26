@@ -312,9 +312,12 @@ class AutonomousReview:
                              phase=phase, error=str(error))
             repaired = await self.llm(
                 "Repair this research plan so it satisfies the supplied JSON schema and contract. "
-                "Preserve every goal's meaning and exact user_quote. Do not add, remove, merge or split "
-                "requirements. Only repair structural fields such as duplicate IDs, invalid IDs, or misplaced "
-                "quotes. required goal IDs must be unique g1, g2...; process IDs must be unique p1, p2.... "
+                "Preserve every goal's meaning. Do not add, remove, merge or split requirements. "
+                "Preserve valid user_quote fields. If the validation error says a user_quote is not in scope, "
+                "replace only that quote with a contiguous verbatim excerpt from the supplied scope that "
+                "supports the same requirement; do not paraphrase or invent user text. Otherwise repair only "
+                "structural fields such as duplicate IDs or invalid IDs. required goal IDs must be unique "
+                "g1, g2...; process IDs must be unique p1, p2.... "
                 "Return ONLY the repaired JSON.\n" + schema,
                 {"task": self.query, "scope": scope, "candidate_plan": raw,
                  "validation_error": str(error)})

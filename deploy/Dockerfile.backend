@@ -19,8 +19,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 COPY requirements.txt /app/requirements.txt
-RUN python -m pip install --upgrade pip \
-    && python -m pip install -r /app/requirements.txt
+# Reinstall dependencies: the earlier cached layer had empty package files.
+RUN python -m pip install --no-cache-dir --upgrade pip \
+    && python -m pip install --no-cache-dir -r /app/requirements.txt
+COPY scripts/verify-installed-packages.py /tmp/verify-installed-packages.py
+RUN python /tmp/verify-installed-packages.py
 
 # The RAG bridge imports the upstream project in-process. Pin its exact commit;
 # Chroma/BM25 data is a separate persistent volume, never baked into the image.
@@ -28,9 +31,16 @@ ARG MODULAR_RAG_REF=f658c5a4011c8b826707a65a3b11ce9301b0626f
 RUN git clone https://github.com/jerry-ai-dev/MODULAR-RAG-MCP-SERVER.git /opt/modular-rag-engine \
     && git -C /opt/modular-rag-engine checkout --detach "$MODULAR_RAG_REF" \
     && python -m pip install /opt/modular-rag-engine \
-    && python -m pip check
+    && python -m pip check \
+    && python /tmp/verify-installed-packages.py
 
 COPY . /app
+# Keep the service entrypoint explicit for Windows Docker Desktop build contexts.
+# A zero-byte copy would make the container exit successfully without starting Uvicorn.
+COPY scripts/start-research-service.py /app/scripts/start-research-service.py
+RUN test -s /app/scripts/start-research-service.py \
+    && test -s /app/scripts/deployment-preflight.py \
+    && python /app/scripts/deployment-preflight.py
 RUN mkdir -p /app/outputs /app/workspaces /opt/modular-rag-engine/data
 
 # .git is excluded from the image; the startup service still reports the
