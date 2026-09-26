@@ -27,7 +27,7 @@ def items(value):
 
 
 def has_read_content(results):
-    return any(t["tool"] in {"read_workspace_file", "read_repository_file"}
+    return any(t["tool"] in {"read_workspace_file", "read_repository_file", "read_experiment_file"}
                and result_success(t["result"]) is not False
                and any(isinstance(i, dict) and isinstance(i.get("content"), str)
                        and bool(i["content"].strip()) for i in items(t["result"]))
@@ -73,6 +73,7 @@ async def run_coding(assignment, model, tools, request_research, emit, *,
     if allow_research_request:
         schemas["request_research"] = ResearchRequest.model_json_schema()
     schemas["finish"] = {"description": "Return summary and outcome; incomplete for blocked/unexecuted work."}
+    experiment_enabled = "run_experiment_command" in schemas
     system = (
         f"You are {CODING.role}. {CODING.mission} Input: {CODING.input_contract}. Output: {CODING.output_contract}. "
         "Choose ONE tool per turn based on actual observations, not a prescribed sequence. "
@@ -83,7 +84,10 @@ async def run_coding(assignment, model, tools, request_research, emit, *,
         "Do not ask another agent to repeat the whole user task. Incorporate its response and continue your "
         "original task. A research reply may be incomplete; do not manufacture certainty. "
         "Workspace changes are proposals requiring human approval, NOT applied edits. "
-        "No experiment execution tool is currently available: never claim tests, training or experiments ran. "
+        + ("An isolated Docker scratch workspace is available: write_experiment_file changes ONLY that scratch, "
+           "then run_experiment_command executes there with no network/host credentials. Inspect exit code/output, "
+           "repair failures, and retain artifact paths. Do not claim the user's original workspace was changed. "
+           if experiment_enabled else "No experiment execution tool is available in this runtime. ") +
         "For Python diagnostics, check_python_syntax and preview_code_diff must reference a real file-read "
         "observation_id. Syntax success is not functional correctness; diff previews do not write files. "
         "Do not claim an outcome merely from your plan or a researcher's prose. Cite observed file/source locations. "
@@ -122,8 +126,30 @@ async def run_coding(assignment, model, tools, request_research, emit, *,
             if action.tool == "finish":
                 if not action.summary.strip():
                     raise ValueError("finish requires a nonempty summary")
-                if action.outcome == "completed" and not has_read_content(tool_results):
+                executed = any(t["tool"] == "run_experiment_command" and isinstance(t["result"], dict)
+                               and t["result"].get("execution_performed") and t["result"].get("exit_code") == 0
+                               and result_success(t["result"]) is True
+                               for t in tool_results)
+                generated = [a for t in tool_results if t["tool"] == "run_experiment_command"
+                             and isinstance(t["result"], dict) and t["result"].get("execution_performed")
+                             and t["result"].get("exit_code") == 0 and result_success(t["result"]) is True
+                             for a in t["result"].get("generated_artifacts", [])]
+                written = any(t["tool"] == "write_experiment_file" and result_success(t["result"]) is True
+                              for t in tool_results)
+                if action.outcome == "completed" and not (has_read_content(tool_results) or (written and executed)):
                     raise ValueError("必须先实际读取代码或文件，不能仅凭模型记忆完成调查")
+                assigned = {g.get("id"): g.get("kind") for g in (context or {}).get("goals", [])}
+                needs_execution = any(assigned.get(gid) == "experiment_execution" for gid in assignment.goal_ids)
+                needs_change = any(assigned.get(gid) == "code_change" for gid in assignment.goal_ids)
+                has_run_result = any(t["tool"] == "run_experiment_command" and
+                                     isinstance(t["result"], dict) and result_success(t["result"]) is True and
+                                     t["result"].get("execution_performed") and t["result"].get("exit_code") == 0 and
+                                     (t["result"].get("output", "").strip() or t["result"].get("generated_artifacts"))
+                                     for t in tool_results)
+                if action.outcome == "completed" and needs_execution and not has_run_result:
+                    raise ValueError("实验目标需要成功的隔离执行记录及真实输出或新产物，不能仅凭方案声称完成")
+                if action.outcome == "completed" and needs_change and not written:
+                    raise ValueError("代码修改目标尚无隔离实验区的文件写入记录，不能声称完成")
                 index = evidence_index(tool_results, requests)
                 checked = completion_check(evidence_required, index)
                 if action.outcome == "completed" and not checked["passed"]:
@@ -142,7 +168,9 @@ async def run_coding(assignment, model, tools, request_research, emit, *,
                 result = {"agent": agent, "status": action.outcome, "summary": action.summary,
                           "tool_results": tool_results, "research_requests": requests,
                           "tool_traces": tool_traces, "evidence_index": index, "completion_check": checked,
-                          "sources": sorted(allowed_urls), "execution_performed": False, "pending_approval": bool(pending)}
+                          "sources": sorted(allowed_urls), "execution_performed": executed,
+                          "scratch_change_performed": written, "generated_artifacts": generated,
+                          "pending_approval": bool(pending)}
                 result["summary"] = summary
                 await emit(agent, "finish", action.outcome, action.purpose, call_id=call_id, result=result)
                 return AgentFinish(result)
@@ -177,7 +205,11 @@ async def run_coding(assignment, model, tools, request_research, emit, *,
                     repeated[signature] = repeated.get(signature, 0) + 1
                 spec, execute = tools[action.tool]
                 trace["executed"] = True
-                result = await asyncio.wait_for(execute(action.arguments), 45)
+                # The sandbox itself enforces a 120-second command budget plus
+                # Docker cleanup. The generic 45-second tool budget would kill
+                # valid runs halfway through and leave misleading observations.
+                tool_timeout = 140 if action.tool == "run_experiment_command" else 45
+                result = await asyncio.wait_for(execute(action.arguments), tool_timeout)
                 tool_results.append({"id": call_id, "tool": action.tool, "arguments": action.arguments,
                                      "result": result})
                 # Source metadata is produced by trusted adapters, not extracted from model prose.

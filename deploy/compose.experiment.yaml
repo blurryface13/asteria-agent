@@ -1,0 +1,28 @@
+# Opt in explicitly. This trusted broker can access the Docker daemon; the
+# untrusted experiment container cannot. Never publish port 8090 to the LAN.
+services:
+  experiment-broker:
+    image: asteria-experiment-broker:${ASTERIA_IMAGE_TAG:-local}
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.experiment-broker
+    environment:
+      ASTERIA_EXPERIMENT_BROKER_TOKEN: ${ASTERIA_EXPERIMENT_BROKER_TOKEN:?Set a separate long random token}
+      ASTERIA_EXPERIMENT_ROOT: /experiments
+      ASTERIA_EXPERIMENT_VOLUME: asteria_experiment_data
+    volumes:
+      - experiment_data:/experiments
+      - /var/run/docker.sock:/var/run/docker.sock
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/health',timeout=3).read()"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  experiment_data:
+    name: asteria_experiment_data
