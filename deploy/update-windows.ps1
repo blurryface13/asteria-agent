@@ -21,6 +21,8 @@ $containersChanged = $false
 $activationStarted = $false
 $imageTag = 'local'
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+$experimentLine = Get-Content -LiteralPath $envFile -ErrorAction SilentlyContinue | Where-Object { $_ -match '^ASTERIA_EXPERIMENT_EXECUTOR=' } | Select-Object -Last 1
+$experimentEnabled = ($experimentLine -eq 'ASTERIA_EXPERIMENT_EXECUTOR=broker')
 
 function Require-Exit([string]$step) {
     if ($LASTEXITCODE -ne 0) { throw "$step failed (exit $LASTEXITCODE)" }
@@ -47,6 +49,9 @@ function Wait-Running([string]$name, [int]$attempts = 15) {
 function Compose-Args {
     $argsList = @('compose', '-f', 'compose.yaml')
     if (-not $Cpu) { $argsList += @('-f', 'deploy/compose.gpu.yaml') }
+    if ($experimentEnabled -and (Test-Path -LiteralPath 'deploy/compose.experiment.yaml')) {
+        $argsList += @('-f', 'deploy/compose.experiment.yaml')
+    }
     if ($env:ASTERIA_LAN_BIND_HOST -and (Test-Path -LiteralPath 'deploy/compose.lan.yaml')) {
         $argsList += @('-f', 'deploy/compose.lan.yaml')
     }
@@ -155,12 +160,17 @@ try {
         if ($lanLine) { $env:ASTERIA_LAN_BIND_HOST = $lanLine.Substring('ASTERIA_LAN_BIND_HOST='.Length) }
     }
     $compose = Compose-Args
+    if ($experimentEnabled -and -not (Test-Path -LiteralPath 'deploy/compose.experiment.yaml')) {
+        throw 'Experiment broker is enabled but target revision lacks deploy/compose.experiment.yaml'
+    }
     if ($env:ASTERIA_LAN_BIND_HOST -and -not (Test-Path -LiteralPath 'deploy/compose.lan.yaml')) {
         throw 'LAN bind is configured but target revision lacks deploy/compose.lan.yaml'
     }
     & $docker @compose config --quiet
     Require-Exit 'Compose config'
-    & $docker @compose build api worker web
+    $buildServices = @('api', 'worker', 'web')
+    if ($experimentEnabled) { $buildServices += 'experiment-broker' }
+    & $docker @compose build @buildServices
     Require-Exit 'Compose build'
     & $docker run --rm "asteria-backend:$imageTag" python /tmp/verify-installed-packages.py
     Require-Exit 'Built backend package integrity check'
@@ -176,6 +186,11 @@ try {
     $activationStarted = $true
     & $docker @compose stop worker
     Require-Exit 'Stop worker before activation'
+    if ($experimentEnabled) {
+        & $docker @compose up -d --no-build experiment-broker
+        Require-Exit 'Experiment broker start'
+        Wait-Health 'asteria-lab-experiment-broker-1'
+    }
     & $docker @compose up -d --no-build --no-deps --force-recreate api
     Require-Exit 'API start'
     Wait-Health 'asteria-lab-api-1'

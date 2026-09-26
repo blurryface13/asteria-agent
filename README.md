@@ -14,6 +14,7 @@ Python · AgentOrchestrator / BaseAgent · MCP · FastAPI · Next.js · PostgreS
 - **带图研究**：可从已读证据生成方法对照图和有共同评价口径的数值图；图表数据与来源独立留档，由 Writer 引入 PDF。金融行业概览与模型更新采用按需加载的 Anthropic 原版 Skill，商业数据接口需另行授权。
 - **项目与知识库**：项目组织多轮对话，历史内容持久化到 PostgreSQL。离线 RAG 保留独立入口，支持混合检索与重排；在线研究可选择启用 RAG。
 - **科研工具与 MCP**：Lead/子 Agent 可检索论文、公开一手资料及授权实验室知识库；知识库与文件工具使用真实 stdio MCP。子任务完整结果独立保存，Lead 按需读取产物与阶段记忆；CitationAgent 对报告补充出处，发现引文缺口时定向修稿重检。
+- **代码与实验协作（可选）**：Coding 子 Agent 可读取授权文件、定向向研究角色求助；启用隔离执行器后，可在独立实验区写代码、运行命令、检查日志并修正重跑。原工作区修改仍需人工批准；默认不启用执行器。
 - **分层记忆**：PostgreSQL 保存会话原始记录，Redis 缓存近期上下文；用户偏好和项目主题以可编辑 Markdown 保存，并由独立 ChromaDB 集合索引主题记忆，按用户、项目与当前问题做语义召回。论文知识库的向量索引与个人记忆隔离。
 - **实验室账号**：管理员创建邮箱账号并设置密码，成员的项目、对话、任务和记忆各自隔离；知识库可设置为实验室共享。邮件验证码仅在单独配置 SMTP 后启用。
 - **后台运行**：桌面研究由独立 worker 执行，刷新或关闭页面不终止任务；进度、人工确认、模型用量与交付产物持久保存，重新打开即可继续查看。
@@ -48,6 +49,7 @@ Python · AgentOrchestrator / BaseAgent · MCP · FastAPI · Next.js · PostgreS
 - [EchoMind 骨架对齐与真实请求验收](docs/echomind-alignment-plan.md)
 - [实验室部署与登录排查](docs/lab-deployment.md)
 - [Windows＋4060 Docker Compose 部署与验收](docs/windows-4060-docker-deployment.md)
+- [Coding Agent 隔离执行、Windows 可选启用与验收](docs/operations/coding-agent-execution.md)
 
 Windows 4060 首次部署：在启用 Docker Desktop GPU 支持的 WSL2 中克隆仓库，运行 `ASTERIA_ADMIN_EMAIL=you@example.com bash deploy/start.sh --gpu`；按提示设置管理员密码，登录 `http://127.0.0.1:3023/login`，在“Agent → 模型”填写 DeepSeek API Key 并应用到全部角色。论文索引不会随代码自动迁移，具体步骤与验收边界见上方部署手册。
 
@@ -55,7 +57,7 @@ Windows 4060 首次部署：在启用 Docker Desktop GPU 支持的 WSL2 中克�
 
 ## 🗺️ 接下来
 
-- 授权主机与工作区内的自主实验执行、日志观察和结果复现。
+- 隔离实验产物的 UI 下载、原工作区审批后验证，以及正式 AstaBench E2E 回归。
 - 当前 Agent 的历史补评、独立裁判、版本对比与 BadCase 回归。
 - 进程异常后的检查点恢复、模型费用计价与运行指标展示。
 
