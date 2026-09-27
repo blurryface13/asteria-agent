@@ -12,6 +12,8 @@ $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $envFile = Join-Path $repo 'deploy\.env'
 $docker = (Get-Command docker.exe -ErrorAction Stop).Source
+$lanMode = 'compose'
+$lanBindHost = $null
 $previousRevision = $null
 $oldBackend = $null
 $oldWeb = $null
@@ -47,7 +49,7 @@ function Wait-Running([string]$name, [int]$attempts = 15) {
 function Compose-Args {
     $argsList = @('compose', '-f', 'compose.yaml')
     if (-not $Cpu) { $argsList += @('-f', 'deploy/compose.gpu.yaml') }
-    if ($env:ASTERIA_LAN_BIND_HOST -and (Test-Path -LiteralPath 'deploy/compose.lan.yaml')) {
+    if ($lanMode -eq 'compose' -and $env:ASTERIA_LAN_BIND_HOST -and (Test-Path -LiteralPath 'deploy/compose.lan.yaml')) {
         $argsList += @('-f', 'deploy/compose.lan.yaml')
     }
     $argsList += @('--env-file', 'deploy/.env')
@@ -72,8 +74,33 @@ function Container-Revision([string]$name) {
     return $entry.Substring('ASTERIA_BUILD_REVISION='.Length)
 }
 
+function Get-HttpStatusWithoutProxy([string]$url) {
+    $request = [System.Net.HttpWebRequest][System.Net.WebRequest]::Create($url)
+    $request.Proxy = $null
+    $request.Timeout = 10000
+    $response = $request.GetResponse()
+    try { return [int]$response.StatusCode }
+    finally { $response.Dispose() }
+}
+
+function Check-PortProxyLan {
+    if ($lanMode -ne 'portproxy') { return }
+    if (-not $lanBindHost) { throw 'ASTERIA_LAN_MODE=portproxy requires ASTERIA_LAN_BIND_HOST in deploy/.env.' }
+    foreach ($url in @("http://${lanBindHost}:3023/login", "http://${lanBindHost}:8018/health")) {
+        try { $status = Get-HttpStatusWithoutProxy $url }
+        catch { throw "Windows LAN forwarding is unavailable at $url. Check Wi-Fi IPv4, portproxy and firewall before updating: $_" }
+        if ($status -ne 200) { throw "Windows LAN forwarding returned HTTP $status at $url" }
+    }
+}
+
 if (-not (Test-Path -LiteralPath $envFile)) { throw 'Local deploy/.env is missing; keep the existing secret file.' }
 if (-not (Test-Path -LiteralPath (Split-Path -Qualifier $BackupDir))) { throw "Backup drive is unavailable: $BackupDir" }
+$lanModeLine = Get-Content -LiteralPath $envFile | Where-Object { $_ -match '^ASTERIA_LAN_MODE=' } | Select-Object -Last 1
+if ($lanModeLine) { $lanMode = $lanModeLine.Substring('ASTERIA_LAN_MODE='.Length) }
+if ($lanMode -notin @('compose', 'portproxy')) { throw "Unsupported ASTERIA_LAN_MODE: $lanMode" }
+$lanLine = Get-Content -LiteralPath $envFile | Where-Object { $_ -match '^ASTERIA_LAN_BIND_HOST=' } | Select-Object -Last 1
+if ($lanLine) { $lanBindHost = $lanLine.Substring('ASTERIA_LAN_BIND_HOST='.Length) }
+if ($lanMode -eq 'portproxy' -and -not $lanBindHost) { throw 'Portproxy LAN mode requires ASTERIA_LAN_BIND_HOST.' }
 & $docker info --format '{{.ServerVersion}}' | Out-Null
 Require-Exit 'Docker engine check'
 $dirty = (& git -C $repo status --porcelain --untracked-files=normal | Out-String).Trim()
@@ -103,9 +130,11 @@ if ($schemaChanges.Count -gt 0) {
 if ((Active-Work) -ne 0) {
     throw 'Update deferred: research, coordinator, or indexing work is active.'
 }
+Check-PortProxyLan
 Write-Host "Current: $previousRevision"
 Write-Host "Running image revision: $deployedRevision"
 Write-Host "Target:  $Revision"
+Write-Host "Windows LAN mode: $lanMode"
 if ($CheckOnly) {
     Write-Host 'Revision, Docker, schema-change, and active-work checks passed. No deployment changes made.'
     exit 0
@@ -150,12 +179,9 @@ try {
     Require-Exit 'Checkout target commit'
     $switched = $true
     $env:ASTERIA_BUILD_REVISION = $Revision
-    if (-not $env:ASTERIA_LAN_BIND_HOST) {
-        $lanLine = Get-Content -LiteralPath $envFile | Where-Object { $_ -match '^ASTERIA_LAN_BIND_HOST=' } | Select-Object -Last 1
-        if ($lanLine) { $env:ASTERIA_LAN_BIND_HOST = $lanLine.Substring('ASTERIA_LAN_BIND_HOST='.Length) }
-    }
+    if ($lanBindHost) { $env:ASTERIA_LAN_BIND_HOST = $lanBindHost }
     $compose = Compose-Args
-    if ($env:ASTERIA_LAN_BIND_HOST -and -not (Test-Path -LiteralPath 'deploy/compose.lan.yaml')) {
+    if ($lanMode -eq 'compose' -and $env:ASTERIA_LAN_BIND_HOST -and -not (Test-Path -LiteralPath 'deploy/compose.lan.yaml')) {
         throw 'LAN bind is configured but target revision lacks deploy/compose.lan.yaml'
     }
     & $docker @compose config --quiet
@@ -191,6 +217,7 @@ try {
     if ($health.status -ne 'ok') { throw 'API health response is not OK' }
     $login = Invoke-WebRequest -Uri 'http://127.0.0.1:3023/login' -UseBasicParsing -TimeoutSec 10
     if ($login.StatusCode -ne 200) { throw 'Login page did not return HTTP 200' }
+    Check-PortProxyLan
     & $docker @compose ps
     Require-Exit 'Compose status'
     Write-Host "SUCCESS: deployed $Revision; database backup at $backupFile"

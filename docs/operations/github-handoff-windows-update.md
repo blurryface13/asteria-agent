@@ -50,10 +50,31 @@ Pushing a Mac commit does **not** update Windows by itself. Merge the reviewed P
 
 Before activation it stops new Web/API submissions and checks active work **again**, so a job started during the build does not cause the Worker to be killed. With no active work it replaces API, Worker and Web. Acceptance requires API/Web health, a running Worker, the login endpoint, and API/Worker image revisions matching the requested SHA. If activation fails, it restores the previous image tags and commit and checks the restored services; rollback failure is reported separately. This is an image/code rollback, **not** a database rollback. Changes to schemas, workspaces, reports, RAG data, model keys, or host configuration need a separate reviewed plan and backup.
 
-The same Compose project name (`asteria-lab`) preserves existing named volumes. Keep `deploy/.env` and `ASTERIA_MODEL_SETTINGS_SECRET` unchanged so saved model keys remain decryptable. If the host uses LAN bindings, the merged commit must include `deploy/compose.lan.yaml` and the host firewall rule must remain restricted to the intended subnet. No `docker compose down -v` is used.
+The same Compose project name (`asteria-lab`) preserves existing named volumes. Keep `deploy/.env` and `ASTERIA_MODEL_SETTINGS_SECRET` unchanged so saved model keys remain decryptable. For direct Docker LAN publishing (`ASTERIA_LAN_MODE=compose`, the default), the merged commit must include `deploy/compose.lan.yaml`. On this Windows host, `ASTERIA_LAN_MODE=portproxy` keeps Docker on localhost and uses the existing Windows portproxy for Wi-Fi access; the updater checks the LAN login URL before and after activation. Keep the host firewall rule restricted to the intended subnet. No `docker compose down -v` is used.
 
 After activation, Windows runs an authenticated short request, an embedding/RAG lookup, and one small report task before the AstaBench validation subset. Record the activated commit, container image IDs, feature outcome, and known limitations in a new packet. Compare only runs with the same AstaBench split, search/tool access, judge and sandbox conditions; the first packet's closed-book LitQA2 and partial E2E result are not a full benchmark score. A successful image health check does not prove an E2E experiment, GPU use, or the Mac paper corpus has been verified.
 
 ## Current handoff status
 
 PR #11 merged the first Windows deployment fixes and sanitized AstaBench packets into `main`. The user confirmed that the running code fixes are represented in the PR, while some raw evaluation results remain only on Windows. The host image SHA has not been independently verified on Mac, so the one-time adoption above remains an explicit Windows validation step.
+
+## 2026-09-28 restart and one-click update path
+
+The [restart incident report](../field-reports/2026-09-28-windows-restart-lan.md) records two WSL VHDX `E_ACCESSDENIED` failures after Docker Desktop was restarted, and a Docker Desktop failure to publish directly to the Wi-Fi address. The data disks remained intact. The Windows installation now uses localhost Compose ports plus Windows portproxy, with `ASTERIA_LAN_MODE=portproxy` in its ignored `deploy/.env`. Do not remove that setting during an update: otherwise `update-windows.ps1` will select the direct LAN Compose overlay and fail to bind `192.168.31.208`.
+
+Use a dedicated clean Windows deployment checkout with the existing `deploy/.env`. After the restart/update scripts in this PR have been merged to `main`, the operator can run the following in that checkout:
+
+```powershell
+# After a Windows or Docker restart: reuse existing images and data; no build.
+powershell -ExecutionPolicy Bypass -File .\deploy\restart-windows.ps1
+
+# First adoption only, while the running image revision is still "unknown":
+powershell -ExecutionPolicy Bypass -File .\deploy\update-windows-latest.ps1 -AdoptExisting -CheckOnly
+powershell -ExecutionPolicy Bypass -File .\deploy\update-windows-latest.ps1 -AdoptExisting
+
+# Later, after a reviewed Mac PR is merged to main:
+powershell -ExecutionPolicy Bypass -File .\deploy\update-windows-latest.ps1 -CheckOnly
+powershell -ExecutionPolicy Bypass -File .\deploy\update-windows-latest.ps1
+```
+
+The `latest` wrapper resolves `origin/main` to one immutable SHA before the preflight and activation. It does not deploy feature branches or react automatically to a push. When that SHA is already running, it checks/restarts the existing deployment instead of rebuilding it. If there are active research tasks, schema changes, a dirty checkout, mismatched API/Worker revisions or a broken LAN forward, the guarded update stops before activation. Keep the E: database backup and rollback image tags until the new version passes a short authenticated task, an embedding/RAG check and the intended AstaBench subset.
