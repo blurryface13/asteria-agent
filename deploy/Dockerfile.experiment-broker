@@ -1,0 +1,10 @@
+FROM docker:27-cli
+
+RUN apk add --no-cache python3 py3-pip \
+    && python3 -m venv /opt/venv \
+    && /opt/venv/bin/pip install --no-cache-dir fastapi==0.115.12 uvicorn==0.34.2 httpx==0.28.1
+ENV PATH="/opt/venv/bin:$PATH" PYTHONPATH=/srv PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+WORKDIR /srv
+COPY asteria_researcher/agentic/experiment_tools.py /srv/experiment_tools.py
+COPY scripts/experiment-broker.py /srv/experiment-broker.py
+CMD ["python3", "experiment-broker.py"]

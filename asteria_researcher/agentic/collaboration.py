@@ -29,7 +29,8 @@ CODING = AgentProfile(
     "代码位置、观察依据、修改提案及未完成项；未运行不得声称实验成功",
     ("list_workspace_files", "read_workspace_file", "propose_workspace_change",
      "inspect_repository", "read_repository_file", "search_papers", "read_paper", "read_paper_passage",
-     "check_python_syntax", "preview_code_diff", "request_research", "finish"), 12)
+     "check_python_syntax", "preview_code_diff", "write_experiment_file", "read_experiment_file",
+     "list_experiment_files", "run_experiment_command", "request_research", "finish"), 18)
 PROFILES = {p.role: p for p in (LEAD, RESEARCHER, CODING)}
 
 
@@ -48,6 +49,44 @@ class Assignment(BaseModel):
 
 def normalize(value):
     return re.sub(r"[\W_]+", "", value.casefold())
+
+
+def repair_implementation_ownership(assignments, goals, coding_available):
+    """Move only misrouted c-goal IDs; preserve independent research goals.
+
+    A structural repair is observable and still goes through allocation_report.
+    It never manufactures research findings or claims an experiment ran.
+    """
+    if not coding_available:
+        return assignments, []
+    implementations = {g["id"]: g for g in goals if g["id"].startswith("c")}
+    misplaced = {gid for a in assignments if a.role == "researcher"
+                 for gid in a.goal_ids if gid in implementations}
+    if not misplaced:
+        return assignments, []
+    corrected = []
+    for a in assignments:
+        if a.role != "researcher":
+            corrected.append(a)
+            continue
+        remaining = [gid for gid in a.goal_ids if gid not in misplaced]
+        if remaining:
+            corrected.append(a.model_copy(update={"goal_ids": remaining}))
+    coding = next((a for a in corrected if a.role == "coding"), None)
+    if coding:
+        corrected = [a.model_copy(update={"goal_ids": list(dict.fromkeys(a.goal_ids + sorted(misplaced)))})
+                     if a is coding else a for a in corrected]
+    elif len(corrected) < 3:
+        objective = "；".join(implementations[gid]["description"] for gid in sorted(misplaced))
+        corrected.append(Assignment(name="代码与实验执行", objective=objective,
+                                    goal_ids=sorted(misplaced), role="coding",
+                                    focus="在隔离实验区调查、实现并验证明确的代码目标",
+                                    expected_output="实际工具记录、实验产物与未完成限制"))
+    else:
+        # Leave the original proposal visible for a targeted model repair.
+        return assignments, []
+    return corrected, [{"kind": "move_implementation_goals_to_coding",
+                        "goal_ids": sorted(misplaced)}]
 
 
 def allocation_report(assignments, required_ids, retained_ids=(), *, strict=True):

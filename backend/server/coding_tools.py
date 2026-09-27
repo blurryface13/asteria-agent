@@ -54,4 +54,8 @@ async def run_workspace_coding(message, history, model, email, progress=None):
     result = (await runtime.dispatch_assignments([task]))[0]
     return result["summary"], {"agent": "workspace_coding", "status": result["status"],
                                "tool_calls": events, "research_requests": result.get("research_requests", []),
-                               "sources": result.get("sources", []), "execution_performed": False}
+                               "sources": result.get("sources", []),
+                               "execution_performed": result.get("execution_performed", False),
+                               "scratch_change_performed": result.get("scratch_change_performed", False),
+                               "generated_artifacts": result.get("generated_artifacts", []),
+                               "pending_approval": result.get("pending_approval", False)}

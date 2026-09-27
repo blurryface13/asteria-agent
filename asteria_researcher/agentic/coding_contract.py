@@ -9,7 +9,8 @@ import re
 
 
 READ_ONLY_TOOLS = frozenset({
-    "list_workspace_files", "read_workspace_file", "inspect_repository", "read_repository_file",
+    "list_workspace_files", "read_workspace_file", "read_experiment_file", "list_experiment_files",
+    "inspect_repository", "read_repository_file",
     "search_papers", "read_paper", "read_paper_passage", "check_python_syntax", "preview_code_diff",
 })
 
